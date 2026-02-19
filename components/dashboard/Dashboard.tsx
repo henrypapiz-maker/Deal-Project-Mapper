@@ -108,6 +108,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
     Array.from(wsStats.entries()).map(([ws, stats]) => [ws, getWorkstreamRag(stats)])
   );
   const blockedItems = checklistItems.filter((i) => i.status === "blocked");
+  const itemByItemId = new Map<string, ChecklistItem>(checklistItems.map((i) => [i.itemId, i]));
   const pendingSuggestions = (deal.aiSuggestions ?? []).filter((s) => s.status === "pending");
   const pendingDealSuggestions = pendingSuggestions.filter((s) => s.source === "deal_intake");
   const pendingItemSuggestions = pendingSuggestions.filter((s) => s.source === "item_update");
@@ -491,6 +492,82 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
             )}
           </div>
         )}
+
+        {/* ─── KEY DEPENDENCIES PANEL (overview) ─── */}
+        {activeTab === "overview" && (() => {
+          const itemsWithUnmetDeps = checklistItems
+            .filter((i) => {
+              if (i.status === "na" || i.status === "complete") return false;
+              return i.dependencies.length > 0 && i.dependencies.some((depId) => {
+                const dep = itemByItemId.get(depId);
+                return !dep || dep.status !== "complete";
+              });
+            })
+            .sort((a, b) => {
+              const p: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+              return p[a.priority] - p[b.priority];
+            });
+
+          return (
+            <div style={{ marginTop: 16, padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: itemsWithUnmetDeps.length > 0 ? 14 : 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: itemsWithUnmetDeps.length > 0 ? C.warning : C.textMuted }}>
+                  Key Dependencies — {itemsWithUnmetDeps.length} item{itemsWithUnmetDeps.length !== 1 ? "s" : ""} with unmet prerequisites
+                </div>
+                {itemsWithUnmetDeps.length === 0 && (
+                  <span style={{ fontSize: 10, color: C.success }}>✓ All dependencies satisfied</span>
+                )}
+              </div>
+              {itemsWithUnmetDeps.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {itemsWithUnmetDeps.slice(0, 10).map((item) => {
+                    const unmet = item.dependencies
+                      .map((d) => itemByItemId.get(d))
+                      .filter((d): d is ChecklistItem => !!d && d.status !== "complete");
+                    const priorityColor = item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.textMuted;
+                    return (
+                      <div key={item.id} style={{ padding: "8px 10px", borderRadius: 5, background: C.deepBlue, border: `1px solid ${C.warning}22` }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: priorityColor, display: "inline-block", flexShrink: 0 }} />
+                          <span style={{ fontSize: 10, fontWeight: 700, color: C.accent }}>{item.itemId}</span>
+                          <span style={{ fontSize: 9, color: priorityColor, fontWeight: 700, textTransform: "uppercase" }}>{item.priority}</span>
+                          <span style={{ fontSize: 9, color: C.textMuted }}>{PHASE_LABELS[item.phase]}</span>
+                          <span style={{ fontSize: 9, color: C.textMuted }}>{item.workstream.split(" ")[0]}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: C.text, marginBottom: 6, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item.description}
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 9, color: C.textMuted }}>Waiting on:</span>
+                          {unmet.map((dep) => {
+                            const depColor = dep.status === "blocked" ? C.danger : dep.status === "in_progress" ? C.accent : C.muted;
+                            return (
+                              <span key={dep.id} style={{
+                                fontSize: 9, padding: "1px 6px", borderRadius: 3,
+                                background: depColor + "18", color: depColor,
+                                border: `1px solid ${depColor}33`,
+                              }}>
+                                {dep.itemId} · {dep.status.replace("_", " ")}
+                              </span>
+                            );
+                          })}
+                          {item.dependencies.filter((d) => !itemByItemId.has(d)).map((d) => (
+                            <span key={d} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: C.muted + "18", color: C.muted }}>{d}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {itemsWithUnmetDeps.length > 10 && (
+                    <div style={{ fontSize: 9, color: C.textMuted, fontStyle: "italic", paddingLeft: 4 }}>
+                      +{itemsWithUnmetDeps.length - 10} more items with unmet dependencies
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ─── TEAM TAB (shown as panel inside overview) ─── */}
         {activeTab === "overview" && (
@@ -905,6 +982,30 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                       <div style={{ fontSize: 10, color: C.textMuted }}>Click &quot;AI →&quot; on any row or click a row to load guidance.</div>
                     )}
                   </div>
+                  {selectedItem.dependencies.length > 0 && (
+                    <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                      <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+                        Prerequisites ({selectedItem.dependencies.length})
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {selectedItem.dependencies.map((depId) => {
+                          const dep = itemByItemId.get(depId);
+                          const depColor = !dep ? C.muted : dep.status === "complete" ? C.success : dep.status === "blocked" ? C.danger : dep.status === "in_progress" ? C.accent : C.muted;
+                          const depLabel = !dep ? "N/A" : dep.status === "complete" ? "✓ complete" : dep.status.replace("_", " ");
+                          return (
+                            <div key={depId} style={{ display: "flex", alignItems: "flex-start", gap: 7 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: depColor, display: "inline-block", flexShrink: 0, marginTop: 3 }} />
+                              <div>
+                                <span style={{ fontSize: 9, fontWeight: 700, color: depColor }}>{depId}</span>
+                                <span style={{ fontSize: 9, color: depColor, marginLeft: 4 }}>({depLabel})</span>
+                                {dep && <div style={{ fontSize: 9, color: C.textMuted, lineHeight: 1.4 }}>{dep.description.slice(0, 80)}{dep.description.length > 80 ? "…" : ""}</div>}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {itemSuggestions.length > 0 && (
                     <div style={{ marginTop: 14, borderTop: `1px solid ${C.warning}44`, paddingTop: 12 }}>
                       <div style={{ fontSize: 9, color: C.warning, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
@@ -940,20 +1041,20 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
 
         {/* ─── RISKS TAB ─── */}
         {activeTab === "risks" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            {/* Left: Heat Map + active risk cards */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16, color: C.textMuted }}>
-                  Risk Heat Map — Section 6 Taxonomy
-                </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Heat Map */}
+            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16, color: C.textMuted }}>
+                Risk Heat Map
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 8 }}>
                 {Object.entries(RISK_LABELS).map(([key, label]) => {
                   const alert = riskAlerts.find(r => r.category === key);
                   const level = alert ? (alert.severity === "critical" ? 3 : alert.severity === "high" ? 2 : 1) : 0;
                   const levelColors = ["#1E293B", C.accent, C.warning, C.danger];
                   return (
-                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                      <div style={{ width: 180, fontSize: 11, color: C.text }}>{label}</div>
+                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 160, fontSize: 11, color: level > 0 ? C.text : C.textMuted, flexShrink: 0 }}>{label}</div>
                       <div style={{ display: "flex", gap: 3, flex: 1 }}>
                         {[1, 2, 3].map((l) => (
                           <div key={l} style={{
@@ -964,101 +1065,29 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                           }} />
                         ))}
                       </div>
-                      <div style={{ width: 70, textAlign: "right" }}>
-                        {alert ? <SeverityBadge severity={alert.severity} /> : <span style={{ fontSize: 10, color: C.muted }}>Clear</span>}
+                      <div style={{ width: 60, textAlign: "right" }}>
+                        {alert ? <SeverityBadge severity={alert.severity} /> : <span style={{ fontSize: 10, color: C.muted }}>—</span>}
                       </div>
                     </div>
                   );
                 })}
               </div>
-
-              {/* Active risk detail cards */}
-              {riskAlerts.length > 0 && (
-                <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
-                    Active Risk Register — {riskAlerts.length} detected
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {riskAlerts.map((r) => (
-                      <div key={r.id} style={{
-                        padding: 10, borderRadius: 6, background: C.deepBlue,
-                        border: `1px solid ${r.severity === "critical" ? C.danger + "44" : r.severity === "high" ? C.warning + "33" : C.border}`,
-                      }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                          <span style={{ fontSize: 11, fontWeight: 700 }}>{RISK_LABELS[r.category]}</span>
-                          <SeverityBadge severity={r.severity} />
-                        </div>
-                        <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.4, marginBottom: 4 }}>{r.description}</div>
-                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                          {r.affectedWorkstreams.map((ws) => (
-                            <span key={ws} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{ws.split(" ")[0]}</span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {riskAlerts.length === 0 && (
-                <div style={{ padding: 24, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
-                  <div style={{ fontSize: 20, marginBottom: 8 }}>✓</div>
-                  <div style={{ fontSize: 13, color: C.success }}>No material risks detected</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>No risk triggers fired for this deal profile.</div>
-                </div>
-              )}
             </div>
 
-            {/* Right: Detection Rules */}
-            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16, color: C.textMuted }}>
-                Risk Detection Rules — Section 6 Taxonomy
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
-                {[
-                  { rule: "IF cross_border AND jurisdictions_requiring_filing > 3 → Regulatory Delay (Critical)", fired: riskAlerts.some(r => r.category === "regulatory_delay") },
-                  { rule: "IF any jurisdiction ETR < 15% → Tax Structure Leakage (High)", fired: riskAlerts.some(r => r.category === "tax_structure_leakage") },
-                  { rule: "IF tsa_required = yes AND integration_model ≠ standalone → TSA Dependency (High)", fired: riskAlerts.some(r => r.category === "tsa_dependency") },
-                  { rule: "IF cross_border AND jurisdictions includes EU → Data Privacy Breach (High)", fired: riskAlerts.some(r => r.category === "data_privacy_breach") },
-                  { rule: "IF buyer_maturity = first AND deal_value > $250M → Cultural Integration (Medium)", fired: riskAlerts.some(r => r.category === "cultural_integration") },
-                  { rule: "IF target_gaap ≠ acquirer_gaap OR target_entities > 5 → Financial Reporting Gap (High)", fired: riskAlerts.some(r => r.category === "financial_reporting_gap") },
-                  { rule: "IF deal_structure = carve_out → Stranded Costs (Medium)", fired: riskAlerts.some(r => r.category === "stranded_costs") },
-                ].map(({ rule, fired }, i) => (
-                  <div key={i} style={{
-                    padding: "7px 10px", borderRadius: 4,
-                    background: fired ? C.danger + "11" : C.deepBlue,
-                    border: `1px solid ${fired ? C.danger + "33" : C.border}`,
-                    fontFamily: "'JetBrains Mono', monospace",
-                  }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                      <div style={{ fontSize: 10, color: fired ? C.danger : C.textMuted, lineHeight: 1.4, flex: 1 }}>{rule}</div>
-                      <span style={{ fontSize: 9, fontWeight: 700, color: fired ? C.danger : C.muted, whiteSpace: "nowrap" }}>
-                        {fired ? "▲ FIRED" : "— clear"}
-                      </span>
-                    </div>
-                  </div>
+            {/* Active risk cards with inline mitigations */}
+            {riskAlerts.length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 12 }}>
+                {riskAlerts.map((r) => (
+                  <RiskDetailCard key={r.id} risk={r} />
                 ))}
               </div>
-
-              {/* Mitigation panel for fired risks */}
-              {riskAlerts.length > 0 && (
-                <>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
-                    Suggested Mitigations
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    {riskAlerts.map((r) => (
-                      <div key={r.id}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: r.severity === "critical" ? C.danger : r.severity === "high" ? C.warning : C.accent, marginBottom: 3 }}>
-                          {RISK_LABELS[r.category]}
-                        </div>
-                        <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5 }}>{r.mitigation}</div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            ) : (
+              <div style={{ padding: 24, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                <div style={{ fontSize: 20, marginBottom: 8 }}>✓</div>
+                <div style={{ fontSize: 13, color: C.success }}>No material risks detected</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>No risk triggers fired for this deal profile.</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1374,6 +1403,30 @@ function BlockedItemCard({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function RiskDetailCard({ risk }: { risk: RiskAlert }) {
+  const borderColor = risk.severity === "critical" ? C.danger + "55" : risk.severity === "high" ? C.warning + "44" : C.border;
+  const headerColor = risk.severity === "critical" ? C.danger : risk.severity === "high" ? C.warning : C.accent;
+  return (
+    <div style={{ padding: 14, borderRadius: 8, background: C.cardBg, border: `1px solid ${borderColor}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: headerColor }}>{RISK_LABELS[risk.category]}</span>
+        <SeverityBadge severity={risk.severity} />
+      </div>
+      <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5, marginBottom: 10 }}>{risk.description}</div>
+      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, marginBottom: 8 }}>
+        <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Mitigation</div>
+        <div style={{ fontSize: 10, color: C.text, lineHeight: 1.6 }}>{risk.mitigation}</div>
+      </div>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 9, color: C.textMuted }}>Affects:</span>
+        {risk.affectedWorkstreams.map((ws) => (
+          <span key={ws} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: C.accent + "18", color: C.accent }}>{ws.split(" ")[0]}</span>
+        ))}
       </div>
     </div>
   );

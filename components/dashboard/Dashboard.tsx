@@ -103,10 +103,11 @@ interface Props {
   onDismissSuggestion: (suggestionId: string) => void;
   onUpdateRisk: (riskId: string, field: "severity" | "status", newValue: string, reason: string) => void;
   onAddNote: (itemId: string, note: string) => void;
+  onUpdateWorkstreamLead: (workstream: string, memberId: string | undefined) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onUpdateRisk, onAddNote, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onUpdateRisk, onAddNote, onUpdateWorkstreamLead, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "actions" | "checklist" | "risks" | "timeline" | "report">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -154,6 +155,23 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const selectedItemLive = selectedItem ? (checklistItems.find((i) => i.id === selectedItem.id) ?? selectedItem) : null;
   const pendingDealSuggestions = pendingSuggestions.filter((s) => s.source === "deal_intake");
   const pendingItemSuggestions = pendingSuggestions.filter((s) => s.source === "item_update");
+
+  const todayStr = now.toISOString().split("T")[0];
+  const overdueItems = checklistItems.filter(
+    (i) => i.milestoneDate && i.milestoneDate < todayStr && i.status !== "complete" && i.status !== "na"
+  );
+  const day1Items = checklistItems.filter(
+    (i) => (i.phase === "pre_close" || i.phase === "day_1") && i.status !== "na"
+  );
+  const day1Complete = day1Items.filter((i) => i.status === "complete").length;
+  const day1Blocked = day1Items.filter((i) => i.status === "blocked").length;
+  const day1Pct = day1Items.length ? Math.round((day1Complete / day1Items.length) * 100) : 0;
+  const day1Rag: RagStatus = day1Blocked > 0 || day1Pct < 50 ? "red" : day1Pct < 80 ? "amber" : "green";
+  const criticalBlocked = checklistItems.filter((i) => i.status === "blocked" && i.priority === "critical");
+  const criticalDay1NotStarted = checklistItems.filter(
+    (i) => (i.phase === "pre_close" || i.phase === "day_1") && i.priority === "critical" && i.status === "not_started"
+  );
+  const redWorkstreams = Array.from(wsRag.entries()).filter(([, r]) => r === "red").map(([ws]) => ws);
 
   async function fetchGuidance(item: ChecklistItem) {
     setSelectedItem(item);
@@ -435,12 +453,38 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
               </div>
             )}
 
+            {/* Needs Your Attention */}
+            {(() => {
+              const bullets = [
+                criticalBlocked.length > 0 && { color: C.danger, text: `${criticalBlocked.length} critical item${criticalBlocked.length !== 1 ? "s" : ""} blocked — needs immediate escalation` },
+                overdueItems.length > 0 && { color: C.danger, text: `${overdueItems.length} item${overdueItems.length !== 1 ? "s" : ""} past milestone date` },
+                criticalDay1NotStarted.length > 0 && { color: C.warning, text: `${criticalDay1NotStarted.length} critical Pre-Close / Day 1 item${criticalDay1NotStarted.length !== 1 ? "s" : ""} not yet started` },
+                redWorkstreams.length > 0 && { color: C.warning, text: `${redWorkstreams.length} workstream${redWorkstreams.length !== 1 ? "s" : ""} at RED: ${redWorkstreams.map((ws) => ws.split(" ")[0]).join(", ")}` },
+                pendingDealSuggestions.length > 0 && { color: C.accentLight, text: `${pendingDealSuggestions.length} AI consideration${pendingDealSuggestions.length !== 1 ? "s" : ""} pending review` },
+              ].filter(Boolean) as { color: string; text: string }[];
+              if (bullets.length === 0) return null;
+              return (
+                <div style={{ padding: "12px 16px", borderRadius: 8, background: C.cardBg, border: `2px solid ${C.danger}55`, marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: C.danger, marginBottom: 10 }}>⚑ Needs Your Attention</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {bullets.map((b, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 11, color: C.text }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: b.color, flexShrink: 0, marginTop: 4 }} />
+                        <span style={{ lineHeight: 1.5 }}>{b.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
+                { label: "Day 1 Readiness", value: `${day1Pct}%`, sub: `${day1Complete} of ${day1Items.length} Pre-Close + Day 1`, color: RAG_COLOR[day1Rag] },
                 { label: "Overall Progress", value: `${kpis.pctComplete}%`, sub: `${kpis.complete} of ${kpis.total} items`, color: C.accent },
                 { label: "In Progress", value: kpis.inProgress, sub: "items actively being worked", color: C.accentLight },
-                { label: "Blocked Items", value: kpis.blocked, sub: "require escalation", color: kpis.blocked > 3 ? C.danger : C.warning },
+                { label: "Blocked Items", value: kpis.blocked, sub: overdueItems.length > 0 ? `${overdueItems.length} overdue · ${kpis.blocked} blocked` : "require escalation", color: kpis.blocked > 3 || overdueItems.length > 0 ? C.danger : C.warning },
                 { label: "Active Risks", value: riskAlerts.filter(r => r.status === "open").length, sub: `${riskAlerts.filter(r => r.severity === "critical").length} critical`, color: C.danger },
               ].map((kpi, i) => (
                 <div key={i} style={{
@@ -484,6 +528,10 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                               display: "inline-block",
                             }} />
                             <span style={{ fontSize: 11, fontWeight: 600 }}>{ws}</span>
+                            {(deal.workstreamLeads ?? {})[ws] && (() => {
+                              const lead = deal.teamMembers.find((m) => m.id === (deal.workstreamLeads ?? {})[ws]);
+                              return lead ? <span style={{ fontSize: 9, color: lead.role ? ROLE_COLORS[lead.role] : C.textMuted }}>· {lead.name.split(" ")[0]}</span> : null;
+                            })()}
                           </div>
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             {stats.blocked > 0 && (
@@ -496,11 +544,32 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                           <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.5s" }} />
                         </div>
                         {isSelected && (
-                          <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 10, color: C.textMuted }}>
-                            <span style={{ color: C.success }}>✓ {stats.complete} done</span>
-                            <span style={{ color: C.accent }}>→ {stats.inProgress} active</span>
-                            <span style={{ color: C.danger }}>✕ {stats.blocked} blocked</span>
-                            <span>○ {stats.notStarted} pending</span>
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ display: "flex", gap: 12, fontSize: 10, color: C.textMuted, marginBottom: 8 }}>
+                              <span style={{ color: C.success }}>✓ {stats.complete} done</span>
+                              <span style={{ color: C.accent }}>→ {stats.inProgress} active</span>
+                              <span style={{ color: C.danger }}>✕ {stats.blocked} blocked</span>
+                              <span>○ {stats.notStarted} pending</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                              <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Lead</span>
+                              <select
+                                value={(deal.workstreamLeads ?? {})[ws] ?? ""}
+                                onChange={(e) => { e.stopPropagation(); onUpdateWorkstreamLead(ws, e.target.value || undefined); }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                  background: "transparent", border: `1px solid ${C.border}`,
+                                  color: (deal.workstreamLeads ?? {})[ws] ? C.text : C.muted,
+                                  fontSize: 9, borderRadius: 3, padding: "2px 6px",
+                                  fontFamily: "inherit", cursor: "pointer",
+                                }}
+                              >
+                                <option value="">— assign lead</option>
+                                {deal.teamMembers.map((m) => (
+                                  <option key={m.id} value={m.id}>{m.name}{m.role ? ` (${m.role})` : ""}</option>
+                                ))}
+                              </select>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -765,7 +834,12 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
             {deal.teamMembers.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                 {deal.teamMembers.map((m) => {
-                  const owned = deal.checklistItems.filter(i => i.ownerId === m.id && i.status !== "na").length;
+                  const ownedItems = deal.checklistItems.filter((i) => i.ownerId === m.id && i.status !== "na");
+                  const owned = ownedItems.length;
+                  const ownedDone = ownedItems.filter((i) => i.status === "complete").length;
+                  const ownedBlocked = ownedItems.filter((i) => i.status === "blocked").length;
+                  const ownedPct = owned ? Math.round((ownedDone / owned) * 100) : null;
+                  const pctColor = ownedPct === null ? C.muted : ownedPct >= 80 ? C.success : ownedPct >= 50 ? C.accent : C.warning;
                   const roleColor = m.role ? ROLE_COLORS[m.role] : C.accent;
                   return (
                     <div key={m.id} style={{
@@ -793,7 +867,16 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                             }}>{m.role}</span>
                           )}
                         </div>
-                        <div style={{ fontSize: 9, color: C.textMuted }}>{m.email || "No email"} · {owned} item{owned !== 1 ? "s" : ""} owned</div>
+                        <div style={{ fontSize: 9, color: C.textMuted, display: "flex", gap: 5, alignItems: "center" }}>
+                          {m.email && <span>{m.email} ·</span>}
+                          <span>{owned} item{owned !== 1 ? "s" : ""}</span>
+                          {ownedPct !== null && (
+                            <span style={{ color: pctColor, fontWeight: 700 }}>· {ownedPct}% done</span>
+                          )}
+                          {ownedBlocked > 0 && (
+                            <span style={{ color: C.danger, fontWeight: 700 }}>· {ownedBlocked} blocked</span>
+                          )}
+                        </div>
                       </div>
                       <button
                         onClick={() => onRemoveMember(m.id)}
@@ -1807,6 +1890,13 @@ function ActionItemRow({
           <span style={{ fontSize: 9, padding: "0px 5px", borderRadius: 3, background: item.phase === "day_1" ? C.warning + "22" : C.deepBlue, color: item.phase === "day_1" ? C.warning : C.textMuted }}>
             {PHASE_LABELS[item.phase]}
           </span>
+          {(() => {
+            const today = new Date().toISOString().split("T")[0];
+            const isOverdue = item.milestoneDate && item.milestoneDate < today && item.status !== "complete" && item.status !== "na";
+            return isOverdue ? (
+              <span style={{ fontSize: 9, padding: "0px 5px", borderRadius: 3, background: C.danger + "22", color: C.danger, fontWeight: 700 }}>OVERDUE</span>
+            ) : null;
+          })()}
           {item.status === "blocked" && item.blockedReason && (
             <span style={{ fontSize: 9, color: C.danger, fontStyle: "italic" }}>⚠ {item.blockedReason}</span>
           )}

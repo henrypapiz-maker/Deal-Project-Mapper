@@ -158,6 +158,7 @@ export interface GeneratedDeal {
   milestones: Milestone[];
   teamMembers: TeamMember[];
   aiSuggestions: AISuggestion[];
+  workstreamLeads?: Record<string, string>; // workstream name → member id
   generatedAt: string;
 }
 

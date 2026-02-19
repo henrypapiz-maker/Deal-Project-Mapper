@@ -380,6 +380,18 @@ export default function Home() {
     });
   }, []);
 
+  const handleUpdateWorkstreamLead = useCallback((workstream: string, memberId: string | undefined) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const leads = { ...(prev.workstreamLeads ?? {}) };
+      if (memberId) leads[workstream] = memberId;
+      else delete leads[workstream];
+      const updated = { ...prev, workstreamLeads: leads };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
   function handleReset() {
     clearSavedDeal();
     setSavedMeta(null);
@@ -439,6 +451,7 @@ export default function Home() {
         onDismissSuggestion={handleDismissSuggestion}
         onUpdateRisk={handleUpdateRisk}
         onAddNote={handleAddNote}
+        onUpdateWorkstreamLead={handleUpdateWorkstreamLead}
         onReset={handleReset}
       />
     );

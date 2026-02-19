@@ -1,16 +1,68 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
 import type { DealIntake, GeneratedDeal, ItemStatus } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
+
+const STORAGE_KEY = "mae_current_deal";
+
+function loadSavedDeal(): GeneratedDeal | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as GeneratedDeal) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveDeal(deal: GeneratedDeal) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(deal));
+  } catch {
+    // storage quota exceeded — silently ignore
+  }
+}
+
+function clearSavedDeal() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 type AppState = "landing" | "intake" | "generating" | "dashboard";
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>("landing");
   const [deal, setDeal] = useState<GeneratedDeal | null>(null);
+  const [savedMeta, setSavedMeta] = useState<{ name: string; savedAt: string } | null>(null);
+
+  // On mount: check for a saved deal and surface resume option
+  useEffect(() => {
+    const saved = loadSavedDeal();
+    if (saved) {
+      setSavedMeta({
+        name: saved.intake.dealName,
+        savedAt: new Date(saved.generatedAt).toLocaleDateString(),
+      });
+    }
+  }, []);
+
+  // Auto-save whenever deal changes
+  useEffect(() => {
+    if (deal) saveDeal(deal);
+  }, [deal]);
+
+  function handleResume() {
+    const saved = loadSavedDeal();
+    if (saved) {
+      setDeal(saved);
+      setAppState("dashboard");
+    }
+  }
 
   function handleIntakeSubmit(intake: DealIntake) {
     setAppState("generating");
@@ -18,6 +70,7 @@ export default function Home() {
     setTimeout(() => {
       const generated = generateDeal(intake);
       setDeal(generated);
+      setSavedMeta({ name: generated.intake.dealName, savedAt: new Date(generated.generatedAt).toLocaleDateString() });
       setAppState("dashboard");
     }, 1200);
   }
@@ -25,16 +78,20 @@ export default function Home() {
   const handleUpdateStatus = useCallback((itemId: string, status: ItemStatus) => {
     setDeal((prev) => {
       if (!prev) return prev;
-      return {
+      const updated = {
         ...prev,
         checklistItems: prev.checklistItems.map((item) =>
           item.id === itemId ? { ...item, status } : item
         ),
       };
+      saveDeal(updated);
+      return updated;
     });
   }, []);
 
   function handleReset() {
+    clearSavedDeal();
+    setSavedMeta(null);
     setDeal(null);
     setAppState("landing");
   }
@@ -139,17 +196,45 @@ export default function Home() {
           ))}
         </div>
 
+        {/* Resume saved deal */}
+        {savedMeta && (
+          <div style={{
+            marginBottom: 16, padding: "12px 20px", borderRadius: 8,
+            background: "#1E293B", border: "1px solid #3B82F633",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+          }}>
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontSize: 9, color: "#3B82F6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Saved deal</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#F1F5F9" }}>{savedMeta.name}</div>
+              <div style={{ fontSize: 10, color: "#64748B" }}>Last opened {savedMeta.savedAt}</div>
+            </div>
+            <button
+              onClick={handleResume}
+              style={{
+                padding: "8px 20px", borderRadius: 6, border: "none",
+                background: "linear-gradient(135deg, #3B82F6, #60A5FA)",
+                color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                fontFamily: "inherit", whiteSpace: "nowrap",
+              }}
+            >
+              Resume →
+            </button>
+          </div>
+        )}
+
         <button
           onClick={() => setAppState("intake")}
           style={{
-            padding: "14px 36px", borderRadius: 8, border: "none",
-            background: "linear-gradient(135deg, #3B82F6, #60A5FA)",
-            color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            padding: "14px 36px", borderRadius: 8,
+            background: savedMeta ? "#1E293B" : "linear-gradient(135deg, #3B82F6, #60A5FA)",
+            color: savedMeta ? "#94A3B8" : "#fff",
+            border: savedMeta ? "1px solid #334155" : "1px solid transparent",
+            fontSize: 13, fontWeight: 700, cursor: "pointer",
             fontFamily: "inherit", letterSpacing: 0.5,
-            boxShadow: "0 4px 24px #3B82F644",
+            boxShadow: savedMeta ? "none" : "0 4px 24px #3B82F644",
           }}
         >
-          Start New Deal →
+          {savedMeta ? "Start New Deal" : "Start New Deal →"}
         </button>
 
         <div style={{ marginTop: 48, padding: "16px 24px", borderRadius: 8, background: "#1E293B", border: "1px solid #334155", textAlign: "left" }}>

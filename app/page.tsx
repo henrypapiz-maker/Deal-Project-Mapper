@@ -392,12 +392,24 @@ export default function Home() {
     });
   }, []);
 
-  function handleReset() {
-    clearSavedDeal();
-    setSavedMeta(null);
-    setDeal(null);
+  function handleGoHome() {
     setAppState("landing");
   }
+
+  const handleAcknowledgeWorkstream = useCallback((workstream: string, memberId?: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        workstreamAcknowledgments: {
+          ...(prev.workstreamAcknowledgments ?? {}),
+          [workstream]: { acknowledgedAt: new Date().toISOString(), acknowledgedByMemberId: memberId },
+        },
+      };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
 
   if (appState === "generating") {
     return (
@@ -452,7 +464,8 @@ export default function Home() {
         onUpdateRisk={handleUpdateRisk}
         onAddNote={handleAddNote}
         onUpdateWorkstreamLead={handleUpdateWorkstreamLead}
-        onReset={handleReset}
+        onGoHome={handleGoHome}
+        onAcknowledgeWorkstream={handleAcknowledgeWorkstream}
       />
     );
   }
@@ -463,7 +476,19 @@ export default function Home() {
         minHeight: "100vh",
         background: "linear-gradient(135deg, #0F1B2D 0%, #0F172A 100%)",
         color: "#F1F5F9",
+        fontFamily: "'JetBrains Mono', monospace",
       }}>
+        <div style={{ padding: "12px 24px", borderBottom: "1px solid #334155" }}>
+          <button
+            onClick={() => setAppState("landing")}
+            style={{
+              background: "transparent", border: "none", color: "#94A3B8",
+              fontSize: 12, cursor: "pointer", fontFamily: "inherit", padding: 0,
+            }}
+          >
+            ← Back
+          </button>
+        </div>
         <IntakeForm onSubmit={handleIntakeSubmit} />
       </div>
     );

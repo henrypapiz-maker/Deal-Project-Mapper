@@ -159,6 +159,7 @@ export interface GeneratedDeal {
   teamMembers: TeamMember[];
   aiSuggestions: AISuggestion[];
   workstreamLeads?: Record<string, string>; // workstream name → member id
+  workstreamAcknowledgments?: Record<string, { acknowledgedAt: string; acknowledgedByMemberId?: string }>;
   generatedAt: string;
 }
 

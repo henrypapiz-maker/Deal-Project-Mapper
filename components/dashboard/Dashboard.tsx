@@ -104,10 +104,11 @@ interface Props {
   onUpdateRisk: (riskId: string, field: "severity" | "status", newValue: string, reason: string) => void;
   onAddNote: (itemId: string, note: string) => void;
   onUpdateWorkstreamLead: (workstream: string, memberId: string | undefined) => void;
-  onReset: () => void;
+  onGoHome: () => void;
+  onAcknowledgeWorkstream: (workstream: string, memberId?: string) => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onUpdateRisk, onAddNote, onUpdateWorkstreamLead, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onUpdateRisk, onAddNote, onUpdateWorkstreamLead, onGoHome, onAcknowledgeWorkstream }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "actions" | "checklist" | "risks" | "timeline" | "report">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -343,11 +344,11 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
             )}
           </div>
 
-          <button onClick={onReset} style={{
+          <button onClick={onGoHome} style={{
             marginLeft: 4, padding: "5px 12px", borderRadius: 4,
             border: `1px solid ${C.border}`, background: "transparent",
             color: C.textMuted, fontSize: 11, cursor: "pointer",
-          }}>← New Deal</button>
+          }}>← Home</button>
         </div>
       </div>
 
@@ -570,6 +571,31 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                                 ))}
                               </select>
                             </div>
+                            {/* Scope Acknowledgment */}
+                            {(() => {
+                              const ack = (deal.workstreamAcknowledgments ?? {})[ws];
+                              if (ack) {
+                                const ackBy = ack.acknowledgedByMemberId ? deal.teamMembers.find((m) => m.id === ack.acknowledgedByMemberId) : undefined;
+                                return (
+                                  <div style={{ marginTop: 4, fontSize: 10, color: C.success }}>
+                                    ✓ Scope acknowledged {new Date(ack.acknowledgedAt).toLocaleDateString()}
+                                    {ackBy ? ` by ${ackBy.name}` : ""}
+                                  </div>
+                                );
+                              }
+                              return (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onAcknowledgeWorkstream(ws, (deal.workstreamLeads ?? {})[ws]); }}
+                                  style={{
+                                    marginTop: 4, padding: "3px 10px", borderRadius: 3,
+                                    border: `1px solid ${C.accent}44`, background: "transparent",
+                                    color: C.accent, fontSize: 10, cursor: "pointer", fontFamily: "inherit",
+                                  }}
+                                >
+                                  Acknowledge scope →
+                                </button>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -1031,6 +1057,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                         onUpdateStatus={onUpdateStatus}
                         onUpdateOwner={onUpdateOwner}
                         onClickGuidance={() => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); fetchGuidance(item); }}
+                        onAddNote={onAddNote}
                       />
                     ))}
                   </div>
@@ -1056,6 +1083,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                           onUpdateStatus={onUpdateStatus}
                           onUpdateOwner={onUpdateOwner}
                           onClickGuidance={() => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); fetchGuidance(item); }}
+                        onAddNote={onAddNote}
                         />
                       ))}
                     </div>
@@ -1095,6 +1123,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                         onUpdateStatus={onUpdateStatus}
                         onUpdateOwner={onUpdateOwner}
                         onClickGuidance={() => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); fetchGuidance(item); }}
+                        onAddNote={onAddNote}
                       />
                     ))}
                   </div>
@@ -1842,13 +1871,17 @@ function ActionItemRow({
   onUpdateStatus,
   onUpdateOwner,
   onClickGuidance,
+  onAddNote,
 }: {
   item: ChecklistItem;
   members: { id: string; name: string }[];
   onUpdateStatus: (id: string, status: ItemStatus) => void;
   onUpdateOwner: (id: string, ownerId: string | undefined) => void;
   onClickGuidance: () => void;
+  onAddNote: (id: string, note: string) => void;
 }) {
+  const [showNotePrompt, setShowNotePrompt] = useState(false);
+  const [noteInput, setNoteInput] = useState("");
   const priorityColor =
     item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.textMuted;
   const statusColor =
@@ -1857,6 +1890,7 @@ function ActionItemRow({
     item.status === "blocked" ? C.danger : C.muted;
 
   return (
+    <>
     <div style={{
       display: "grid",
       gridTemplateColumns: "8px 70px 1fr auto auto auto",
@@ -1919,7 +1953,7 @@ function ActionItemRow({
       {/* status */}
       <select
         value={item.status}
-        onChange={(e) => onUpdateStatus(item.id, e.target.value as ItemStatus)}
+        onChange={(e) => { onUpdateStatus(item.id, e.target.value as ItemStatus); setShowNotePrompt(true); setNoteInput(""); }}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: "transparent", border: "none",
@@ -1938,6 +1972,38 @@ function ActionItemRow({
         style={{ background: "transparent", border: "none", color: C.accent, fontSize: 10, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
       >AI →</button>
     </div>
+    {showNotePrompt && (
+      <div style={{ display: "flex", gap: 6, marginTop: 4, paddingLeft: 18 }}>
+        <input
+          autoFocus
+          value={noteInput}
+          onChange={(e) => setNoteInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              if (noteInput.trim()) onAddNote(item.id, noteInput.trim());
+              setShowNotePrompt(false);
+              setNoteInput("");
+            }
+            if (e.key === "Escape") { setShowNotePrompt(false); setNoteInput(""); }
+          }}
+          placeholder="Note for this status change… (Enter to save, Esc to skip)"
+          style={{
+            flex: 1, padding: "4px 8px", borderRadius: 4,
+            border: `1px solid ${C.accent}44`, background: C.deepBlue,
+            color: C.text, fontSize: 11, fontFamily: "inherit", outline: "none",
+          }}
+        />
+        <button
+          onClick={() => { if (noteInput.trim()) onAddNote(item.id, noteInput.trim()); setShowNotePrompt(false); setNoteInput(""); }}
+          style={{ padding: "4px 10px", borderRadius: 3, border: "none", background: C.accent, color: "#fff", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+        >Save</button>
+        <button
+          onClick={() => { setShowNotePrompt(false); setNoteInput(""); }}
+          style={{ padding: "4px 8px", borderRadius: 3, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+        >Skip</button>
+      </div>
+    )}
+    </>
   );
 }
 

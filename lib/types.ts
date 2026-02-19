@@ -126,6 +126,7 @@ export interface TeamMember {
 // Generated Deal (result of decision tree)
 // ============================================================
 export interface GeneratedDeal {
+  dealId?: string; // Neon row ID — set after first DB save
   intake: DealIntake;
   checklistItems: ChecklistItem[];
   riskAlerts: RiskAlert[];

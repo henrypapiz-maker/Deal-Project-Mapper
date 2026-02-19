@@ -23,6 +23,14 @@ function saveDeal(deal: GeneratedDeal) {
   } catch {
     // storage quota exceeded — silently ignore
   }
+  // Background sync to Neon (fire-and-forget)
+  if (deal.dealId) {
+    fetch(`/api/deals/${deal.dealId}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: deal }),
+    }).catch(() => {/* ignore — localStorage is primary */});
+  }
 }
 
 function clearSavedDeal() {
@@ -30,6 +38,33 @@ function clearSavedDeal() {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // ignore
+  }
+}
+
+// Create a new deal row in Neon, return its id (null if DB not configured)
+async function dbCreate(deal: GeneratedDeal): Promise<string | null> {
+  try {
+    const res = await fetch("/api/deals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: deal.intake.dealName, data: deal }),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return (json as { id?: string }).id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Load a deal from Neon by id (null if not found or DB unavailable)
+async function dbLoad(dealId: string): Promise<GeneratedDeal | null> {
+  try {
+    const res = await fetch(`/api/deals/${dealId}`);
+    if (!res.ok) return null;
+    return res.json() as Promise<GeneratedDeal>;
+  } catch {
+    return null;
   }
 }
 
@@ -56,21 +91,34 @@ export default function Home() {
     if (deal) saveDeal(deal);
   }, [deal]);
 
-  function handleResume() {
+  async function handleResume() {
     const saved = loadSavedDeal();
-    if (saved) {
-      setDeal(saved);
-      setAppState("dashboard");
+    if (!saved) return;
+    // If we have a dealId, try to fetch the freshest version from Neon
+    if (saved.dealId) {
+      const fresh = await dbLoad(saved.dealId);
+      if (fresh) {
+        saveDeal(fresh); // keep localStorage in sync
+        setDeal(fresh);
+        setAppState("dashboard");
+        return;
+      }
     }
+    // Fall back to localStorage copy
+    setDeal(saved);
+    setAppState("dashboard");
   }
 
   function handleIntakeSubmit(intake: DealIntake) {
     setAppState("generating");
-    // Small async delay for UX — then run the decision tree synchronously
-    setTimeout(() => {
+    // 1.2s UX delay, then run decision tree + persist to Neon
+    setTimeout(async () => {
       const generated = generateDeal(intake);
-      setDeal(generated);
-      setSavedMeta({ name: generated.intake.dealName, savedAt: new Date(generated.generatedAt).toLocaleDateString() });
+      // Persist to Neon; if unavailable just continue without dealId
+      const dealId = await dbCreate(generated);
+      const dealWithId: GeneratedDeal = dealId ? { ...generated, dealId } : generated;
+      setDeal(dealWithId);
+      setSavedMeta({ name: dealWithId.intake.dealName, savedAt: new Date(dealWithId.generatedAt).toLocaleDateString() });
       setAppState("dashboard");
     }, 1200);
   }

@@ -170,11 +170,11 @@ function adjustPriority(
 // Core Decision Tree: DealIntake → GeneratedDeal
 // ============================================================
 export function generateDeal(intake: DealIntake): GeneratedDeal {
-  const naItemIds = new Set(filterByDealContext(intake));
+  const includedItems = new Set(filterByDealContext(MASTER_CHECKLIST, intake).map(i => i.itemId));
 
   // 1. Instantiate checklist items from master
   const checklistItems: ChecklistItem[] = MASTER_CHECKLIST.map((master) => {
-    const isNa = naItemIds.has(master.itemId);
+    const isNa = !includedItems.has(master.itemId);
     const adjustedPriority = adjustPriority(master.priority, master.itemId, intake);
 
     return {

@@ -258,6 +258,7 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
     riskAlerts,
     workstreamSummary,
     milestones,
+    teamMembers: [],
     generatedAt: new Date().toISOString(),
   };
 }

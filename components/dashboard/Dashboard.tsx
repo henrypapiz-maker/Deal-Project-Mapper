@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus } from "@/lib/types";
+import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, TeamMember } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 import { exportChecklist, exportRisks, exportSummary } from "@/lib/export";
 
@@ -57,10 +57,13 @@ const PHASE_LABELS: Record<string, string> = {
 interface Props {
   deal: GeneratedDeal;
   onUpdateStatus: (itemId: string, status: ItemStatus) => void;
+  onUpdateOwner: (itemId: string, ownerId: string | undefined) => void;
+  onAddMember: (member: TeamMember) => void;
+  onRemoveMember: (memberId: string) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -70,6 +73,8 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
   const [filterWs, setFilterWs] = useState<string>("all");
   const [exportOpen, setExportOpen] = useState(false);
   const exportRef = useRef<HTMLDivElement>(null);
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -366,6 +371,103 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
           </>
         )}
 
+        {/* ─── TEAM TAB (shown as panel inside overview) ─── */}
+        {activeTab === "overview" && (
+          <div style={{ marginTop: 16, padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16, color: C.textMuted }}>
+              Deal Team — {deal.teamMembers.length} member{deal.teamMembers.length !== 1 ? "s" : ""}
+            </div>
+
+            {/* Member list */}
+            {deal.teamMembers.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                {deal.teamMembers.map((m) => {
+                  const owned = deal.checklistItems.filter(i => i.ownerId === m.id && i.status !== "na").length;
+                  return (
+                    <div key={m.id} style={{
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "6px 10px", borderRadius: 6,
+                      background: C.deepBlue, border: `1px solid ${C.border}`,
+                    }}>
+                      <div style={{
+                        width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                        background: `linear-gradient(135deg, ${C.accent}, ${C.accentLight})`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 10, fontWeight: 700, color: "#fff",
+                      }}>
+                        {m.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{m.name}</div>
+                        <div style={{ fontSize: 9, color: C.textMuted }}>{m.email || "No email"} · {owned} item{owned !== 1 ? "s" : ""} owned</div>
+                      </div>
+                      <button
+                        onClick={() => onRemoveMember(m.id)}
+                        style={{ marginLeft: 4, background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, lineHeight: 1 }}
+                        title="Remove member"
+                      >✕</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Add member form */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                placeholder="Name"
+                value={newMemberName}
+                onChange={(e) => setNewMemberName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newMemberName.trim()) {
+                    onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim() });
+                    setNewMemberName("");
+                    setNewMemberEmail("");
+                  }
+                }}
+                style={{
+                  padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`,
+                  background: C.deepBlue, color: C.text, fontSize: 11,
+                  fontFamily: "inherit", width: 160, outline: "none",
+                }}
+              />
+              <input
+                placeholder="Email (optional)"
+                value={newMemberEmail}
+                onChange={(e) => setNewMemberEmail(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newMemberName.trim()) {
+                    onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim() });
+                    setNewMemberName("");
+                    setNewMemberEmail("");
+                  }
+                }}
+                style={{
+                  padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`,
+                  background: C.deepBlue, color: C.text, fontSize: 11,
+                  fontFamily: "inherit", width: 200, outline: "none",
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (!newMemberName.trim()) return;
+                  onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim() });
+                  setNewMemberName("");
+                  setNewMemberEmail("");
+                }}
+                style={{
+                  padding: "6px 14px", borderRadius: 4, border: "none",
+                  background: C.accent, color: "#fff", fontSize: 11,
+                  fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                + Add
+              </button>
+              <span style={{ fontSize: 10, color: C.muted }}>All members have admin access</span>
+            </div>
+          </div>
+        )}
+
         {/* ─── CHECKLIST TAB ─── */}
         {activeTab === "checklist" && (
           <div>
@@ -408,7 +510,7 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
                   <thead>
                     <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                      {["ID", "Workstream", "Task", "Phase", "Priority", "Status", ""].map((h) => (
+                      {["ID", "Workstream", "Task", "Phase", "Priority", "Status", "Owner", ""].map((h) => (
                         <th key={h} style={{ padding: "6px", textAlign: "left", color: C.textMuted, fontSize: 9, textTransform: "uppercase", letterSpacing: 1 }}>{h}</th>
                       ))}
                     </tr>
@@ -458,6 +560,23 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
                               <option value="in_progress">In Progress</option>
                               <option value="blocked">Blocked</option>
                               <option value="complete">Complete</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: "6px" }} onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={item.ownerId ?? ""}
+                              onChange={(e) => onUpdateOwner(item.id, e.target.value || undefined)}
+                              style={{
+                                background: "transparent", border: "none",
+                                color: item.ownerId ? C.text : C.muted,
+                                fontSize: 9, cursor: "pointer",
+                                fontFamily: "inherit", maxWidth: 100,
+                              }}
+                            >
+                              <option value="">— Unassigned</option>
+                              {deal.teamMembers.map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
                             </select>
                           </td>
                           <td style={{ padding: "6px" }}>

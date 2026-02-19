@@ -114,6 +114,15 @@ export interface RiskAlert {
 }
 
 // ============================================================
+// Team Member (all admin — no role differentiation yet)
+// ============================================================
+export interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// ============================================================
 // Generated Deal (result of decision tree)
 // ============================================================
 export interface GeneratedDeal {
@@ -122,6 +131,7 @@ export interface GeneratedDeal {
   riskAlerts: RiskAlert[];
   workstreamSummary: WorkstreamSummary[];
   milestones: Milestone[];
+  teamMembers: TeamMember[];
   generatedAt: string;
 }
 

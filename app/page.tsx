@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, TeamMember } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
 
 const STORAGE_KEY = "mae_current_deal";
@@ -89,6 +89,44 @@ export default function Home() {
     });
   }, []);
 
+  const handleAddMember = useCallback((member: TeamMember) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, teamMembers: [...prev.teamMembers, member] };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
+  const handleRemoveMember = useCallback((memberId: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        teamMembers: prev.teamMembers.filter((m) => m.id !== memberId),
+        checklistItems: prev.checklistItems.map((item) =>
+          item.ownerId === memberId ? { ...item, ownerId: undefined } : item
+        ),
+      };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
+  const handleUpdateOwner = useCallback((itemId: string, ownerId: string | undefined) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        checklistItems: prev.checklistItems.map((item) =>
+          item.id === itemId ? { ...item, ownerId } : item
+        ),
+      };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
   function handleReset() {
     clearSavedDeal();
     setSavedMeta(null);
@@ -136,7 +174,16 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onReset={handleReset} />;
+    return (
+      <Dashboard
+        deal={deal}
+        onUpdateStatus={handleUpdateStatus}
+        onUpdateOwner={handleUpdateOwner}
+        onAddMember={handleAddMember}
+        onRemoveMember={handleRemoveMember}
+        onReset={handleReset}
+      />
+    );
   }
 
   if (appState === "intake") {

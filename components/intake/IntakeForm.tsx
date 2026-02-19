@@ -150,10 +150,10 @@ export default function IntakeForm({ onSubmit }: Props) {
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: COLORS.text }}>
               M&A Integration Engine
             </div>
-            <div style={{ fontSize: 11, color: COLORS.textMuted }}>Deal Intake — Phase 1 MVP</div>
+            <div style={{ fontSize: 12, color: COLORS.textMuted }}>Deal Intake — Phase 1 MVP</div>
           </div>
         </div>
-        <p style={{ fontSize: 12, color: COLORS.textMuted, lineHeight: 1.6, marginTop: 12 }}>
+        <p style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.6, marginTop: 12 }}>
           Fill in your deal details below. The engine will generate a fully configured integration
           checklist, risk assessment, and AI guidance within seconds.
         </p>
@@ -172,13 +172,13 @@ export default function IntakeForm({ onSubmit }: Props) {
               borderRadius: t === 1 ? "2px 0 0 2px" : t === 3 ? "0 2px 2px 0" : 0
             }} />
             <div style={{ padding: "8px 4px" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: t <= tier ? COLORS.accent : COLORS.textMuted }}>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: t <= tier ? COLORS.accent : COLORS.textMuted }}>
                 Tier {t}
               </div>
-              <div style={{ fontSize: 10, color: t === tier ? COLORS.text : COLORS.textMuted, fontWeight: t === tier ? 700 : 400 }}>
+              <div style={{ fontSize: 11, color: t === tier ? COLORS.text : COLORS.textMuted, fontWeight: t === tier ? 700 : 400 }}>
                 {tierLabels[t - 1]}
               </div>
-              <div style={{ fontSize: 9, color: COLORS.textMuted }}>{tierDescriptions[t - 1]}</div>
+              <div style={{ fontSize: 10, color: COLORS.textMuted }}>{tierDescriptions[t - 1]}</div>
             </div>
           </div>
         ))}
@@ -233,7 +233,7 @@ export default function IntakeForm({ onSubmit }: Props) {
               onChange={(e) => set("closeDate", e.target.value)}
               style={inputStyle(!!errors.closeDate)}
             />
-            <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 4 }}>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 4 }}>
               Used to calculate all milestone dates (Day 1, 30, 60, 90, Year 1)
             </div>
           </Field>
@@ -260,7 +260,7 @@ export default function IntakeForm({ onSubmit }: Props) {
                     borderColor: form.crossBorder === opt.value ? COLORS.accent : COLORS.border,
                     background: form.crossBorder === opt.value ? COLORS.accent + "18" : COLORS.cardBg,
                     color: form.crossBorder === opt.value ? COLORS.accent : COLORS.textMuted,
-                    fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    fontSize: 13, fontWeight: 600, cursor: "pointer",
                   }}
                 >
                   {opt.label}
@@ -281,7 +281,7 @@ export default function IntakeForm({ onSubmit }: Props) {
                       borderColor: form.jurisdictions.includes(j.code) ? COLORS.accent : COLORS.border,
                       background: form.jurisdictions.includes(j.code) ? COLORS.accent + "22" : COLORS.cardBg,
                       color: form.jurisdictions.includes(j.code) ? COLORS.accent : COLORS.textMuted,
-                      fontSize: 10, fontWeight: 600, cursor: "pointer", textAlign: "left",
+                      fontSize: 11, fontWeight: 600, cursor: "pointer", textAlign: "left",
                     }}
                   >
                     {j.label}
@@ -289,7 +289,7 @@ export default function IntakeForm({ onSubmit }: Props) {
                 ))}
               </div>
               {form.jurisdictions.length >= 3 && (
-                <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}33`, fontSize: 10, color: COLORS.danger }}>
+                <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.danger + "18", border: `1px solid ${COLORS.danger}33`, fontSize: 11, color: COLORS.danger }}>
                   ⚠ {form.jurisdictions.length} jurisdictions selected — Regulatory Delay risk elevated (Critical)
                 </div>
               )}
@@ -307,7 +307,7 @@ export default function IntakeForm({ onSubmit }: Props) {
                     borderColor: form.tsaRequired === v ? COLORS.accent : COLORS.border,
                     background: form.tsaRequired === v ? COLORS.accent + "18" : COLORS.cardBg,
                     color: form.tsaRequired === v ? COLORS.accent : COLORS.textMuted,
-                    fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "uppercase",
+                    fontSize: 12, fontWeight: 600, cursor: "pointer", textTransform: "uppercase",
                   }}
                 >
                   {v === "tbd" ? "TBD" : v.charAt(0).toUpperCase() + v.slice(1)}
@@ -315,12 +315,12 @@ export default function IntakeForm({ onSubmit }: Props) {
               ))}
             </div>
             {form.tsaRequired === "yes" && (
-              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.warning + "18", border: `1px solid ${COLORS.warning}33`, fontSize: 10, color: COLORS.warning }}>
+              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.warning + "18", border: `1px solid ${COLORS.warning}33`, fontSize: 11, color: COLORS.warning }}>
                 ⚠ TSA required — TSA Assessment workstream fully activated
               </div>
             )}
             {form.tsaRequired === "no" && (
-              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.success + "18", border: `1px solid ${COLORS.success}33`, fontSize: 10, color: COLORS.success }}>
+              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.success + "18", border: `1px solid ${COLORS.success}33`, fontSize: 11, color: COLORS.success }}>
                 ✓ No TSA — TSA checklist items will be marked N/A
               </div>
             )}
@@ -337,7 +337,7 @@ export default function IntakeForm({ onSubmit }: Props) {
                     borderColor: form.industrySector === s ? COLORS.accent : COLORS.border,
                     background: form.industrySector === s ? COLORS.accent + "22" : COLORS.cardBg,
                     color: form.industrySector === s ? COLORS.accent : COLORS.textMuted,
-                    fontSize: 10, cursor: "pointer",
+                    fontSize: 11, cursor: "pointer",
                   }}
                 >
                   {s}
@@ -375,7 +375,7 @@ export default function IntakeForm({ onSubmit }: Props) {
       {/* ===== TIER 3 ===== */}
       {tier === 3 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <div style={{ padding: "10px 14px", borderRadius: 6, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}33`, fontSize: 10, color: COLORS.accent }}>
+          <div style={{ padding: "10px 14px", borderRadius: 6, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}33`, fontSize: 11, color: COLORS.accent }}>
             Tier 3 inputs fine-tune AI guidance quality and GAAP/ERP-specific checklist items.
             Skip any field you don&apos;t know yet — you can update later.
           </div>
@@ -391,7 +391,7 @@ export default function IntakeForm({ onSubmit }: Props) {
                     borderColor: form.targetGaap === g ? COLORS.accent : COLORS.border,
                     background: form.targetGaap === g ? COLORS.accent + "22" : COLORS.cardBg,
                     color: form.targetGaap === g ? COLORS.accent : COLORS.textMuted,
-                    fontSize: 11, cursor: "pointer", fontWeight: 600,
+                    fontSize: 12, cursor: "pointer", fontWeight: 600,
                   }}
                 >
                   {g}
@@ -399,7 +399,7 @@ export default function IntakeForm({ onSubmit }: Props) {
               ))}
             </div>
             {form.targetGaap && form.targetGaap !== "US GAAP" && form.targetGaap !== "Unknown" && (
-              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.warning + "18", border: `1px solid ${COLORS.warning}33`, fontSize: 10, color: COLORS.warning }}>
+              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.warning + "18", border: `1px solid ${COLORS.warning}33`, fontSize: 11, color: COLORS.warning }}>
                 ⚠ {form.targetGaap} target — Financial Reporting Gap risk elevated. GAAP conversion workstream activated.
               </div>
             )}
@@ -416,7 +416,7 @@ export default function IntakeForm({ onSubmit }: Props) {
                     borderColor: form.targetErp === e ? COLORS.accent : COLORS.border,
                     background: form.targetErp === e ? COLORS.accent + "22" : COLORS.cardBg,
                     color: form.targetErp === e ? COLORS.accent : COLORS.textMuted,
-                    fontSize: 10, cursor: "pointer",
+                    fontSize: 11, cursor: "pointer",
                   }}
                 >
                   {e}
@@ -481,13 +481,13 @@ function Field({
   return (
     <div>
       <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#94A3B8" }}>
+        <label style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#94A3B8" }}>
           {label}{required && <span style={{ color: "#EF4444", marginLeft: 2 }}>*</span>}
         </label>
-        {hint && <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>{hint}</div>}
+        {hint && <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>{hint}</div>}
       </div>
       {children}
-      {error && <div style={{ fontSize: 10, color: "#EF4444", marginTop: 4 }}>{error}</div>}
+      {error && <div style={{ fontSize: 11, color: "#EF4444", marginTop: 4 }}>{error}</div>}
     </div>
   );
 }
@@ -507,10 +507,10 @@ function SelectCard({
         textAlign: "left", cursor: "pointer", transition: "all 0.15s",
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 700, color: selected ? COLORS.accent : COLORS.text }}>{label}</div>
-      <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>{desc}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: selected ? COLORS.accent : COLORS.text }}>{label}</div>
+      <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>{desc}</div>
       {warning && (
-        <div style={{ fontSize: 9, color: COLORS.warning, marginTop: 4, fontWeight: 600 }}>⚠ {warning}</div>
+        <div style={{ fontSize: 10, color: COLORS.warning, marginTop: 4, fontWeight: 600 }}>⚠ {warning}</div>
       )}
     </button>
   );
@@ -521,7 +521,7 @@ function inputStyle(hasError?: boolean): React.CSSProperties {
     width: "100%", padding: "10px 12px", borderRadius: 6,
     border: `1px solid ${hasError ? COLORS.danger : COLORS.border}`,
     background: COLORS.cardBg, color: COLORS.text,
-    fontSize: 12, fontFamily: "inherit",
+    fontSize: 13, fontFamily: "inherit",
     outline: "none",
   };
 }
@@ -530,14 +530,14 @@ const selectStyle: React.CSSProperties = {
   width: "100%", padding: "10px 12px", borderRadius: 6,
   border: `1px solid ${COLORS.border}`,
   background: COLORS.cardBg, color: COLORS.text,
-  fontSize: 12, fontFamily: "inherit", outline: "none",
+  fontSize: 13, fontFamily: "inherit", outline: "none",
   appearance: "none",
 };
 
 const primaryBtnStyle: React.CSSProperties = {
   padding: "12px 24px", borderRadius: 6, border: "none",
   background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.accentLight})`,
-  color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+  color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
   fontFamily: "inherit", letterSpacing: 0.5,
 };
 
@@ -545,5 +545,5 @@ const secondaryBtnStyle: React.CSSProperties = {
   padding: "12px 24px", borderRadius: 6,
   border: `1px solid ${COLORS.border}`,
   background: "transparent", color: COLORS.textMuted,
-  fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+  fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
 };

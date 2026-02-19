@@ -417,7 +417,7 @@ export default function Home() {
           <div style={{ fontSize: 16, fontWeight: 700, color: "#F1F5F9", marginBottom: 8 }}>
             Generating Integration Plan…
           </div>
-          <div style={{ fontSize: 11, color: "#94A3B8", maxWidth: 340 }}>
+          <div style={{ fontSize: 12, color: "#94A3B8", maxWidth: 340 }}>
             Running decision tree · Scanning for risks · Configuring 443-item checklist
           </div>
           <div style={{ marginTop: 24, display: "flex", gap: 6, justifyContent: "center" }}>
@@ -486,7 +486,7 @@ export default function Home() {
           boxShadow: "0 0 40px #3B82F644",
         }}>M</div>
 
-        <div style={{ fontSize: 11, color: "#3B82F6", textTransform: "uppercase", letterSpacing: 3, marginBottom: 12, fontWeight: 700 }}>
+        <div style={{ fontSize: 12, color: "#3B82F6", textTransform: "uppercase", letterSpacing: 3, marginBottom: 12, fontWeight: 700 }}>
           Phase 1 MVP · Variant A: Reactive Monitor
         </div>
         <h1 style={{ fontSize: 32, fontWeight: 800, color: "#F1F5F9", marginBottom: 16, lineHeight: 1.2 }}>
@@ -508,7 +508,7 @@ export default function Home() {
             "Decision Tree",
           ].map((f) => (
             <span key={f} style={{
-              padding: "4px 12px", borderRadius: 20, fontSize: 10, fontWeight: 600,
+              padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600,
               background: "#1E293B", color: "#60A5FA", border: "1px solid #334155",
             }}>{f}</span>
           ))}
@@ -522,16 +522,16 @@ export default function Home() {
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
           }}>
             <div style={{ textAlign: "left" }}>
-              <div style={{ fontSize: 9, color: "#3B82F6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Saved deal</div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#F1F5F9" }}>{savedMeta.name}</div>
-              <div style={{ fontSize: 10, color: "#64748B" }}>Last opened {savedMeta.savedAt}</div>
+              <div style={{ fontSize: 10, color: "#3B82F6", textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>Saved deal</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#F1F5F9" }}>{savedMeta.name}</div>
+              <div style={{ fontSize: 11, color: "#64748B" }}>Last opened {savedMeta.savedAt}</div>
             </div>
             <button
               onClick={handleResume}
               style={{
                 padding: "8px 20px", borderRadius: 6, border: "none",
                 background: "linear-gradient(135deg, #3B82F6, #60A5FA)",
-                color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
                 fontFamily: "inherit", whiteSpace: "nowrap",
               }}
             >
@@ -556,7 +556,7 @@ export default function Home() {
         </button>
 
         <div style={{ marginTop: 48, padding: "16px 24px", borderRadius: 8, background: "#1E293B", border: "1px solid #334155", textAlign: "left" }}>
-          <div style={{ fontSize: 9, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>What happens when you submit</div>
+          <div style={{ fontSize: 10, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>What happens when you submit</div>
           {[
             ["1", "Decision tree maps your 12 intake fields to relevant checklist items"],
             ["2", "Risk scanner runs 7 detection rules and surfaces critical flags"],
@@ -564,13 +564,13 @@ export default function Home() {
             ["4", "Claude API ready to generate contextual guidance per checklist item"],
           ].map(([num, text]) => (
             <div key={num} style={{ display: "flex", gap: 10, marginBottom: 8 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: "#3B82F6", minWidth: 16 }}>{num}</span>
-              <span style={{ fontSize: 10, color: "#64748B" }}>{text}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#3B82F6", minWidth: 16 }}>{num}</span>
+              <span style={{ fontSize: 11, color: "#64748B" }}>{text}</span>
             </div>
           ))}
         </div>
 
-        <div style={{ marginTop: 20, fontSize: 9, color: "#334155" }}>
+        <div style={{ marginTop: 20, fontSize: 10, color: "#334155" }}>
           M&A Integration Engine v0.1.0 · Phase 1 MVP · February 2026
         </div>
       </div>

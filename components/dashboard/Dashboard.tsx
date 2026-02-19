@@ -74,7 +74,7 @@ interface Props {
 }
 
 export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onReset }: Props) {
-  const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "actions" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [guidanceText, setGuidanceText] = useState<string>("");
@@ -86,6 +86,9 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [itemSuggestions, setItemSuggestions] = useState<AISuggestion[]>([]);
+  const [actionsNotStartedLimit, setActionsNotStartedLimit] = useState(25);
+  const [actionsDoneExpanded, setActionsDoneExpanded] = useState(false);
+  const [actionsFilterWs, setActionsFilterWs] = useState<string>("all");
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -187,7 +190,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
           </div>
         </div>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          {(["overview", "checklist", "risks", "timeline"] as const).map((tab) => (
+          {(["overview", "actions", "checklist", "risks", "timeline"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               padding: "6px 14px", borderRadius: 4, border: "none", cursor: "pointer",
               background: activeTab === tab ? C.accent : "transparent",
@@ -201,6 +204,13 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                   position: "absolute", top: 2, right: 2,
                   width: 7, height: 7, borderRadius: "50%",
                   background: C.warning, display: "block",
+                }} />
+              )}
+              {tab === "actions" && kpis.blocked > 0 && (
+                <span style={{
+                  position: "absolute", top: 2, right: 2,
+                  width: 7, height: 7, borderRadius: "50%",
+                  background: C.danger, display: "block",
                 }} />
               )}
             </button>
@@ -578,6 +588,160 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
             </div>
           </div>
         )}
+
+        {/* ─── ACTIONS TAB ─── */}
+        {activeTab === "actions" && (() => {
+          const PHASE_ORDER: Record<string, number> = {
+            pre_close: 0, day_1: 1, day_30: 2, day_60: 3, day_90: 4, year_1: 5,
+          };
+          const PRIORITY_ORDER: Record<string, number> = {
+            critical: 0, high: 1, medium: 2, low: 3,
+          };
+          const active = checklistItems.filter((i) => i.status !== "na");
+          const wsFilter = (i: ChecklistItem) => actionsFilterWs === "all" || i.workstream === actionsFilterWs;
+
+          const upcoming = active.filter((i) => (i.status === "in_progress" || i.status === "blocked") && wsFilter(i))
+            .sort((a, b) => {
+              if (a.status === "blocked" && b.status !== "blocked") return -1;
+              if (b.status === "blocked" && a.status !== "blocked") return 1;
+              return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+            });
+
+          const notStarted = active.filter((i) => i.status === "not_started" && wsFilter(i))
+            .sort((a, b) => {
+              const phaseDiff = PHASE_ORDER[a.phase] - PHASE_ORDER[b.phase];
+              if (phaseDiff !== 0) return phaseDiff;
+              return PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority];
+            });
+
+          const done = active.filter((i) => i.status === "complete" && wsFilter(i))
+            .sort((a, b) => PHASE_ORDER[a.phase] - PHASE_ORDER[b.phase]);
+
+          const notStartedVisible = notStarted.slice(0, actionsNotStartedLimit);
+
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Workstream filter */}
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Workstream</span>
+                <select
+                  value={actionsFilterWs}
+                  onChange={(e) => setActionsFilterWs(e.target.value)}
+                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}
+                >
+                  <option value="all">All Workstreams</option>
+                  {Array.from(wsStats.keys()).map((ws) => (
+                    <option key={ws} value={ws}>{ws}</option>
+                  ))}
+                </select>
+                <div style={{ marginLeft: "auto", display: "flex", gap: 16, fontSize: 10 }}>
+                  <span style={{ color: C.danger }}>{kpis.blocked} blocked</span>
+                  <span style={{ color: C.accent }}>{kpis.inProgress} in progress</span>
+                  <span style={{ color: C.success }}>{kpis.complete} done</span>
+                  <span style={{ color: C.textMuted }}>{kpis.notStarted} not started</span>
+                </div>
+              </div>
+
+              {/* UPCOMING — blocked + in_progress */}
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${upcoming.some(i => i.status === "blocked") ? C.danger + "44" : C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: upcoming.length > 0 ? 12 : 0, color: C.text }}>
+                  Upcoming
+                  <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 400, color: C.textMuted }}>
+                    {upcoming.length} item{upcoming.length !== 1 ? "s" : ""} active
+                    {upcoming.filter(i => i.status === "blocked").length > 0 && (
+                      <span style={{ marginLeft: 6, color: C.danger, fontWeight: 700 }}>
+                        · {upcoming.filter(i => i.status === "blocked").length} blocked
+                      </span>
+                    )}
+                  </span>
+                </div>
+                {upcoming.length === 0 ? (
+                  <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>No items in progress — pick items from Not Started below to begin working</div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {upcoming.map((item) => (
+                      <ActionItemRow
+                        key={item.id}
+                        item={item}
+                        members={deal.teamMembers}
+                        onUpdateStatus={onUpdateStatus}
+                        onUpdateOwner={onUpdateOwner}
+                        onClickGuidance={() => { setActiveTab("checklist"); fetchGuidance(item); }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* NOT STARTED */}
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: notStarted.length > 0 ? 12 : 0, color: C.textMuted }}>
+                  Not Started
+                  <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 400 }}>{notStarted.length} item{notStarted.length !== 1 ? "s" : ""}</span>
+                </div>
+                {notStarted.length === 0 ? (
+                  <div style={{ fontSize: 10, color: C.success }}>✓ All items started or complete</div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {notStartedVisible.map((item) => (
+                        <ActionItemRow
+                          key={item.id}
+                          item={item}
+                          members={deal.teamMembers}
+                          onUpdateStatus={onUpdateStatus}
+                          onUpdateOwner={onUpdateOwner}
+                          onClickGuidance={() => { setActiveTab("checklist"); fetchGuidance(item); }}
+                        />
+                      ))}
+                    </div>
+                    {notStarted.length > actionsNotStartedLimit && (
+                      <button
+                        onClick={() => setActionsNotStartedLimit((n) => n + 25)}
+                        style={{ marginTop: 10, fontSize: 10, color: C.accent, background: "transparent", border: `1px solid ${C.accent}44`, borderRadius: 4, padding: "4px 12px", cursor: "pointer" }}
+                      >
+                        Show {Math.min(25, notStarted.length - actionsNotStartedLimit)} more ({notStarted.length - actionsNotStartedLimit} remaining)
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* DONE */}
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                <div
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: done.length > 0 ? "pointer" : "default" }}
+                  onClick={() => done.length > 0 && setActionsDoneExpanded((e) => !e)}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: done.length > 0 ? C.success : C.textMuted }}>
+                    Done
+                    <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 400, color: C.success }}>{done.length} item{done.length !== 1 ? "s" : ""} complete</span>
+                  </div>
+                  {done.length > 0 && (
+                    <span style={{ fontSize: 10, color: C.textMuted }}>{actionsDoneExpanded ? "▲ collapse" : "▼ expand"}</span>
+                  )}
+                </div>
+                {actionsDoneExpanded && done.length > 0 && (
+                  <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {done.map((item) => (
+                      <ActionItemRow
+                        key={item.id}
+                        item={item}
+                        members={deal.teamMembers}
+                        onUpdateStatus={onUpdateStatus}
+                        onUpdateOwner={onUpdateOwner}
+                        onClickGuidance={() => { setActiveTab("checklist"); fetchGuidance(item); }}
+                      />
+                    ))}
+                  </div>
+                )}
+                {done.length === 0 && (
+                  <div style={{ marginTop: 6, fontSize: 10, color: C.muted, fontStyle: "italic" }}>No completed items yet</div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ─── CHECKLIST TAB ─── */}
         {activeTab === "checklist" && (
@@ -967,6 +1131,101 @@ const PHASE_LABELS_SHORT: Record<string, string> = {
   day_90: "Day 90",
   year_1: "Year 1",
 };
+
+function ActionItemRow({
+  item,
+  members,
+  onUpdateStatus,
+  onUpdateOwner,
+  onClickGuidance,
+}: {
+  item: ChecklistItem;
+  members: { id: string; name: string }[];
+  onUpdateStatus: (id: string, status: ItemStatus) => void;
+  onUpdateOwner: (id: string, ownerId: string | undefined) => void;
+  onClickGuidance: () => void;
+}) {
+  const priorityColor =
+    item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.textMuted;
+  const statusColor =
+    item.status === "complete" ? C.success :
+    item.status === "in_progress" ? C.accent :
+    item.status === "blocked" ? C.danger : C.muted;
+
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "8px 70px 1fr auto auto auto",
+      gap: 10,
+      alignItems: "center",
+      padding: "7px 10px",
+      borderRadius: 5,
+      background: item.status === "blocked" ? C.danger + "0A" : item.status === "complete" ? C.success + "0A" : "transparent",
+      border: `1px solid ${item.status === "blocked" ? C.danger + "33" : C.border + "66"}`,
+    }}>
+      {/* priority dot */}
+      <span style={{ width: 8, height: 8, borderRadius: "50%", background: priorityColor, display: "inline-block", flexShrink: 0 }} />
+      {/* ID + badges */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: C.accent, whiteSpace: "nowrap" }}>{item.itemId}</span>
+        {item.isAiGenerated && (
+          <span style={{ fontSize: 8, padding: "0px 3px", borderRadius: 2, background: C.warning + "22", color: C.warning, fontWeight: 700 }}>AI</span>
+        )}
+      </div>
+      {/* description + meta */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, color: item.status === "complete" ? C.textMuted : C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          textDecoration: item.status === "complete" ? "line-through" : "none" }}>
+          {item.description}
+        </div>
+        <div style={{ display: "flex", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 9, color: C.textMuted }}>{item.workstream.split(" ")[0]}</span>
+          <span style={{ fontSize: 9, padding: "0px 5px", borderRadius: 3, background: item.phase === "day_1" ? C.warning + "22" : C.deepBlue, color: item.phase === "day_1" ? C.warning : C.textMuted }}>
+            {PHASE_LABELS[item.phase]}
+          </span>
+          {item.status === "blocked" && item.blockedReason && (
+            <span style={{ fontSize: 9, color: C.danger, fontStyle: "italic" }}>⚠ {item.blockedReason}</span>
+          )}
+        </div>
+      </div>
+      {/* owner */}
+      <select
+        value={item.ownerId ?? ""}
+        onChange={(e) => onUpdateOwner(item.id, e.target.value || undefined)}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "transparent", border: "none",
+          color: item.ownerId ? C.text : C.muted,
+          fontSize: 9, cursor: "pointer", fontFamily: "inherit", maxWidth: 90,
+        }}
+      >
+        <option value="">— owner</option>
+        {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+      {/* status */}
+      <select
+        value={item.status}
+        onChange={(e) => onUpdateStatus(item.id, e.target.value as ItemStatus)}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "transparent", border: "none",
+          color: statusColor, fontSize: 9, fontWeight: 700,
+          cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase",
+        }}
+      >
+        <option value="not_started">Not Started</option>
+        <option value="in_progress">In Progress</option>
+        <option value="blocked">Blocked</option>
+        <option value="complete">Complete</option>
+      </select>
+      {/* AI guidance shortcut */}
+      <button
+        onClick={onClickGuidance}
+        style={{ background: "transparent", border: "none", color: C.accent, fontSize: 9, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
+      >AI →</button>
+    </div>
+  );
+}
 
 function SuggestionCard({
   suggestion,

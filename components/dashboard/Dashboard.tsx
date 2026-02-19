@@ -157,6 +157,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
 
   async function fetchGuidance(item: ChecklistItem) {
     setSelectedItem(item);
+    setNoteInput("");
     setGuidanceText("");
     setGuidanceLoading(true);
     // Surface any pending item-level suggestions for this item
@@ -946,7 +947,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                         members={deal.teamMembers}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateOwner={onUpdateOwner}
-                        onClickGuidance={() => { setActiveTab("checklist"); fetchGuidance(item); }}
+                        onClickGuidance={() => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); fetchGuidance(item); }}
                       />
                     ))}
                   </div>
@@ -971,7 +972,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                           members={deal.teamMembers}
                           onUpdateStatus={onUpdateStatus}
                           onUpdateOwner={onUpdateOwner}
-                          onClickGuidance={() => { setActiveTab("checklist"); fetchGuidance(item); }}
+                          onClickGuidance={() => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); fetchGuidance(item); }}
                         />
                       ))}
                     </div>
@@ -1010,7 +1011,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                         members={deal.teamMembers}
                         onUpdateStatus={onUpdateStatus}
                         onUpdateOwner={onUpdateOwner}
-                        onClickGuidance={() => { setActiveTab("checklist"); fetchGuidance(item); }}
+                        onClickGuidance={() => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); fetchGuidance(item); }}
                       />
                     ))}
                   </div>
@@ -1125,7 +1126,9 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                               value={item.status}
                               onChange={(e) => {
                                 e.stopPropagation();
-                                onUpdateStatus(item.id, e.target.value as ItemStatus);
+                                const newStatus = e.target.value as ItemStatus;
+                                onUpdateStatus(item.id, newStatus);
+                                if (newStatus === "blocked") fetchGuidance({ ...item, status: "blocked" });
                               }}
                               onClick={(e) => e.stopPropagation()}
                               style={{
@@ -1180,11 +1183,17 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                   </div>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>{selectedItemLive.itemId}</div>
                   <div style={{ fontSize: 11, color: C.text, marginBottom: 12, lineHeight: 1.5 }}>{selectedItemLive.description}</div>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 6, marginBottom: selectedItemLive.status === "blocked" ? 8 : 12, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{selectedItemLive.workstream}</span>
                     <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.warning + "22", color: C.warning }}>{PHASE_LABELS[selectedItemLive.phase]}</span>
                     <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: (selectedItemLive.status === "complete" ? C.success : selectedItemLive.status === "blocked" ? C.danger : selectedItemLive.status === "in_progress" ? C.accent : C.muted) + "22", color: selectedItemLive.status === "complete" ? C.success : selectedItemLive.status === "blocked" ? C.danger : selectedItemLive.status === "in_progress" ? C.accent : C.muted }}>{selectedItemLive.status.replace(/_/g, " ")}</span>
                   </div>
+                  {selectedItemLive.status === "blocked" && (
+                    <BlockedReasonInline
+                      reason={selectedItemLive.blockedReason}
+                      onSave={(r) => onUpdateBlockedReason(selectedItemLive!.id, r)}
+                    />
+                  )}
                   <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
                     {guidanceLoading ? (
                       <div style={{ fontSize: 11, color: C.textMuted }}>Generating AI guidance…</div>
@@ -1920,6 +1929,42 @@ function SuggestionCard({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function BlockedReasonInline({ reason, onSave }: { reason?: string; onSave: (r: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(reason ?? "");
+  return (
+    <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 5, background: C.danger + "0A", border: `1px solid ${C.danger}33` }}>
+      <div style={{ fontSize: 9, color: C.danger, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Blocked Reason</div>
+      {editing ? (
+        <div style={{ display: "flex", gap: 6 }}>
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { onSave(draft); setEditing(false); }
+              if (e.key === "Escape") { setDraft(reason ?? ""); setEditing(false); }
+            }}
+            placeholder="Describe the blocker…"
+            style={{ flex: 1, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.accent}66`, background: C.navy, color: C.text, fontSize: 10, fontFamily: "inherit", outline: "none" }}
+          />
+          <button onClick={() => { onSave(draft); setEditing(false); }} style={{ padding: "3px 8px", borderRadius: 3, border: "none", background: C.accent, color: "#fff", fontSize: 9, cursor: "pointer" }}>Save</button>
+          <button onClick={() => { setDraft(reason ?? ""); setEditing(false); }} style={{ padding: "3px 6px", borderRadius: 3, border: "none", background: "transparent", color: C.muted, fontSize: 9, cursor: "pointer" }}>✕</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ flex: 1, fontSize: 10, color: reason ? C.danger : C.muted, fontStyle: reason ? "normal" : "italic" }}>
+            {reason ? `⚠ ${reason}` : "No reason recorded — add one so the team knows what's blocking this item"}
+          </span>
+          <button onClick={() => setEditing(true)} style={{ fontSize: 9, color: C.textMuted, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 3, padding: "1px 6px", cursor: "pointer", whiteSpace: "nowrap" }}>
+            {reason ? "Edit" : "+ Add reason"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

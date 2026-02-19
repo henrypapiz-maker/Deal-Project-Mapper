@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, TeamMember, AISuggestion } from "@/lib/types";
-import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
+import { getKpis, getWorkstreamStats, getWorkstreamRag, getDealRag, type RagStatus } from "@/lib/decision-tree";
 import { exportChecklist, exportRisks, exportSummary } from "@/lib/export";
 
 const C = {
@@ -19,6 +19,13 @@ const C = {
   text: "#F1F5F9",
   textMuted: "#94A3B8",
 };
+
+const RAG_COLOR: Record<string, string> = {
+  red: "#EF4444",
+  amber: "#F59E0B",
+  green: "#10B981",
+};
+const RAG_LABEL: Record<string, string> = { red: "RED", amber: "AMBER", green: "GREEN" };
 
 const STRUCTURE_LABELS: Record<string, string> = {
   stock_purchase: "Stock Purchase",
@@ -60,12 +67,13 @@ interface Props {
   onUpdateOwner: (itemId: string, ownerId: string | undefined) => void;
   onAddMember: (member: TeamMember) => void;
   onRemoveMember: (memberId: string) => void;
+  onUpdateBlockedReason: (itemId: string, reason: string) => void;
   onAcceptSuggestion: (suggestionId: string) => void;
   onDismissSuggestion: (suggestionId: string) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onAcceptSuggestion, onDismissSuggestion, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -92,6 +100,11 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
   const wsStats = getWorkstreamStats(checklistItems);
+  const dealRag = getDealRag(kpis, riskAlerts);
+  const wsRag = new Map<string, RagStatus>(
+    Array.from(wsStats.entries()).map(([ws, stats]) => [ws, getWorkstreamRag(stats)])
+  );
+  const blockedItems = checklistItems.filter((i) => i.status === "blocked");
   const pendingSuggestions = (deal.aiSuggestions ?? []).filter((s) => s.status === "pending");
   const pendingDealSuggestions = pendingSuggestions.filter((s) => s.source === "deal_intake");
   const pendingItemSuggestions = pendingSuggestions.filter((s) => s.source === "item_update");
@@ -253,6 +266,18 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
           padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`,
           marginBottom: 20
         }}>
+          <div>
+            <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>RAG Status</div>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 5,
+              padding: "2px 8px", borderRadius: 4,
+              background: RAG_COLOR[dealRag] + "22",
+              border: `1px solid ${RAG_COLOR[dealRag]}44`,
+            }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: RAG_COLOR[dealRag], display: "inline-block", flexShrink: 0 }} />
+              <span style={{ fontSize: 10, fontWeight: 800, color: RAG_COLOR[dealRag], letterSpacing: 0.5 }}>{RAG_LABEL[dealRag]}</span>
+            </div>
+          </div>
           {[
             ["Structure", STRUCTURE_LABELS[intake.dealStructure]],
             ["Model", MODEL_LABELS[intake.integrationModel]],
@@ -301,7 +326,8 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {Array.from(wsStats.entries()).map(([ws, stats]) => {
                     const pct = stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
-                    const color = stats.blocked > 0 ? C.warning : pct > 50 ? C.success : C.accent;
+                    const rag = wsRag.get(ws) ?? "amber";
+                    const barColor = rag === "red" ? C.danger : rag === "green" ? C.success : C.accent;
                     const isSelected = selectedWs === ws;
                     return (
                       <div key={ws} onClick={() => setSelectedWs(isSelected ? null : ws)}
@@ -310,17 +336,25 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                           background: isSelected ? C.deepBlue : "transparent",
                           border: `1px solid ${isSelected ? C.accent + "44" : "transparent"}`,
                         }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600 }}>{ws}</div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                            <span style={{
+                              width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                              background: RAG_COLOR[rag],
+                              boxShadow: rag === "red" ? `0 0 6px ${RAG_COLOR.red}88` : "none",
+                              display: "inline-block",
+                            }} />
+                            <span style={{ fontSize: 11, fontWeight: 600 }}>{ws}</span>
+                          </div>
                           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                             {stats.blocked > 0 && (
                               <span style={{ fontSize: 9, color: C.danger, fontWeight: 700 }}>{stats.blocked} blocked</span>
                             )}
-                            <span style={{ fontSize: 12, fontWeight: 700, color }}>{pct}%</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: barColor }}>{pct}%</span>
                           </div>
                         </div>
                         <div style={{ width: "100%", height: 5, background: C.deepBlue, borderRadius: 3 }}>
-                          <div style={{ width: `${pct}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.5s" }} />
+                          <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.5s" }} />
                         </div>
                         {isSelected && (
                           <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 10, color: C.textMuted }}>
@@ -390,6 +424,31 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
               </div>
             </div>
           </>
+        )}
+
+        {/* ─── ROADBLOCKS PANEL (overview) ─── */}
+        {activeTab === "overview" && (
+          <div style={{ marginTop: 16, padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${blockedItems.length > 0 ? C.danger + "44" : C.border}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: blockedItems.length > 0 ? 14 : 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: blockedItems.length > 0 ? C.danger : C.textMuted }}>
+                Roadblocks — {blockedItems.length} item{blockedItems.length !== 1 ? "s" : ""} blocked
+              </div>
+              {blockedItems.length === 0 && (
+                <span style={{ fontSize: 10, color: C.success }}>✓ No active blockers</span>
+              )}
+            </div>
+            {blockedItems.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {blockedItems.map((item) => (
+                  <BlockedItemCard
+                    key={item.id}
+                    item={item}
+                    onUpdateReason={(reason) => onUpdateBlockedReason(item.id, reason)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* ─── AI CONSIDERATIONS PANEL (overview) ─── */}
@@ -591,7 +650,14 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                             )}
                           </td>
                           <td style={{ padding: "6px", color: C.textMuted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
-                          <td style={{ padding: "6px", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</td>
+                          <td style={{ padding: "6px", maxWidth: 280 }}>
+                            <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</div>
+                            {item.status === "blocked" && item.blockedReason && (
+                              <div style={{ fontSize: 9, color: C.danger, marginTop: 2, fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                ⚠ {item.blockedReason}
+                              </div>
+                            )}
+                          </td>
                           <td style={{ padding: "6px" }}>
                             <span style={{ padding: "1px 6px", borderRadius: 3, background: item.phase === "day_1" ? C.warning + "22" : C.cardBg, color: item.phase === "day_1" ? C.warning : C.textMuted, fontSize: 9 }}>
                               {PHASE_LABELS[item.phase]}
@@ -978,6 +1044,76 @@ function SuggestionCard({
           >
             ✕
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BlockedItemCard({
+  item,
+  onUpdateReason,
+}: {
+  item: ChecklistItem;
+  onUpdateReason: (reason: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.blockedReason ?? "");
+
+  const priorityColor =
+    item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.accent;
+
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 6, background: C.deepBlue,
+      border: `1px solid ${C.danger}33`,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 4 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: C.accent }}>{item.itemId}</span>
+            <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: priorityColor + "22", color: priorityColor, fontWeight: 700, textTransform: "uppercase" }}>{item.priority}</span>
+            <span style={{ fontSize: 9, color: C.textMuted }}>{item.workstream.split(" ")[0]}</span>
+            <span style={{ fontSize: 9, color: C.textMuted }}>{PHASE_LABELS[item.phase]}</span>
+          </div>
+          <div style={{ fontSize: 11, color: C.text, marginBottom: 6, lineHeight: 1.4 }}>{item.description}</div>
+          {editing ? (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { onUpdateReason(draft); setEditing(false); }
+                  if (e.key === "Escape") { setDraft(item.blockedReason ?? ""); setEditing(false); }
+                }}
+                placeholder="Describe what's blocking this item…"
+                style={{
+                  flex: 1, padding: "4px 8px", borderRadius: 4,
+                  border: `1px solid ${C.accent}66`, background: C.navy,
+                  color: C.text, fontSize: 10, fontFamily: "inherit", outline: "none",
+                }}
+              />
+              <button
+                onClick={() => { onUpdateReason(draft); setEditing(false); }}
+                style={{ padding: "3px 8px", borderRadius: 3, border: "none", background: C.accent, color: "#fff", fontSize: 9, cursor: "pointer" }}
+              >Save</button>
+              <button
+                onClick={() => { setDraft(item.blockedReason ?? ""); setEditing(false); }}
+                style={{ padding: "3px 6px", borderRadius: 3, border: "none", background: "transparent", color: C.muted, fontSize: 9, cursor: "pointer" }}
+              >✕</button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 10, color: item.blockedReason ? C.danger : C.muted, fontStyle: item.blockedReason ? "normal" : "italic" }}>
+                {item.blockedReason ? `⚠ ${item.blockedReason}` : "No reason recorded"}
+              </span>
+              <button
+                onClick={() => setEditing(true)}
+                style={{ fontSize: 9, color: C.textMuted, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 3, padding: "1px 5px", cursor: "pointer" }}
+              >{item.blockedReason ? "Edit" : "+ Add reason"}</button>
+            </div>
+          )}
         </div>
       </div>
     </div>

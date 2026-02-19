@@ -303,3 +303,33 @@ export function getWorkstreamStats(items: ChecklistItem[]) {
 
   return map;
 }
+
+// ============================================================
+// RAG Status (Red / Amber / Green)
+// ============================================================
+export type RagStatus = "red" | "amber" | "green";
+
+export function getWorkstreamRag(stats: {
+  complete: number;
+  inProgress: number;
+  blocked: number;
+  notStarted: number;
+  total: number;
+}): RagStatus {
+  if (stats.blocked > 0) return "red";
+  const pct = stats.total > 0 ? stats.complete / stats.total : 0;
+  if (pct >= 0.8) return "green";
+  return "amber";
+}
+
+export function getDealRag(
+  kpis: { blocked: number; pctComplete: number },
+  riskAlerts: { severity: string; status: string }[]
+): RagStatus {
+  const hasCriticalOpenRisk = riskAlerts.some(
+    (r) => r.severity === "critical" && r.status === "open"
+  );
+  if (kpis.blocked > 0 || hasCriticalOpenRisk) return "red";
+  if (kpis.pctComplete >= 80) return "green";
+  return "amber";
+}

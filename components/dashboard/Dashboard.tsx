@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
+import { exportChecklist, exportRisks, exportSummary } from "@/lib/export";
 
 const C = {
   navy: "#0F1B2D",
@@ -67,6 +68,18 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
   const [guidanceLoading, setGuidanceLoading] = useState(false);
   const [filterPhase, setFilterPhase] = useState<string>("all");
   const [filterWs, setFilterWs] = useState<string>("all");
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) {
+        setExportOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
@@ -153,8 +166,53 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
               fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase",
             }}>{tab}</button>
           ))}
+          {/* Export dropdown */}
+          <div ref={exportRef} style={{ position: "relative", marginLeft: 8 }}>
+            <button
+              onClick={() => setExportOpen((o) => !o)}
+              style={{
+                padding: "5px 12px", borderRadius: 4, cursor: "pointer",
+                background: exportOpen ? C.accent : "transparent",
+                border: `1px solid ${exportOpen ? C.accent : C.border}`,
+                color: exportOpen ? "#fff" : C.textMuted,
+                fontSize: 10, fontWeight: 600,
+              }}
+            >
+              Export ↓
+            </button>
+            {exportOpen && (
+              <div style={{
+                position: "absolute", right: 0, top: "calc(100% + 6px)",
+                background: C.cardBg, border: `1px solid ${C.border}`,
+                borderRadius: 6, padding: 4, minWidth: 160, zIndex: 20,
+                boxShadow: "0 8px 24px #00000066",
+              }}>
+                {[
+                  { label: "Checklist (CSV)", fn: () => exportChecklist(deal) },
+                  { label: "Risk Register (CSV)", fn: () => exportRisks(deal) },
+                  { label: "Deal Summary (CSV)", fn: () => exportSummary(deal) },
+                ].map(({ label, fn }) => (
+                  <button
+                    key={label}
+                    onClick={() => { fn(); setExportOpen(false); }}
+                    style={{
+                      display: "block", width: "100%", textAlign: "left",
+                      padding: "7px 10px", borderRadius: 4, border: "none",
+                      background: "transparent", color: C.text,
+                      fontSize: 10, cursor: "pointer", fontFamily: "inherit",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = C.deepBlue)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button onClick={onReset} style={{
-            marginLeft: 12, padding: "5px 12px", borderRadius: 4,
+            marginLeft: 4, padding: "5px 12px", borderRadius: 4,
             border: `1px solid ${C.border}`, background: "transparent",
             color: C.textMuted, fontSize: 10, cursor: "pointer",
           }}>← New Deal</button>
@@ -449,67 +507,124 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
 
         {/* ─── RISKS TAB ─── */}
         {activeTab === "risks" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {riskAlerts.length === 0 ? (
-              <div style={{ padding: 24, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
-                <div style={{ fontSize: 14, color: C.success }}>No material risks detected</div>
-                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Based on your deal profile, the decision tree found no risk triggers.</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            {/* Left: Heat Map + active risk cards */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16, color: C.textMuted }}>
+                  Risk Heat Map — Section 6 Taxonomy
+                </div>
+                {Object.entries(RISK_LABELS).map(([key, label]) => {
+                  const alert = riskAlerts.find(r => r.category === key);
+                  const level = alert ? (alert.severity === "critical" ? 3 : alert.severity === "high" ? 2 : 1) : 0;
+                  const levelColors = ["#1E293B", C.accent, C.warning, C.danger];
+                  return (
+                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                      <div style={{ width: 180, fontSize: 11, color: C.text }}>{label}</div>
+                      <div style={{ display: "flex", gap: 3, flex: 1 }}>
+                        {[1, 2, 3].map((l) => (
+                          <div key={l} style={{
+                            flex: 1, height: 20, borderRadius: 3,
+                            background: l <= level ? levelColors[l] : "#1E293B",
+                            border: `1px solid ${C.border}`,
+                            transition: "all 0.3s",
+                          }} />
+                        ))}
+                      </div>
+                      <div style={{ width: 70, textAlign: "right" }}>
+                        {alert ? <SeverityBadge severity={alert.severity} /> : <span style={{ fontSize: 10, color: C.muted }}>Clear</span>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ) : (
-              riskAlerts.map((r) => (
-                <div key={r.id} style={{
-                  padding: 16, borderRadius: 8, background: C.cardBg,
-                  border: `1px solid ${r.severity === "critical" ? "#EF444444" : r.severity === "high" ? "#F59E0B44" : C.border}`,
-                  borderLeft: `4px solid ${r.severity === "critical" ? C.danger : r.severity === "high" ? C.warning : C.accent}`,
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{RISK_LABELS[r.category]}</div>
-                      <SeverityBadge severity={r.severity} />
-                    </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {r.affectedWorkstreams.map((ws) => (
-                        <span key={ws} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{ws.split(" ")[0]}</span>
-                      ))}
-                    </div>
+
+              {/* Active risk detail cards */}
+              {riskAlerts.length > 0 && (
+                <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                    Active Risk Register — {riskAlerts.length} detected
                   </div>
-                  <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>{r.description}</div>
-                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
-                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.success, fontWeight: 700, marginBottom: 6 }}>Suggested Mitigation</div>
-                    <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>{r.mitigation}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {riskAlerts.map((r) => (
+                      <div key={r.id} style={{
+                        padding: 10, borderRadius: 6, background: C.deepBlue,
+                        border: `1px solid ${r.severity === "critical" ? C.danger + "44" : r.severity === "high" ? C.warning + "33" : C.border}`,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700 }}>{RISK_LABELS[r.category]}</span>
+                          <SeverityBadge severity={r.severity} />
+                        </div>
+                        <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.4, marginBottom: 4 }}>{r.description}</div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                          {r.affectedWorkstreams.map((ws) => (
+                            <span key={ws} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{ws.split(" ")[0]}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))
-            )}
+              )}
 
-            {/* Risk Heat Map */}
+              {riskAlerts.length === 0 && (
+                <div style={{ padding: 24, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                  <div style={{ fontSize: 20, marginBottom: 8 }}>✓</div>
+                  <div style={{ fontSize: 13, color: C.success }}>No material risks detected</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>No risk triggers fired for this deal profile.</div>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Detection Rules */}
             <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 16, color: C.textMuted }}>
-                Risk Heat Map — Section 6 Taxonomy
+                Risk Detection Rules — Section 6 Taxonomy
               </div>
-              {Object.entries(RISK_LABELS).map(([key, label]) => {
-                const alert = riskAlerts.find(r => r.category === key);
-                const level = alert ? (alert.severity === "critical" ? 3 : alert.severity === "high" ? 2 : 1) : 0;
-                const levelColors = ["#1E293B", C.accent, C.warning, C.danger];
-                return (
-                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <div style={{ width: 200, fontSize: 11, color: C.text }}>{label}</div>
-                    <div style={{ display: "flex", gap: 3, flex: 1 }}>
-                      {[1, 2, 3].map((l) => (
-                        <div key={l} style={{
-                          flex: 1, height: 18, borderRadius: 3,
-                          background: l <= level ? levelColors[l] : "#1E293B",
-                          border: `1px solid ${C.border}`,
-                        }} />
-                      ))}
-                    </div>
-                    <div style={{ width: 80, textAlign: "right" }}>
-                      {alert ? <SeverityBadge severity={alert.severity} /> : <span style={{ fontSize: 10, color: C.muted }}>Clear</span>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 20 }}>
+                {[
+                  { rule: "IF cross_border AND jurisdictions_requiring_filing > 3 → Regulatory Delay (Critical)", fired: riskAlerts.some(r => r.category === "regulatory_delay") },
+                  { rule: "IF any jurisdiction ETR < 15% → Tax Structure Leakage (High)", fired: riskAlerts.some(r => r.category === "tax_structure_leakage") },
+                  { rule: "IF tsa_required = yes AND integration_model ≠ standalone → TSA Dependency (High)", fired: riskAlerts.some(r => r.category === "tsa_dependency") },
+                  { rule: "IF cross_border AND jurisdictions includes EU → Data Privacy Breach (High)", fired: riskAlerts.some(r => r.category === "data_privacy_breach") },
+                  { rule: "IF buyer_maturity = first AND deal_value > $250M → Cultural Integration (Medium)", fired: riskAlerts.some(r => r.category === "cultural_integration") },
+                  { rule: "IF target_gaap ≠ acquirer_gaap OR target_entities > 5 → Financial Reporting Gap (High)", fired: riskAlerts.some(r => r.category === "financial_reporting_gap") },
+                  { rule: "IF deal_structure = carve_out → Stranded Costs (Medium)", fired: riskAlerts.some(r => r.category === "stranded_costs") },
+                ].map(({ rule, fired }, i) => (
+                  <div key={i} style={{
+                    padding: "7px 10px", borderRadius: 4,
+                    background: fired ? C.danger + "11" : C.deepBlue,
+                    border: `1px solid ${fired ? C.danger + "33" : C.border}`,
+                    fontFamily: "'JetBrains Mono', monospace",
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                      <div style={{ fontSize: 10, color: fired ? C.danger : C.textMuted, lineHeight: 1.4, flex: 1 }}>{rule}</div>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: fired ? C.danger : C.muted, whiteSpace: "nowrap" }}>
+                        {fired ? "▲ FIRED" : "— clear"}
+                      </span>
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
+
+              {/* Mitigation panel for fired risks */}
+              {riskAlerts.length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted, borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+                    Suggested Mitigations
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {riskAlerts.map((r) => (
+                      <div key={r.id}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: r.severity === "critical" ? C.danger : r.severity === "high" ? C.warning : C.accent, marginBottom: 3 }}>
+                          {RISK_LABELS[r.category]}
+                        </div>
+                        <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5 }}>{r.mitigation}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

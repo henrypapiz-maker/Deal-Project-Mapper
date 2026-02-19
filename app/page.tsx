@@ -281,6 +281,20 @@ export default function Home() {
     });
   }, []);
 
+  const handleAddNote = useCallback((itemId: string, note: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        checklistItems: prev.checklistItems.map((item) =>
+          item.id === itemId ? { ...item, notes: [...item.notes, note] } : item
+        ),
+      };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
   const handleUpdateBlockedReason = useCallback((itemId: string, reason: string) => {
     setDeal((prev) => {
       if (!prev) return prev;
@@ -424,6 +438,7 @@ export default function Home() {
         onAcceptSuggestion={handleAcceptSuggestion}
         onDismissSuggestion={handleDismissSuggestion}
         onUpdateRisk={handleUpdateRisk}
+        onAddNote={handleAddNote}
         onReset={handleReset}
       />
     );

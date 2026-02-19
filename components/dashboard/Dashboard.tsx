@@ -102,11 +102,12 @@ interface Props {
   onAcceptSuggestion: (suggestionId: string) => void;
   onDismissSuggestion: (suggestionId: string) => void;
   onUpdateRisk: (riskId: string, field: "severity" | "status", newValue: string, reason: string) => void;
+  onAddNote: (itemId: string, note: string) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onUpdateRisk, onReset }: Props) {
-  const [activeTab, setActiveTab] = useState<"overview" | "actions" | "checklist" | "risks" | "timeline">("overview");
+export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onUpdateRisk, onAddNote, onReset }: Props) {
+  const [activeTab, setActiveTab] = useState<"overview" | "actions" | "checklist" | "risks" | "timeline" | "report">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [guidanceText, setGuidanceText] = useState<string>("");
@@ -123,6 +124,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const [actionsFilterWs, setActionsFilterWs] = useState<string>("all");
   const [newMemberRole, setNewMemberRole] = useState<WorkstreamRole | "">("");
   const [now, setNow] = useState(() => new Date());
+  const [noteInput, setNoteInput] = useState("");
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -149,6 +151,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const blockedItems = checklistItems.filter((i) => i.status === "blocked");
   const itemByItemId = new Map<string, ChecklistItem>(checklistItems.map((i) => [i.itemId, i]));
   const pendingSuggestions = (deal.aiSuggestions ?? []).filter((s) => s.status === "pending");
+  const selectedItemLive = selectedItem ? (checklistItems.find((i) => i.id === selectedItem.id) ?? selectedItem) : null;
   const pendingDealSuggestions = pendingSuggestions.filter((s) => s.source === "deal_intake");
   const pendingItemSuggestions = pendingSuggestions.filter((s) => s.source === "item_update");
 
@@ -235,15 +238,15 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
           </div>
         </div>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          {(["overview", "actions", "checklist", "risks", "timeline"] as const).map((tab) => (
+          {(["overview", "actions", "checklist", "risks", "timeline", "report"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
               padding: "6px 14px", borderRadius: 4, border: "none", cursor: "pointer",
-              background: activeTab === tab ? C.accent : "transparent",
+              background: activeTab === tab ? (tab === "report" ? C.success : C.accent) : "transparent",
               color: activeTab === tab ? "#fff" : C.textMuted,
               fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase",
               position: "relative",
             }}>
-              {tab}
+              {tab === "report" ? "Report" : tab}
               {tab === "overview" && pendingSuggestions.length > 0 && (
                 <span style={{
                   position: "absolute", top: 2, right: 2,
@@ -1089,6 +1092,14 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                                 background: C.warning + "22", color: C.warning, fontWeight: 700,
                               }}>AI</span>
                             )}
+                            {(item.notes?.length ?? 0) > 0 && (
+                              <span style={{
+                                marginLeft: 3, fontSize: 8, padding: "1px 4px", borderRadius: 3,
+                                background: C.success + "22", color: C.success, fontWeight: 700,
+                              }} title={`${item.notes.length} note${item.notes.length !== 1 ? "s" : ""}`}>
+                                {item.notes.length}✎
+                              </span>
+                            )}
                           </td>
                           <td style={{ padding: "6px", color: C.textMuted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
                           <td style={{ padding: "6px", maxWidth: 280 }}>
@@ -1162,33 +1173,38 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
               </div>
 
               {/* AI Guidance Panel */}
-              {selectedItem && (
+              {selectedItemLive && (
                 <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.accent}33`, position: "sticky", top: 80, maxHeight: "80vh", overflowY: "auto" }}>
                   <div style={{ fontSize: 9, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
                     AI Guidance
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>{selectedItem.itemId}</div>
-                  <div style={{ fontSize: 11, color: C.text, marginBottom: 12, lineHeight: 1.5 }}>{selectedItem.description}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>{selectedItemLive.itemId}</div>
+                  <div style={{ fontSize: 11, color: C.text, marginBottom: 12, lineHeight: 1.5 }}>{selectedItemLive.description}</div>
                   <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{selectedItem.workstream}</span>
-                    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.warning + "22", color: C.warning }}>{PHASE_LABELS[selectedItem.phase]}</span>
+                    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{selectedItemLive.workstream}</span>
+                    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.warning + "22", color: C.warning }}>{PHASE_LABELS[selectedItemLive.phase]}</span>
+                    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: (selectedItemLive.status === "complete" ? C.success : selectedItemLive.status === "blocked" ? C.danger : selectedItemLive.status === "in_progress" ? C.accent : C.muted) + "22", color: selectedItemLive.status === "complete" ? C.success : selectedItemLive.status === "blocked" ? C.danger : selectedItemLive.status === "in_progress" ? C.accent : C.muted }}>{selectedItemLive.status.replace(/_/g, " ")}</span>
                   </div>
                   <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
                     {guidanceLoading ? (
-                      <div style={{ fontSize: 11, color: C.textMuted }}>Generating guidance…</div>
-                    ) : guidanceText ? (
+                      <div style={{ fontSize: 11, color: C.textMuted }}>Generating AI guidance…</div>
+                    ) : guidanceText && !guidanceText.includes("ANTHROPIC_API_KEY not set") ? (
                       <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{guidanceText}</div>
+                    ) : guidanceText && guidanceText.includes("ANTHROPIC_API_KEY not set") ? (
+                      <div style={{ fontSize: 10, color: C.warning, padding: "8px 10px", borderRadius: 4, background: C.warning + "11", border: `1px solid ${C.warning}33` }}>
+                        AI guidance unavailable — add <strong>ANTHROPIC_API_KEY</strong> to Vercel project settings (Settings → Environment Variables).
+                      </div>
                     ) : (
                       <div style={{ fontSize: 10, color: C.textMuted }}>Click &quot;AI →&quot; on any row or click a row to load guidance.</div>
                     )}
                   </div>
-                  {selectedItem.dependencies.length > 0 && (
+                  {selectedItemLive.dependencies.length > 0 && (
                     <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
                       <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
-                        Prerequisites ({selectedItem.dependencies.length})
+                        Prerequisites ({selectedItemLive.dependencies.length})
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        {selectedItem.dependencies.map((depId) => {
+                        {selectedItemLive.dependencies.map((depId) => {
                           const dep = itemByItemId.get(depId);
                           const depColor = !dep ? C.muted : dep.status === "complete" ? C.success : dep.status === "blocked" ? C.danger : dep.status === "in_progress" ? C.accent : C.muted;
                           const depLabel = !dep ? "N/A" : dep.status === "complete" ? "✓ complete" : dep.status.replace("_", " ");
@@ -1206,6 +1222,53 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                       </div>
                     </div>
                   )}
+                  {/* Notes / Comments section */}
+                  <div style={{ marginTop: 14, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                    <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+                      Notes {selectedItemLive.notes.length > 0 ? `(${selectedItemLive.notes.length})` : ""}
+                    </div>
+                    {selectedItemLive.notes.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 8 }}>
+                        {selectedItemLive.notes.map((note, idx) => (
+                          <div key={idx} style={{ padding: "6px 8px", borderRadius: 4, background: C.deepBlue, border: `1px solid ${C.border}`, fontSize: 10, color: C.text, lineHeight: 1.5 }}>
+                            {note}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        value={noteInput}
+                        onChange={(e) => setNoteInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && noteInput.trim()) {
+                            onAddNote(selectedItemLive!.id, noteInput.trim());
+                            setNoteInput("");
+                          }
+                        }}
+                        placeholder="Add a note…"
+                        style={{
+                          flex: 1, padding: "5px 8px", borderRadius: 4,
+                          border: `1px solid ${noteInput.trim() ? C.accent + "66" : C.border}`,
+                          background: C.deepBlue, color: C.text, fontSize: 10,
+                          fontFamily: "inherit", outline: "none",
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          if (!noteInput.trim()) return;
+                          onAddNote(selectedItemLive!.id, noteInput.trim());
+                          setNoteInput("");
+                        }}
+                        style={{
+                          padding: "5px 10px", borderRadius: 4, border: "none",
+                          background: noteInput.trim() ? C.accent : C.muted,
+                          color: "#fff", fontSize: 9, fontWeight: 700,
+                          cursor: noteInput.trim() ? "pointer" : "default", fontFamily: "inherit",
+                        }}
+                      >+ Add</button>
+                    </div>
+                  </div>
                   {itemSuggestions.length > 0 && (
                     <div style={{ marginTop: 14, borderTop: `1px solid ${C.warning}44`, paddingTop: 12 }}>
                       <div style={{ fontSize: 9, color: C.warning, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
@@ -1230,7 +1293,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                       </div>
                     </div>
                   )}
-                  <button onClick={() => { setSelectedItem(null); setItemSuggestions([]); }} style={{ marginTop: 12, fontSize: 10, color: C.textMuted, background: "transparent", border: "none", cursor: "pointer" }}>
+                  <button onClick={() => { setSelectedItem(null); setItemSuggestions([]); setNoteInput(""); }} style={{ marginTop: 12, fontSize: 10, color: C.textMuted, background: "transparent", border: "none", cursor: "pointer" }}>
                     ✕ Close
                   </button>
                 </div>
@@ -1337,6 +1400,326 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
           </div>
         )}
 
+        {/* ─── REPORT TAB ─── */}
+        {activeTab === "report" && (() => {
+          const active = checklistItems.filter((i) => i.status !== "na");
+          const totalActive = active.length;
+          const complete = active.filter((i) => i.status === "complete").length;
+          const inProgress = active.filter((i) => i.status === "in_progress").length;
+          const blocked = active.filter((i) => i.status === "blocked").length;
+          const notStarted = active.filter((i) => i.status === "not_started").length;
+          const pctComplete = totalActive ? Math.round((complete / totalActive) * 100) : 0;
+          const criticalRisks = riskAlerts.filter((r) => r.severity === "critical").length;
+          const highRisks = riskAlerts.filter((r) => r.severity === "high").length;
+          const openRisks = riskAlerts.filter((r) => r.status === "open").length;
+          const aiItemCount = checklistItems.filter((i) => i.isAiGenerated).length;
+          const itemsWithNotes = checklistItems.filter((i) => (i.notes?.length ?? 0) > 0).length;
+
+          const phases = ["pre_close", "day_1", "day_30", "day_60", "day_90", "year_1"] as const;
+
+          const topPriority = active
+            .filter((i) => (i.priority === "critical" || i.priority === "high") && (i.status === "blocked" || i.status === "not_started" || i.status === "in_progress"))
+            .sort((a, b) => {
+              if (a.status === "blocked" && b.status !== "blocked") return -1;
+              if (b.status === "blocked" && a.status !== "blocked") return 1;
+              const pOrd: Record<string, number> = { critical: 0, high: 1 };
+              return (pOrd[a.priority] ?? 2) - (pOrd[b.priority] ?? 2);
+            })
+            .slice(0, 8);
+
+          const rag = getDealRag(kpis, riskAlerts);
+          const ragColors: Record<string, string> = { red: C.danger, amber: C.warning, green: C.success };
+          const ragLabels: Record<string, string> = { red: "RED — Immediate Action Required", amber: "AMBER — Monitor Closely", green: "GREEN — On Track" };
+          const ragColor = ragColors[rag];
+
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "16px 20px", borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 2, marginBottom: 4 }}>Executive Integration Summary</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>{intake.dealName}</div>
+                  <div style={{ display: "flex", gap: 12, fontSize: 10, color: C.textMuted, flexWrap: "wrap" }}>
+                    <span>{STRUCTURE_LABELS[intake.dealStructure]}</span>
+                    <span>·</span>
+                    <span>{MODEL_LABELS[intake.integrationModel]}</span>
+                    <span>·</span>
+                    <span>Close: {intake.closeDate || "TBD"}</span>
+                    {intake.dealValueRange && <><span>·</span><span>{intake.dealValueRange}</span></>}
+                    {intake.industrySector && <><span>·</span><span>{intake.industrySector}</span></>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 3 }}>Deal Status</div>
+                    <div style={{
+                      padding: "4px 12px", borderRadius: 5,
+                      background: ragColor + "22", border: `1px solid ${ragColor}55`,
+                      fontSize: 10, fontWeight: 800, color: ragColor, letterSpacing: 0.5,
+                    }}>{ragLabels[rag]}</div>
+                  </div>
+                  <button
+                    onClick={() => window.print()}
+                    style={{
+                      padding: "6px 14px", borderRadius: 4, border: `1px solid ${C.border}`,
+                      background: "transparent", color: C.textMuted, fontSize: 10,
+                      cursor: "pointer", fontFamily: "inherit",
+                    }}
+                  >Print / PDF</button>
+                </div>
+              </div>
+
+              {/* KPI Row */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+                {[
+                  { label: "Total Items", value: totalActive, color: C.textMuted },
+                  { label: "Complete", value: complete, color: C.success },
+                  { label: "In Progress", value: inProgress, color: C.accent },
+                  { label: "Blocked", value: blocked, color: blocked > 0 ? C.danger : C.textMuted },
+                  { label: "Not Started", value: notStarted, color: C.textMuted },
+                  { label: "AI-Generated", value: aiItemCount, color: C.warning },
+                  { label: "Open Risks", value: openRisks, color: openRisks > 0 ? C.danger : C.textMuted },
+                ].map((kpi, i) => (
+                  <div key={i} style={{ padding: "12px", borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+                    <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4, textTransform: "uppercase", letterSpacing: 0.8 }}>{kpi.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Overall Progress Bar */}
+              <div style={{ padding: "14px 16px", borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 10 }}>
+                  <span style={{ color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, fontSize: 9 }}>Overall Completion</span>
+                  <span style={{ fontWeight: 800, color: ragColor, fontSize: 14 }}>{pctComplete}%</span>
+                </div>
+                <div style={{ width: "100%", height: 10, background: C.deepBlue, borderRadius: 5 }}>
+                  <div style={{ width: `${pctComplete}%`, height: "100%", borderRadius: 5, background: `linear-gradient(90deg, ${C.accent}, ${ragColor})`, transition: "width 0.5s" }} />
+                </div>
+                <div style={{ display: "flex", gap: 20, marginTop: 8, fontSize: 9, color: C.textMuted }}>
+                  <span style={{ color: C.success }}>■ Complete {complete}</span>
+                  <span style={{ color: C.accent }}>■ In Progress {inProgress}</span>
+                  <span style={{ color: blocked > 0 ? C.danger : C.textMuted }}>■ Blocked {blocked}</span>
+                  <span>■ Not Started {notStarted}</span>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* Workstream Health Table */}
+                <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                    Workstream Health
+                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                        {["Workstream", "Total", "Done", "Active", "Blocked", "%", "RAG"].map((h) => (
+                          <th key={h} style={{ padding: "4px 6px", textAlign: h === "Workstream" ? "left" : "center", color: C.textMuted, fontSize: 8, textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from(wsStats.entries()).map(([ws, stats]) => {
+                        const pct = stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
+                        const wsRagVal = wsRag.get(ws) ?? "amber";
+                        const wsRagColor = wsRagVal === "red" ? C.danger : wsRagVal === "green" ? C.success : C.warning;
+                        return (
+                          <tr key={ws} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                            <td style={{ padding: "5px 6px", fontSize: 9, color: C.text }}>{ws.split(" ")[0]}&nbsp;<span style={{ color: C.textMuted, fontSize: 8 }}>{ws.split(" ").slice(1, 3).join(" ")}</span></td>
+                            <td style={{ padding: "5px 6px", textAlign: "center", color: C.textMuted }}>{stats.total}</td>
+                            <td style={{ padding: "5px 6px", textAlign: "center", color: C.success }}>{stats.complete}</td>
+                            <td style={{ padding: "5px 6px", textAlign: "center", color: C.accent }}>{stats.inProgress}</td>
+                            <td style={{ padding: "5px 6px", textAlign: "center", color: stats.blocked > 0 ? C.danger : C.textMuted }}>{stats.blocked}</td>
+                            <td style={{ padding: "5px 6px", textAlign: "center", fontWeight: 700, color: wsRagColor }}>{pct}%</td>
+                            <td style={{ padding: "5px 6px", textAlign: "center" }}>
+                              <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: wsRagColor }} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Phase Breakdown + Risk Summary */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {/* Phase Progress */}
+                  <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                      Progress by Phase
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {phases.map((ph) => {
+                        const phItems = active.filter((i) => i.phase === ph);
+                        const phComplete = phItems.filter((i) => i.status === "complete").length;
+                        const phPct = phItems.length ? Math.round((phComplete / phItems.length) * 100) : 0;
+                        const phColor = phPct === 100 ? C.success : phPct > 50 ? C.accent : phItems.some((i) => i.status === "blocked") ? C.danger : C.warning;
+                        return (
+                          <div key={ph}>
+                            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3, fontSize: 9 }}>
+                              <span style={{ color: C.text, fontWeight: 600 }}>{PHASE_LABELS[ph]}</span>
+                              <span style={{ color: phColor, fontWeight: 700 }}>{phComplete}/{phItems.length} ({phPct}%)</span>
+                            </div>
+                            <div style={{ width: "100%", height: 6, background: C.deepBlue, borderRadius: 3 }}>
+                              <div style={{ width: `${phPct}%`, height: "100%", borderRadius: 3, background: phColor, transition: "width 0.5s" }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Risk Summary */}
+                  <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${criticalRisks > 0 ? C.danger + "44" : C.border}` }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10, color: C.textMuted }}>
+                      Risk Summary
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
+                      {[
+                        { label: "Critical", count: criticalRisks, color: C.danger },
+                        { label: "High", count: highRisks, color: C.warning },
+                        { label: "Open", count: openRisks, color: C.accent },
+                      ].map((r) => (
+                        <div key={r.label} style={{ textAlign: "center", padding: "8px 4px", borderRadius: 5, background: r.count > 0 ? r.color + "11" : C.deepBlue, border: `1px solid ${r.count > 0 ? r.color + "33" : C.border}` }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: r.count > 0 ? r.color : C.textMuted }}>{r.count}</div>
+                          <div style={{ fontSize: 8, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8 }}>{r.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {riskAlerts.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {riskAlerts.slice(0, 4).map((r) => (
+                          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 9 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: "50%", background: r.severity === "critical" ? C.danger : r.severity === "high" ? C.warning : C.accent, display: "inline-block", flexShrink: 0 }} />
+                            <span style={{ color: C.text }}>{RISK_LABELS[r.category]}</span>
+                            <span style={{ color: C.textMuted, marginLeft: "auto" }}>{r.status}</span>
+                          </div>
+                        ))}
+                        {riskAlerts.length > 4 && (
+                          <div style={{ fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>+{riskAlerts.length - 4} more risks — see Risks tab</div>
+                        )}
+                      </div>
+                    )}
+                    {riskAlerts.length === 0 && (
+                      <div style={{ fontSize: 10, color: C.success }}>✓ No material risks detected</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Critical Actions + Team */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* Top Priority Actions */}
+                <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${blocked > 0 ? C.danger + "33" : C.border}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                    Priority Actions Requiring Attention
+                  </div>
+                  {topPriority.length === 0 ? (
+                    <div style={{ fontSize: 10, color: C.success }}>✓ No critical or high priority items requiring immediate attention</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {topPriority.map((item) => {
+                        const itemColor = item.status === "blocked" ? C.danger : item.priority === "critical" ? C.danger : C.warning;
+                        const owner = deal.teamMembers.find((m) => m.id === item.ownerId);
+                        return (
+                          <div key={item.id} style={{ padding: "8px 10px", borderRadius: 5, background: C.deepBlue, border: `1px solid ${itemColor}22` }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: C.accent }}>{item.itemId}</span>
+                              <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: itemColor + "22", color: itemColor, fontWeight: 700, textTransform: "uppercase" }}>
+                                {item.status === "blocked" ? "BLOCKED" : item.priority}
+                              </span>
+                              <span style={{ fontSize: 8, color: C.textMuted }}>{PHASE_LABELS[item.phase]}</span>
+                              {owner && <span style={{ fontSize: 8, color: C.textMuted, marginLeft: "auto" }}>{owner.name}</span>}
+                            </div>
+                            <div style={{ fontSize: 10, color: C.text, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {item.description}
+                            </div>
+                            {item.status === "blocked" && item.blockedReason && (
+                              <div style={{ fontSize: 9, color: C.danger, marginTop: 2, fontStyle: "italic" }}>⚠ {item.blockedReason}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Team Coverage */}
+                <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                    Team Coverage — {deal.teamMembers.length} member{deal.teamMembers.length !== 1 ? "s" : ""}
+                  </div>
+                  {deal.teamMembers.length === 0 ? (
+                    <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>No team members added — go to Overview tab to add members</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {deal.teamMembers.map((m) => {
+                        const owned = checklistItems.filter((i) => i.ownerId === m.id && i.status !== "na");
+                        const ownedComplete = owned.filter((i) => i.status === "complete").length;
+                        const ownedBlocked = owned.filter((i) => i.status === "blocked").length;
+                        const ownedPct = owned.length ? Math.round((ownedComplete / owned.length) * 100) : 0;
+                        const roleColor = m.role ? ROLE_COLORS[m.role] : C.accent;
+                        return (
+                          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ width: 24, height: 24, borderRadius: "50%", background: `linear-gradient(135deg, ${roleColor}, ${roleColor}BB)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                              {m.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: C.text }}>{m.name}</span>
+                                {m.role && <span style={{ fontSize: 8, padding: "1px 4px", borderRadius: 3, background: roleColor + "22", color: roleColor, fontWeight: 700 }}>{m.role}</span>}
+                                {ownedBlocked > 0 && <span style={{ fontSize: 8, color: C.danger, fontWeight: 700 }}>{ownedBlocked} blocked</span>}
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{ flex: 1, height: 4, background: C.deepBlue, borderRadius: 2 }}>
+                                  <div style={{ width: `${ownedPct}%`, height: "100%", borderRadius: 2, background: roleColor }} />
+                                </div>
+                                <span style={{ fontSize: 9, color: C.textMuted, whiteSpace: "nowrap" }}>{ownedComplete}/{owned.length} items ({ownedPct}%)</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {itemsWithNotes > 0 && (
+                    <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 9, color: C.textMuted }}>
+                      {itemsWithNotes} item{itemsWithNotes !== 1 ? "s" : ""} have notes — see Checklist tab to review
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Milestones row */}
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                  Integration Milestones
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {milestones.map((ms, i) => {
+                    const msDate = new Date(ms.date);
+                    const daysOut = closeDate ? Math.round((msDate.getTime() - now.getTime()) / 86400000) : ms.daysFromClose;
+                    const isPast = daysOut < 0;
+                    const msColor = isPast ? C.success : daysOut < 30 ? C.warning : C.textMuted;
+                    return (
+                      <div key={i} style={{ flex: "1 1 140px", padding: "10px 12px", borderRadius: 6, background: C.deepBlue, border: `1px solid ${msColor}33`, textAlign: "center" }}>
+                        <div style={{ fontSize: 9, color: msColor, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>{ms.label}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: msColor }}>{isPast ? "Complete" : `${daysOut}d`}</div>
+                        <div style={{ fontSize: 9, color: C.textMuted, marginTop: 2 }}>{ms.date}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Footer note */}
+              <div style={{ fontSize: 9, color: C.muted, textAlign: "center" }}>
+                Report generated {new Date().toLocaleString()} · {intake.dealName} · M&A Integration Engine
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Footer */}
         <div style={{
           marginTop: 24, padding: "12px 0", borderTop: `1px solid ${C.border}`,
@@ -1399,6 +1782,9 @@ function ActionItemRow({
         <span style={{ fontSize: 9, fontWeight: 700, color: C.accent, whiteSpace: "nowrap" }}>{item.itemId}</span>
         {item.isAiGenerated && (
           <span style={{ fontSize: 8, padding: "0px 3px", borderRadius: 2, background: C.warning + "22", color: C.warning, fontWeight: 700 }}>AI</span>
+        )}
+        {(item.notes?.length ?? 0) > 0 && (
+          <span style={{ fontSize: 8, padding: "0px 3px", borderRadius: 2, background: C.success + "22", color: C.success, fontWeight: 700 }} title={`${item.notes.length} note${item.notes.length !== 1 ? "s" : ""}`}>{item.notes.length}✎</span>
         )}
       </div>
       {/* description + meta */}

@@ -343,6 +343,29 @@ export default function Home() {
     });
   }, []);
 
+  const handleUpdateRisk = useCallback((riskId: string, field: "severity" | "status", newValue: string, reason: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        riskAlerts: prev.riskAlerts.map((r) => {
+          if (r.id !== riskId) return r;
+          const override = {
+            id: generateId(),
+            changedAt: new Date().toISOString(),
+            field,
+            fromValue: String(r[field]),
+            toValue: newValue,
+            reason,
+          };
+          return { ...r, [field]: newValue as never, overrides: [...(r.overrides ?? []), override] };
+        }),
+      };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
   function handleReset() {
     clearSavedDeal();
     setSavedMeta(null);
@@ -400,6 +423,7 @@ export default function Home() {
         onUpdateBlockedReason={handleUpdateBlockedReason}
         onAcceptSuggestion={handleAcceptSuggestion}
         onDismissSuggestion={handleDismissSuggestion}
+        onUpdateRisk={handleUpdateRisk}
         onReset={handleReset}
       />
     );

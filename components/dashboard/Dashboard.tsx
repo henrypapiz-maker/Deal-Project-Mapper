@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, TeamMember, AISuggestion } from "@/lib/types";
+import type { GeneratedDeal, ChecklistItem, RiskAlert, RiskOverride, ItemStatus, TeamMember, AISuggestion, WorkstreamRole } from "@/lib/types";
 import { getKpis, getWorkstreamStats, getWorkstreamRag, getDealRag, type RagStatus } from "@/lib/decision-tree";
 import { exportChecklist, exportRisks, exportSummary } from "@/lib/export";
 
@@ -26,6 +26,37 @@ const RAG_COLOR: Record<string, string> = {
   green: "#10B981",
 };
 const RAG_LABEL: Record<string, string> = { red: "RED", amber: "AMBER", green: "GREEN" };
+
+const ALL_ROLES: WorkstreamRole[] = [
+  "Finance", "HR", "IT", "Commercial", "Technical Accounting",
+  "Legal", "Operations", "PMO", "Tax", "Treasury",
+];
+
+const ROLE_TO_WORKSTREAMS: Record<WorkstreamRole, string[]> = {
+  Finance: ["Consolidation & Reporting", "Operational Accounting", "FP&A & Baselining", "Treasury & Banking"],
+  HR: ["HR & Workforce Integration"],
+  IT: ["Cybersecurity & Data Privacy"],
+  Commercial: ["Integration Budget & PMO"],
+  "Technical Accounting": ["TSA Assessment & Exit", "Internal Controls & SOX", "Consolidation & Reporting"],
+  Legal: [],
+  Operations: ["ESG & Sustainability", "Facilities & Real Estate"],
+  PMO: ["Integration Budget & PMO"],
+  Tax: ["Income Tax & Compliance"],
+  Treasury: ["Treasury & Banking"],
+};
+
+const ROLE_COLORS: Record<WorkstreamRole, string> = {
+  Finance: "#3B82F6",
+  HR: "#10B981",
+  IT: "#8B5CF6",
+  Commercial: "#F59E0B",
+  "Technical Accounting": "#60A5FA",
+  Legal: "#94A3B8",
+  Operations: "#F97316",
+  PMO: "#EC4899",
+  Tax: "#EF4444",
+  Treasury: "#06B6D4",
+};
 
 const STRUCTURE_LABELS: Record<string, string> = {
   stock_purchase: "Stock Purchase",
@@ -70,10 +101,11 @@ interface Props {
   onUpdateBlockedReason: (itemId: string, reason: string) => void;
   onAcceptSuggestion: (suggestionId: string) => void;
   onDismissSuggestion: (suggestionId: string) => void;
+  onUpdateRisk: (riskId: string, field: "severity" | "status", newValue: string, reason: string) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onUpdateBlockedReason, onAcceptSuggestion, onDismissSuggestion, onUpdateRisk, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "actions" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -89,6 +121,8 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const [actionsNotStartedLimit, setActionsNotStartedLimit] = useState(25);
   const [actionsDoneExpanded, setActionsDoneExpanded] = useState(false);
   const [actionsFilterWs, setActionsFilterWs] = useState<string>("all");
+  const [newMemberRole, setNewMemberRole] = useState<WorkstreamRole | "">("");
+  const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -98,6 +132,11 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(t);
   }, []);
 
   const { intake, checklistItems, riskAlerts, milestones } = deal;
@@ -158,8 +197,13 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
     return true;
   });
 
-  const today = new Date();
   const closeDate = intake.closeDate ? new Date(intake.closeDate) : null;
+  const msToClose = closeDate ? closeDate.getTime() - now.getTime() : null;
+  const daysToClose = msToClose !== null ? Math.floor(msToClose / 86400000) : null;
+  const hoursToClose = msToClose !== null ? Math.floor((msToClose % 86400000) / 3600000) : null;
+  const minsToClose = msToClose !== null ? Math.floor((msToClose % 3600000) / 60000) : null;
+  const isClosePast = daysToClose !== null && daysToClose < 0;
+  const closeSoonColor = daysToClose !== null && daysToClose < 0 ? C.success : daysToClose !== null && daysToClose < 14 ? C.danger : daysToClose !== null && daysToClose < 30 ? C.warning : C.accent;
 
   return (
     <div style={{
@@ -216,6 +260,22 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
               )}
             </button>
           ))}
+          {/* Countdown chip */}
+          {daysToClose !== null && (
+            <div style={{
+              padding: "4px 10px", borderRadius: 4,
+              background: closeSoonColor + "22",
+              border: `1px solid ${closeSoonColor}44`,
+              fontSize: 10, fontWeight: 700, color: closeSoonColor,
+              letterSpacing: 0.5, whiteSpace: "nowrap",
+            }}>
+              {isClosePast
+                ? `Closed ${Math.abs(daysToClose)}d ago`
+                : daysToClose === 0
+                ? `Closes today`
+                : `${daysToClose}d ${hoursToClose}h to close`}
+            </div>
+          )}
           {/* Export dropdown */}
           <div ref={exportRef} style={{ position: "relative", marginLeft: 8 }}>
             <button
@@ -309,6 +369,68 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
         {/* ─── OVERVIEW TAB ─── */}
         {activeTab === "overview" && (
           <>
+            {/* Countdown Banner */}
+            {closeDate && (
+              <div style={{
+                padding: "16px 20px", borderRadius: 8, background: C.cardBg,
+                border: `1px solid ${closeSoonColor}44`, marginBottom: 16,
+                display: "flex", alignItems: "center", gap: 24,
+              }}>
+                {/* Digits */}
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  {isClosePast ? (
+                    <div style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 11, color: C.success, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>
+                        Deal Closed {Math.abs(daysToClose!)}d ago
+                      </div>
+                    </div>
+                  ) : (
+                    [
+                      { val: daysToClose!, label: "DAYS" },
+                      { val: Math.abs(hoursToClose!), label: "HRS" },
+                      { val: Math.abs(minsToClose!), label: "MIN" },
+                    ].map(({ val, label }) => (
+                      <div key={label} style={{ textAlign: "center", minWidth: 44 }}>
+                        <div style={{
+                          fontSize: 32, fontWeight: 800, lineHeight: 1,
+                          color: closeSoonColor,
+                          fontVariantNumeric: "tabular-nums",
+                        }}>{String(Math.max(0, val)).padStart(2, "0")}</div>
+                        <div style={{ fontSize: 8, color: C.textMuted, letterSpacing: 2, marginTop: 2 }}>{label}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {/* Label + progress bar */}
+                {!isClosePast && (
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 9, color: C.textMuted }}>
+                      <span style={{ textTransform: "uppercase", letterSpacing: 1 }}>
+                        {daysToClose! < 1 ? "CLOSES TODAY" : daysToClose! < 14 ? "CLOSES SOON" : "TO CLOSE DATE"} — {intake.closeDate}
+                      </span>
+                      <span style={{ color: closeSoonColor, fontWeight: 700 }}>
+                        {kpis.pctComplete}% complete
+                      </span>
+                    </div>
+                    <div style={{ width: "100%", height: 8, background: C.deepBlue, borderRadius: 4, position: "relative" }}>
+                      <div style={{
+                        height: "100%", borderRadius: 4, transition: "width 0.5s",
+                        background: `linear-gradient(90deg, ${C.accent}, ${closeSoonColor})`,
+                        width: `${kpis.pctComplete}%`,
+                      }} />
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: C.muted }}>
+                      <span>Day 1</span>
+                      <span>Day 30</span>
+                      <span>Day 60</span>
+                      <span>Day 90</span>
+                      <span>Year 1</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* KPI Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
@@ -329,6 +451,8 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16 }}>
+              {/* Left column: Workstream + Role Progress */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {/* Workstream Progress */}
               <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
@@ -381,6 +505,63 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                 </div>
               </div>
 
+              {/* Progress by Role */}
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                  Progress by Role
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {ALL_ROLES.map((role) => {
+                    const wsList = ROLE_TO_WORKSTREAMS[role];
+                    const members = deal.teamMembers.filter((m) => m.role === role);
+                    // aggregate stats across mapped workstreams
+                    let total = 0, complete = 0, blocked = 0;
+                    wsList.forEach((ws) => {
+                      const s = wsStats.get(ws);
+                      if (s) { total += s.total; complete += s.complete; blocked += s.blocked; }
+                    });
+                    const pct = total ? Math.round((complete / total) * 100) : null;
+                    const roleColor = ROLE_COLORS[role];
+                    return (
+                      <div key={role} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 6, height: 6, borderRadius: "50%", flexShrink: 0,
+                          background: roleColor,
+                        }} />
+                        <div style={{ width: 140, fontSize: 10, fontWeight: 600, color: C.text, flexShrink: 0 }}>{role}</div>
+                        {pct !== null ? (
+                          <>
+                            <div style={{ flex: 1, height: 5, background: C.deepBlue, borderRadius: 3 }}>
+                              <div style={{ width: `${pct}%`, height: "100%", background: roleColor, borderRadius: 3, transition: "width 0.5s" }} />
+                            </div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: roleColor, width: 30, textAlign: "right" }}>{pct}%</div>
+                          </>
+                        ) : (
+                          <div style={{ flex: 1, fontSize: 9, color: C.muted, fontStyle: "italic" }}>No workstreams mapped</div>
+                        )}
+                        {blocked > 0 && (
+                          <span style={{ fontSize: 9, color: C.danger, fontWeight: 700, whiteSpace: "nowrap" }}>{blocked} ✕</span>
+                        )}
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minWidth: 60, justifyContent: "flex-end" }}>
+                          {members.length === 0 ? (
+                            <span style={{ fontSize: 9, color: C.muted }}>—</span>
+                          ) : (
+                            members.map((m) => (
+                              <span key={m.id} style={{
+                                fontSize: 9, padding: "1px 5px", borderRadius: 10,
+                                background: roleColor + "22", color: roleColor,
+                                fontWeight: 600, whiteSpace: "nowrap",
+                              }}>{m.name.split(" ")[0]}</span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              </div>{/* end left column */}
+
               {/* Risk + Milestones Panel */}
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {/* Risk Register */}
@@ -407,7 +588,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                   {milestones.map((ms, i) => {
                     const msDate = new Date(ms.date);
                     const daysOut = closeDate
-                      ? Math.round((msDate.getTime() - today.getTime()) / 86400000)
+                      ? Math.round((msDate.getTime() - now.getTime()) / 86400000)
                       : ms.daysFromClose;
                     const isPast = daysOut < 0;
                     return (
@@ -581,22 +762,33 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
                 {deal.teamMembers.map((m) => {
                   const owned = deal.checklistItems.filter(i => i.ownerId === m.id && i.status !== "na").length;
+                  const roleColor = m.role ? ROLE_COLORS[m.role] : C.accent;
                   return (
                     <div key={m.id} style={{
                       display: "flex", alignItems: "center", gap: 8,
                       padding: "6px 10px", borderRadius: 6,
-                      background: C.deepBlue, border: `1px solid ${C.border}`,
+                      background: C.deepBlue,
+                      border: `1px solid ${m.role ? roleColor + "44" : C.border}`,
                     }}>
                       <div style={{
                         width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                        background: `linear-gradient(135deg, ${C.accent}, ${C.accentLight})`,
+                        background: `linear-gradient(135deg, ${roleColor}, ${roleColor}BB)`,
                         display: "flex", alignItems: "center", justifyContent: "center",
                         fontSize: 10, fontWeight: 700, color: "#fff",
                       }}>
                         {m.name.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{m.name}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.text }}>{m.name}</span>
+                          {m.role && (
+                            <span style={{
+                              fontSize: 8, padding: "1px 5px", borderRadius: 10,
+                              background: roleColor + "22", color: roleColor,
+                              fontWeight: 700, letterSpacing: 0.5,
+                            }}>{m.role}</span>
+                          )}
+                        </div>
                         <div style={{ fontSize: 9, color: C.textMuted }}>{m.email || "No email"} · {owned} item{owned !== 1 ? "s" : ""} owned</div>
                       </div>
                       <button
@@ -618,15 +810,14 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                 onChange={(e) => setNewMemberName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && newMemberName.trim()) {
-                    onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim() });
-                    setNewMemberName("");
-                    setNewMemberEmail("");
+                    onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim(), role: newMemberRole || undefined });
+                    setNewMemberName(""); setNewMemberEmail(""); setNewMemberRole("");
                   }
                 }}
                 style={{
                   padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`,
                   background: C.deepBlue, color: C.text, fontSize: 11,
-                  fontFamily: "inherit", width: 160, outline: "none",
+                  fontFamily: "inherit", width: 140, outline: "none",
                 }}
               />
               <input
@@ -635,23 +826,33 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                 onChange={(e) => setNewMemberEmail(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && newMemberName.trim()) {
-                    onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim() });
-                    setNewMemberName("");
-                    setNewMemberEmail("");
+                    onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim(), role: newMemberRole || undefined });
+                    setNewMemberName(""); setNewMemberEmail(""); setNewMemberRole("");
                   }
                 }}
                 style={{
                   padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`,
                   background: C.deepBlue, color: C.text, fontSize: 11,
-                  fontFamily: "inherit", width: 200, outline: "none",
+                  fontFamily: "inherit", width: 170, outline: "none",
                 }}
               />
+              <select
+                value={newMemberRole}
+                onChange={(e) => setNewMemberRole(e.target.value as WorkstreamRole | "")}
+                style={{
+                  padding: "6px 10px", borderRadius: 4, border: `1px solid ${newMemberRole ? ROLE_COLORS[newMemberRole as WorkstreamRole] + "88" : C.border}`,
+                  background: C.deepBlue, color: newMemberRole ? ROLE_COLORS[newMemberRole as WorkstreamRole] : C.textMuted,
+                  fontSize: 11, fontFamily: "inherit", fontWeight: newMemberRole ? 700 : 400,
+                }}
+              >
+                <option value="">— Role</option>
+                {ALL_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
               <button
                 onClick={() => {
                   if (!newMemberName.trim()) return;
-                  onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim() });
-                  setNewMemberName("");
-                  setNewMemberEmail("");
+                  onAddMember({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: newMemberName.trim(), email: newMemberEmail.trim(), role: newMemberRole || undefined });
+                  setNewMemberName(""); setNewMemberEmail(""); setNewMemberRole("");
                 }}
                 style={{
                   padding: "6px 14px", borderRadius: 4, border: "none",
@@ -661,7 +862,6 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
               >
                 + Add
               </button>
-              <span style={{ fontSize: 10, color: C.muted }}>All members have admin access</span>
             </div>
           </div>
         )}
@@ -1078,7 +1278,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
             {riskAlerts.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: 12 }}>
                 {riskAlerts.map((r) => (
-                  <RiskDetailCard key={r.id} risk={r} />
+                  <RiskDetailCard key={r.id} risk={r} onUpdateRisk={onUpdateRisk} />
                 ))}
               </div>
             ) : (
@@ -1408,26 +1608,166 @@ function BlockedItemCard({
   );
 }
 
-function RiskDetailCard({ risk }: { risk: RiskAlert }) {
+function RiskDetailCard({ risk, onUpdateRisk }: { risk: RiskAlert; onUpdateRisk: (riskId: string, field: "severity" | "status", newValue: string, reason: string) => void }) {
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideField, setOverrideField] = useState<"severity" | "status">("severity");
+  const [overrideValue, setOverrideValue] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  const [auditOpen, setAuditOpen] = useState(false);
+
+  const hasOverrides = (risk.overrides ?? []).length > 0;
   const borderColor = risk.severity === "critical" ? C.danger + "55" : risk.severity === "high" ? C.warning + "44" : C.border;
   const headerColor = risk.severity === "critical" ? C.danger : risk.severity === "high" ? C.warning : C.accent;
+
+  function submitOverride() {
+    if (!overrideValue || !overrideReason.trim()) return;
+    onUpdateRisk(risk.id, overrideField, overrideValue, overrideReason.trim());
+    setOverrideOpen(false);
+    setOverrideValue("");
+    setOverrideReason("");
+  }
+
   return (
     <div style={{ padding: 14, borderRadius: 8, background: C.cardBg, border: `1px solid ${borderColor}` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: headerColor }}>{RISK_LABELS[risk.category]}</span>
-        <SeverityBadge severity={risk.severity} />
+        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: headerColor }}>{RISK_LABELS[risk.category]}</span>
+          {hasOverrides && (
+            <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: C.warning + "22", color: C.warning, fontWeight: 700 }}>MODIFIED</span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <SeverityBadge severity={risk.severity} />
+          <span style={{
+            fontSize: 9, padding: "2px 7px", borderRadius: 4,
+            background: risk.status === "mitigated" || risk.status === "closed" ? C.success + "22" : risk.status === "acknowledged" ? C.accent + "22" : C.danger + "11",
+            color: risk.status === "mitigated" || risk.status === "closed" ? C.success : risk.status === "acknowledged" ? C.accent : C.muted,
+            fontWeight: 700, textTransform: "uppercase" as const,
+          }}>{risk.status}</span>
+        </div>
       </div>
       <div style={{ fontSize: 10, color: C.textMuted, lineHeight: 1.5, marginBottom: 10 }}>{risk.description}</div>
-      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, marginBottom: 8 }}>
+      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, marginBottom: 10 }}>
         <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>Mitigation</div>
         <div style={{ fontSize: 10, color: C.text, lineHeight: 1.6 }}>{risk.mitigation}</div>
       </div>
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
         <span style={{ fontSize: 9, color: C.textMuted }}>Affects:</span>
         {risk.affectedWorkstreams.map((ws) => (
           <span key={ws} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 3, background: C.accent + "18", color: C.accent }}>{ws.split(" ")[0]}</span>
         ))}
       </div>
+
+      {/* Override + Audit controls */}
+      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          onClick={() => { setOverrideOpen((o) => !o); setOverrideValue(""); setOverrideReason(""); }}
+          style={{
+            fontSize: 9, padding: "2px 8px", borderRadius: 3, cursor: "pointer",
+            background: overrideOpen ? C.warning + "22" : "transparent",
+            border: `1px solid ${overrideOpen ? C.warning : C.border}`,
+            color: overrideOpen ? C.warning : C.textMuted, fontFamily: "inherit",
+          }}
+        >
+          {overrideOpen ? "Cancel Override" : "Override ↓"}
+        </button>
+        {hasOverrides && (
+          <button
+            onClick={() => setAuditOpen((o) => !o)}
+            style={{
+              fontSize: 9, padding: "2px 8px", borderRadius: 3, cursor: "pointer",
+              background: "transparent", border: `1px solid ${C.border}`,
+              color: C.textMuted, fontFamily: "inherit",
+            }}
+          >
+            Audit Log ({risk.overrides!.length})
+          </button>
+        )}
+      </div>
+
+      {/* Override form */}
+      {overrideOpen && (
+        <div style={{
+          marginTop: 10, padding: 10, borderRadius: 6,
+          background: C.deepBlue, border: `1px solid ${C.warning}33`,
+        }}>
+          <div style={{ fontSize: 9, color: C.warning, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+            Manual Override
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <select
+              value={overrideField}
+              onChange={(e) => { setOverrideField(e.target.value as "severity" | "status"); setOverrideValue(""); }}
+              style={{ padding: "4px 8px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.navy, color: C.text, fontSize: 10, fontFamily: "inherit" }}
+            >
+              <option value="severity">Severity</option>
+              <option value="status">Status</option>
+            </select>
+            <select
+              value={overrideValue}
+              onChange={(e) => setOverrideValue(e.target.value)}
+              style={{ padding: "4px 8px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.navy, color: C.text, fontSize: 10, fontFamily: "inherit" }}
+            >
+              <option value="">— Select new value</option>
+              {overrideField === "severity"
+                ? ["critical", "high", "medium", "low"].map((v) => (
+                    <option key={v} value={v} disabled={v === risk.severity}>{v}{v === risk.severity ? " (current)" : ""}</option>
+                  ))
+                : ["open", "acknowledged", "mitigated", "closed"].map((v) => (
+                    <option key={v} value={v} disabled={v === risk.status}>{v}{v === risk.status ? " (current)" : ""}</option>
+                  ))
+              }
+            </select>
+          </div>
+          <input
+            placeholder="Reason for override (required)"
+            value={overrideReason}
+            onChange={(e) => setOverrideReason(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") submitOverride(); }}
+            style={{
+              width: "100%", padding: "5px 8px", borderRadius: 3,
+              border: `1px solid ${overrideReason.trim() ? C.accent + "66" : C.border}`,
+              background: C.navy, color: C.text, fontSize: 10,
+              fontFamily: "inherit", outline: "none", boxSizing: "border-box" as const,
+            }}
+          />
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button
+              onClick={submitOverride}
+              disabled={!overrideValue || !overrideReason.trim()}
+              style={{
+                padding: "4px 12px", borderRadius: 3, border: "none", cursor: "pointer",
+                background: overrideValue && overrideReason.trim() ? C.warning : C.muted,
+                color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: "inherit",
+                opacity: overrideValue && overrideReason.trim() ? 1 : 0.5,
+              }}
+            >Apply Override</button>
+          </div>
+        </div>
+      )}
+
+      {/* Audit log */}
+      {auditOpen && hasOverrides && (
+        <div style={{ marginTop: 10, padding: 10, borderRadius: 6, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 9, color: C.textMuted, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+            Override Audit Log
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {(risk.overrides ?? []).map((o: RiskOverride) => (
+              <div key={o.id} style={{ padding: "6px 8px", borderRadius: 4, background: C.navy, fontSize: 9 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
+                  <span style={{ color: C.textMuted }}>{new Date(o.changedAt).toLocaleString()}</span>
+                  <span style={{ color: C.accent, fontWeight: 700, textTransform: "uppercase" }}>{o.field}</span>
+                  <span style={{ color: C.muted }}>{o.fromValue}</span>
+                  <span style={{ color: C.textMuted }}>→</span>
+                  <span style={{ color: C.warning, fontWeight: 700 }}>{o.toValue}</span>
+                </div>
+                <div style={{ color: C.text, fontStyle: "italic" }}>{o.reason}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

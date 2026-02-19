@@ -18,6 +18,18 @@ export type DealStatus = "pre_close" | "active" | "complete" | "archived";
 
 export type Priority = "critical" | "high" | "medium" | "low";
 
+export type WorkstreamRole =
+  | "Finance"
+  | "HR"
+  | "IT"
+  | "Commercial"
+  | "Technical Accounting"
+  | "Legal"
+  | "Operations"
+  | "PMO"
+  | "Tax"
+  | "Treasury";
+
 export type ItemStatus =
   | "not_started"
   | "in_progress"
@@ -104,6 +116,15 @@ export interface ChecklistItem {
 // ============================================================
 // Risk Alert
 // ============================================================
+export interface RiskOverride {
+  id: string;
+  changedAt: string;
+  field: "severity" | "status";
+  fromValue: string;
+  toValue: string;
+  reason: string;
+}
+
 export interface RiskAlert {
   id: string;
   category: RiskCategory;
@@ -112,15 +133,17 @@ export interface RiskAlert {
   mitigation: string;
   affectedWorkstreams: Workstream[];
   status: "open" | "acknowledged" | "mitigated" | "closed";
+  overrides?: RiskOverride[];
 }
 
 // ============================================================
-// Team Member (all admin — no role differentiation yet)
+// Team Member
 // ============================================================
 export interface TeamMember {
   id: string;
   name: string;
   email: string;
+  role?: WorkstreamRole;
 }
 
 // ============================================================

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, TeamMember } from "@/lib/types";
+import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, TeamMember, AISuggestion } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 import { exportChecklist, exportRisks, exportSummary } from "@/lib/export";
 
@@ -60,10 +60,12 @@ interface Props {
   onUpdateOwner: (itemId: string, ownerId: string | undefined) => void;
   onAddMember: (member: TeamMember) => void;
   onRemoveMember: (memberId: string) => void;
+  onAcceptSuggestion: (suggestionId: string) => void;
+  onDismissSuggestion: (suggestionId: string) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMember, onRemoveMember, onAcceptSuggestion, onDismissSuggestion, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -75,6 +77,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const exportRef = useRef<HTMLDivElement>(null);
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [itemSuggestions, setItemSuggestions] = useState<AISuggestion[]>([]);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -89,11 +92,19 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
   const wsStats = getWorkstreamStats(checklistItems);
+  const pendingSuggestions = (deal.aiSuggestions ?? []).filter((s) => s.status === "pending");
+  const pendingDealSuggestions = pendingSuggestions.filter((s) => s.source === "deal_intake");
+  const pendingItemSuggestions = pendingSuggestions.filter((s) => s.source === "item_update");
 
   async function fetchGuidance(item: ChecklistItem) {
     setSelectedItem(item);
     setGuidanceText("");
     setGuidanceLoading(true);
+    // Surface any pending item-level suggestions for this item
+    const forItem = (deal.aiSuggestions ?? []).filter(
+      (s) => s.source === "item_update" && s.triggerItemId === item.itemId && s.status === "pending"
+    );
+    setItemSuggestions(forItem);
     try {
       const res = await fetch("/api/ai-guidance", {
         method: "POST",
@@ -169,7 +180,17 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
               background: activeTab === tab ? C.accent : "transparent",
               color: activeTab === tab ? "#fff" : C.textMuted,
               fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase",
-            }}>{tab}</button>
+              position: "relative",
+            }}>
+              {tab}
+              {tab === "overview" && pendingSuggestions.length > 0 && (
+                <span style={{
+                  position: "absolute", top: 2, right: 2,
+                  width: 7, height: 7, borderRadius: "50%",
+                  background: C.warning, display: "block",
+                }} />
+              )}
+            </button>
           ))}
           {/* Export dropdown */}
           <div ref={exportRef} style={{ position: "relative", marginLeft: 8 }}>
@@ -371,6 +392,37 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
           </>
         )}
 
+        {/* ─── AI CONSIDERATIONS PANEL (overview) ─── */}
+        {activeTab === "overview" && pendingSuggestions.length > 0 && (
+          <div style={{ marginTop: 16, padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.warning}44` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: C.warning }}>
+                AI Considerations — {pendingSuggestions.length} pending
+              </div>
+              <div style={{ fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>
+                {pendingDealSuggestions.length > 0 && `${pendingDealSuggestions.length} from deal profile`}
+                {pendingDealSuggestions.length > 0 && pendingItemSuggestions.length > 0 && " · "}
+                {pendingItemSuggestions.length > 0 && `${pendingItemSuggestions.length} from checklist execution`}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pendingSuggestions.map((s) => (
+                <SuggestionCard
+                  key={s.id}
+                  suggestion={s}
+                  onAccept={() => onAcceptSuggestion(s.id)}
+                  onDismiss={() => onDismissSuggestion(s.id)}
+                />
+              ))}
+            </div>
+            {(deal.aiSuggestions ?? []).filter((s) => s.status === "accepted").length > 0 && (
+              <div style={{ marginTop: 10, fontSize: 9, color: C.success }}>
+                ✓ {(deal.aiSuggestions ?? []).filter((s) => s.status === "accepted").length} consideration{(deal.aiSuggestions ?? []).filter((s) => s.status === "accepted").length !== 1 ? "s" : ""} accepted and added to checklist
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ─── TEAM TAB (shown as panel inside overview) ─── */}
         {activeTab === "overview" && (
           <div style={{ marginTop: 16, padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
@@ -529,7 +581,15 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                             cursor: "pointer",
                           }}
                         >
-                          <td style={{ padding: "6px", fontWeight: 700, color: C.accent, whiteSpace: "nowrap" }}>{item.itemId}</td>
+                          <td style={{ padding: "6px", fontWeight: 700, color: C.accent, whiteSpace: "nowrap" }}>
+                            {item.itemId}
+                            {item.isAiGenerated && (
+                              <span style={{
+                                marginLeft: 4, fontSize: 8, padding: "1px 4px", borderRadius: 3,
+                                background: C.warning + "22", color: C.warning, fontWeight: 700,
+                              }}>AI</span>
+                            )}
+                          </td>
                           <td style={{ padding: "6px", color: C.textMuted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
                           <td style={{ padding: "6px", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</td>
                           <td style={{ padding: "6px" }}>
@@ -615,7 +675,31 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
                       <div style={{ fontSize: 10, color: C.textMuted }}>Click &quot;AI →&quot; on any row or click a row to load guidance.</div>
                     )}
                   </div>
-                  <button onClick={() => setSelectedItem(null)} style={{ marginTop: 12, fontSize: 10, color: C.textMuted, background: "transparent", border: "none", cursor: "pointer" }}>
+                  {itemSuggestions.length > 0 && (
+                    <div style={{ marginTop: 14, borderTop: `1px solid ${C.warning}44`, paddingTop: 12 }}>
+                      <div style={{ fontSize: 9, color: C.warning, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+                        Consider Adding to Workstream ({itemSuggestions.length})
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {itemSuggestions.map((s) => (
+                          <SuggestionCard
+                            key={s.id}
+                            suggestion={s}
+                            compact
+                            onAccept={() => {
+                              onAcceptSuggestion(s.id);
+                              setItemSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+                            }}
+                            onDismiss={() => {
+                              onDismissSuggestion(s.id);
+                              setItemSuggestions((prev) => prev.filter((x) => x.id !== s.id));
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <button onClick={() => { setSelectedItem(null); setItemSuggestions([]); }} style={{ marginTop: 12, fontSize: 10, color: C.textMuted, background: "transparent", border: "none", cursor: "pointer" }}>
                     ✕ Close
                   </button>
                 </div>
@@ -808,6 +892,97 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdateOwner, onAddMe
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────
+
+const PHASE_LABELS_SHORT: Record<string, string> = {
+  pre_close: "Pre-Close",
+  day_1: "Day 1",
+  day_30: "Day 30",
+  day_60: "Day 60",
+  day_90: "Day 90",
+  year_1: "Year 1",
+};
+
+function SuggestionCard({
+  suggestion,
+  compact = false,
+  onAccept,
+  onDismiss,
+}: {
+  suggestion: AISuggestion;
+  compact?: boolean;
+  onAccept: () => void;
+  onDismiss: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const priorityColor =
+    suggestion.priority === "critical"
+      ? C.danger
+      : suggestion.priority === "high"
+      ? C.warning
+      : C.accent;
+
+  return (
+    <div style={{
+      padding: compact ? "8px 10px" : "10px 12px",
+      borderRadius: 6,
+      background: C.deepBlue,
+      border: `1px solid ${C.warning}33`,
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginBottom: 3 }}>
+            <span style={{ fontSize: compact ? 9 : 10, fontWeight: 700, color: C.text }}>{suggestion.description}</span>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 9, color: C.textMuted }}>{suggestion.workstream.split(" ")[0]}</span>
+            <span style={{ fontSize: 9, color: priorityColor, fontWeight: 700, textTransform: "uppercase" }}>{suggestion.priority}</span>
+            <span style={{ fontSize: 9, color: C.textMuted }}>{PHASE_LABELS_SHORT[suggestion.phase]}</span>
+            {suggestion.source === "item_update" && suggestion.triggerItemId && (
+              <span style={{ fontSize: 9, color: C.muted }}>← {suggestion.triggerItemId}</span>
+            )}
+          </div>
+          {expanded && (
+            <div style={{ marginTop: 6, fontSize: 10, color: C.textMuted, lineHeight: 1.5, fontStyle: "italic" }}>
+              {suggestion.rationale}
+            </div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            style={{
+              padding: "2px 6px", borderRadius: 3, border: `1px solid ${C.border}`,
+              background: "transparent", color: C.textMuted, fontSize: 9, cursor: "pointer",
+            }}
+            title="Show rationale"
+          >
+            {expanded ? "▲" : "Why?"}
+          </button>
+          <button
+            onClick={onAccept}
+            style={{
+              padding: "2px 8px", borderRadius: 3, border: "none",
+              background: C.success + "22", color: C.success,
+              fontSize: 9, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            + Add
+          </button>
+          <button
+            onClick={onDismiss}
+            style={{
+              padding: "2px 6px", borderRadius: 3, border: "none",
+              background: "transparent", color: C.muted,
+              fontSize: 9, cursor: "pointer",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function RiskCard({ risk }: { risk: RiskAlert }) {
   const [expanded, setExpanded] = useState(false);

@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus, TeamMember } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, TeamMember, AISuggestion, Phase, Priority, Workstream } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
 
 const STORAGE_KEY = "mae_current_deal";
@@ -11,9 +11,73 @@ const STORAGE_KEY = "mae_current_deal";
 function loadSavedDeal(): GeneratedDeal | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as GeneratedDeal) : null;
+    if (!raw) return null;
+    const deal = JSON.parse(raw) as GeneratedDeal;
+    // Backfill field added after initial release
+    if (!deal.aiSuggestions) deal.aiSuggestions = [];
+    return deal;
   } catch {
     return null;
+  }
+}
+
+function generateId(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+async function fetchDealSuggestions(intake: DealIntake): Promise<AISuggestion[]> {
+  try {
+    const res = await fetch("/api/ai-considerations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "deal", intake }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw = data.suggestions ?? [];
+    return raw.map((s: { workstream: string; description: string; rationale: string; phase: string; priority: string }) => ({
+      id: generateId(),
+      source: "deal_intake" as const,
+      workstream: s.workstream as Workstream,
+      description: s.description,
+      rationale: s.rationale,
+      phase: s.phase as Phase,
+      priority: s.priority as Priority,
+      status: "pending" as const,
+      suggestedAt: new Date().toISOString(),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchItemSuggestions(
+  item: { itemId: string; workstream: string; description: string; status: string; blockedReason?: string; notes: string[] },
+  dealContext: DealIntake
+): Promise<AISuggestion[]> {
+  try {
+    const res = await fetch("/api/ai-considerations", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: "item", item, dealContext }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const raw = data.suggestions ?? [];
+    return raw.map((s: { workstream: string; description: string; rationale: string; phase: string; priority: string }) => ({
+      id: generateId(),
+      source: "item_update" as const,
+      triggerItemId: item.itemId,
+      workstream: s.workstream as Workstream,
+      description: s.description,
+      rationale: s.rationale,
+      phase: s.phase as Phase,
+      priority: s.priority as Priority,
+      status: "pending" as const,
+      suggestedAt: new Date().toISOString(),
+    }));
+  } catch {
+    return [];
   }
 }
 
@@ -111,15 +175,24 @@ export default function Home() {
 
   function handleIntakeSubmit(intake: DealIntake) {
     setAppState("generating");
-    // 1.2s UX delay, then run decision tree + persist to Neon
     setTimeout(async () => {
       const generated = generateDeal(intake);
-      // Persist to Neon; if unavailable just continue without dealId
-      const dealId = await dbCreate(generated);
-      const dealWithId: GeneratedDeal = dealId ? { ...generated, dealId } : generated;
+      const base: GeneratedDeal = { ...generated, aiSuggestions: [] };
+      const dealId = await dbCreate(base);
+      const dealWithId: GeneratedDeal = dealId ? { ...base, dealId } : base;
       setDeal(dealWithId);
       setSavedMeta({ name: dealWithId.intake.dealName, savedAt: new Date(dealWithId.generatedAt).toLocaleDateString() });
       setAppState("dashboard");
+      // Fire deal-level AI considerations async — update deal when they arrive
+      fetchDealSuggestions(intake).then((suggestions) => {
+        if (suggestions.length === 0) return;
+        setDeal((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, aiSuggestions: [...prev.aiSuggestions, ...suggestions] };
+          saveDeal(updated);
+          return updated;
+        });
+      });
     }, 1200);
   }
 
@@ -133,6 +206,39 @@ export default function Home() {
         ),
       };
       saveDeal(updated);
+      // Fire item-level AI considerations when moving to in_progress or complete
+      if (status === "in_progress" || status === "complete" || status === "blocked") {
+        const targetItem = updated.checklistItems.find((i) => i.id === itemId);
+        if (targetItem) {
+          fetchItemSuggestions(
+            {
+              itemId: targetItem.itemId,
+              workstream: targetItem.workstream,
+              description: targetItem.description,
+              status: targetItem.status,
+              blockedReason: targetItem.blockedReason,
+              notes: targetItem.notes,
+            },
+            updated.intake
+          ).then((suggestions) => {
+            if (suggestions.length === 0) return;
+            setDeal((current) => {
+              if (!current) return current;
+              // Deduplicate: skip suggestions already pending for this trigger item
+              const existingForItem = new Set(
+                current.aiSuggestions
+                  .filter((s) => s.triggerItemId === targetItem.itemId && s.status === "pending")
+                  .map((s) => s.description)
+              );
+              const fresh = suggestions.filter((s) => !existingForItem.has(s.description));
+              if (fresh.length === 0) return current;
+              const withNew = { ...current, aiSuggestions: [...current.aiSuggestions, ...fresh] };
+              saveDeal(withNew);
+              return withNew;
+            });
+          });
+        }
+      }
       return updated;
     });
   }, []);
@@ -168,6 +274,54 @@ export default function Home() {
         ...prev,
         checklistItems: prev.checklistItems.map((item) =>
           item.id === itemId ? { ...item, ownerId } : item
+        ),
+      };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
+  const handleAcceptSuggestion = useCallback((suggestionId: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const suggestion = prev.aiSuggestions.find((s) => s.id === suggestionId);
+      if (!suggestion) return prev;
+      const newItem = {
+        id: generateId(),
+        itemId: `AI-${generateId().slice(0, 6).toUpperCase()}`,
+        workstream: suggestion.workstream,
+        section: "AI-Generated Consideration",
+        description: suggestion.description,
+        phase: suggestion.phase,
+        milestoneDate: undefined,
+        priority: suggestion.priority,
+        status: "not_started" as ItemStatus,
+        dependencies: [],
+        tsaRelevant: false,
+        crossBorderFlag: false,
+        riskIndicators: [],
+        notes: [`Rationale: ${suggestion.rationale}`],
+        isAiGenerated: true,
+      };
+      const updated = {
+        ...prev,
+        checklistItems: [...prev.checklistItems, newItem],
+        aiSuggestions: prev.aiSuggestions.map((s) =>
+          s.id === suggestionId ? { ...s, status: "accepted" as const } : s
+        ),
+      };
+      saveDeal(updated);
+      return updated;
+    });
+  }, []);
+
+  const handleDismissSuggestion = useCallback((suggestionId: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const updated = {
+        ...prev,
+        aiSuggestions: prev.aiSuggestions.map((s) =>
+          s.id === suggestionId ? { ...s, status: "dismissed" as const } : s
         ),
       };
       saveDeal(updated);
@@ -229,6 +383,8 @@ export default function Home() {
         onUpdateOwner={handleUpdateOwner}
         onAddMember={handleAddMember}
         onRemoveMember={handleRemoveMember}
+        onAcceptSuggestion={handleAcceptSuggestion}
+        onDismissSuggestion={handleDismissSuggestion}
         onReset={handleReset}
       />
     );

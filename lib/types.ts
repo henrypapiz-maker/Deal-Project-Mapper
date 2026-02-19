@@ -98,6 +98,7 @@ export interface ChecklistItem {
   notes: string[];
   blockedReason?: string;
   naJustification?: string;
+  isAiGenerated?: boolean; // true if accepted from AISuggestion
 }
 
 // ============================================================
@@ -133,6 +134,7 @@ export interface GeneratedDeal {
   workstreamSummary: WorkstreamSummary[];
   milestones: Milestone[];
   teamMembers: TeamMember[];
+  aiSuggestions: AISuggestion[];
   generatedAt: string;
 }
 
@@ -149,6 +151,25 @@ export interface Milestone {
   label: string;
   date: string;
   daysFromClose: number;
+}
+
+// ============================================================
+// AI Suggestions (two-trigger model)
+// ============================================================
+export type SuggestionSource = "deal_intake" | "item_update";
+export type SuggestionStatus = "pending" | "accepted" | "dismissed";
+
+export interface AISuggestion {
+  id: string;
+  source: SuggestionSource;
+  triggerItemId?: string; // item_update source only
+  workstream: Workstream;
+  description: string;
+  rationale: string;
+  phase: Phase;
+  priority: Priority;
+  status: SuggestionStatus;
+  suggestedAt: string;
 }
 
 // ============================================================

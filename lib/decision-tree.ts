@@ -259,6 +259,7 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
     workstreamSummary,
     milestones,
     teamMembers: [],
+    aiSuggestions: [],
     generatedAt: new Date().toISOString(),
   };
 }

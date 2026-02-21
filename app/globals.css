@@ -2,21 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --navy: #0F1B2D;
-  --deep-blue: #1B2A4A;
-  --mid-blue: #2D4A7A;
-  --accent: #3B82F6;
-  --accent-light: #60A5FA;
-  --success: #10B981;
-  --warning: #F59E0B;
-  --danger: #EF4444;
-  --card-bg: #1E293B;
-  --border: #334155;
-  --text: #F1F5F9;
-  --text-muted: #94A3B8;
+  /* Sidebar */
+  --sidebar-bg: #192819;
+  --sidebar-hover: #243824;
+  --sidebar-active: #2e4a2e;
+  --sidebar-border: #2a3f2a;
+  --sidebar-text: #d1f0d1;
+  --sidebar-muted: #6b9a6b;
+
+  /* Content area */
+  --content-bg: #f0f4f0;
+  --card-bg: #ffffff;
+  --card-border: #e2e8e2;
+
+  /* Brand green */
+  --green: #22c55e;
+  --green-dark: #16a34a;
+  --green-light: #bbf7d0;
+  --green-faint: #f0fdf4;
+
+  /* Status */
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --accent: #2563eb;
+
+  /* Text */
+  --text: #111827;
+  --text-muted: #6b7280;
+  --text-light: #9ca3af;
+
+  --border: #e2e8e2;
 }
 
 * {
@@ -25,23 +44,15 @@
   margin: 0;
 }
 
-html,
-body {
+html, body {
   max-width: 100vw;
   overflow-x: hidden;
-  background: var(--navy);
+  background: var(--content-bg);
   color: var(--text);
-  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--navy);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--mid-blue);
-  border-radius: 3px;
-}
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c1d4c1; border-radius: 3px; }

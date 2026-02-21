@@ -56,3 +56,43 @@ html, body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #c1d4c1; border-radius: 3px; }
+
+/* ─── Focus styles — keyboard navigation ─── */
+:focus-visible {
+  outline: 2px solid #22c55e;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ─── Animations ─── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes toastSlideIn {
+  from { transform: translateX(110%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.75; }
+}
+
+/* ─── Responsive — mobile ─── */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    z-index: 200;
+    width: 240px !important;
+    transition: transform 0.25s ease;
+  }
+  .sidebar-closed { transform: translateX(-100%); }
+  .sidebar-open   { transform: translateX(0); box-shadow: 4px 0 24px rgba(0,0,0,0.45); }
+  .hamburger      { display: flex !important; }
+  .kpi-grid       { grid-template-columns: repeat(2, 1fr) !important; }
+  .overview-grid  { grid-template-columns: 1fr !important; }
+  .checklist-grid { grid-template-columns: 1fr !important; }
+}

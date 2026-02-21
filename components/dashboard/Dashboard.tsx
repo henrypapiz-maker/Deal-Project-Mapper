@@ -64,9 +64,10 @@ interface Props {
   onUpdateStatus: (itemId: string, status: ItemStatus) => void;
   onReset: () => void;
   onTabChange: (tab: string) => void;
+  onToast?: (msg: string, color?: string) => void;
 }
 
-export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, onTabChange }: Props) {
+export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, onTabChange, onToast }: Props) {
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [guidanceText, setGuidanceText] = useState<string>("");
@@ -184,12 +185,13 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
 
       {/* Scrollable content */}
       <div style={{ flex: 1, overflowY: "auto", padding: "24px 32px" }}>
+        <div key={activeTab} style={{ animation: "fadeInUp 0.2s ease-out" }}>
 
         {/* ─── OVERVIEW ─── */}
         {activeTab === "overview" && (
           <>
             {/* KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
                 { label: "Overall Progress", value: `${kpis.pctComplete}%`, sub: `${kpis.complete} of ${kpis.total} complete`, color: C.green, bg: C.greenBg, border: C.greenBorder },
                 { label: "In Progress", value: kpis.inProgress, sub: "items active", color: C.accent, bg: C.accentBg, border: "#bfdbfe" },
@@ -207,7 +209,7 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
               ))}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
+            <div className="overview-grid" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
               {/* Workstream Progress */}
               <div style={{ padding: 20, borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 14 }}>
@@ -339,7 +341,7 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: selectedItem ? "1fr 340px" : "1fr", gap: 16 }}>
+            <div className="checklist-grid" style={{ display: "grid", gridTemplateColumns: selectedItem ? "1fr 340px" : "1fr", gap: 16 }}>
               {/* Table */}
               <div style={{ borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -397,7 +399,11 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
                               value={item.status}
                               onChange={(e) => {
                                 e.stopPropagation();
-                                onUpdateStatus(item.id, e.target.value as ItemStatus);
+                                const next = e.target.value as ItemStatus;
+                                onUpdateStatus(item.id, next);
+                                const labels: Record<string, string> = { not_started: "Not Started", in_progress: "In Progress", blocked: "Blocked", complete: "Complete" };
+                                const color = next === "complete" ? C.green : next === "blocked" ? C.danger : next === "in_progress" ? C.accent : C.light;
+                                onToast?.(`${item.itemId}: ${labels[next]}`, color);
                               }}
                               onClick={(e) => e.stopPropagation()}
                               style={{
@@ -449,7 +455,16 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
                   </div>
                   <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
                     {guidanceLoading ? (
-                      <div style={{ fontSize: 12, color: C.muted }}>Generating guidance…</div>
+                      <div>
+                        {[100, 82, 95, 68, 88, 75].map((w, i) => (
+                          <div key={i} style={{
+                            height: 10, borderRadius: 4, background: "#e5e7eb",
+                            width: `${w}%`, marginBottom: 10,
+                            animation: `skeletonPulse 1.5s ${i * 0.12}s ease-in-out infinite`,
+                          }} />
+                        ))}
+                        <div style={{ fontSize: 11, color: C.light, marginTop: 4 }}>Claude is generating guidance…</div>
+                      </div>
                     ) : guidanceText ? (
                       <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{guidanceText}</div>
                     ) : (
@@ -601,6 +616,7 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
           <span>DealMapper · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
           <span>{deal.checklistItems.filter(i => i.status !== "na").length} active items · Powered by Claude AI</span>
         </div>
+        </div>{/* end animated tab wrapper */}
       </div>
     </div>
   );

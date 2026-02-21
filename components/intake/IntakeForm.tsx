@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { DealIntake, DealStructure, IntegrationModel, TsaRequired } from "@/lib/types";
 
 const COLORS = {
@@ -92,10 +92,25 @@ const EMPTY_INTAKE: DealIntake = {
   buyerMaturity: "occasional",
 };
 
+const STORAGE_KEY = "deal-intake-draft";
+
 export default function IntakeForm({ onSubmit }: Props) {
   const [tier, setTier] = useState<1 | 2 | 3>(1);
   const [form, setForm] = useState<DealIntake>(EMPTY_INTAKE);
   const [errors, setErrors] = useState<Partial<Record<keyof DealIntake, string>>>({});
+
+  // Restore saved draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setForm(JSON.parse(saved));
+    } catch { /* ignore */ }
+  }, []);
+
+  // Persist draft on every change
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(form)); } catch { /* ignore */ }
+  }, [form]);
 
   function set<K extends keyof DealIntake>(key: K, value: DealIntake[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -130,6 +145,7 @@ export default function IntakeForm({ onSubmit }: Props) {
   }
 
   function handleSubmit() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
     onSubmit(form);
   }
 
@@ -179,8 +195,9 @@ export default function IntakeForm({ onSubmit }: Props) {
       {/* ===== TIER 1 ===== */}
       {tier === 1 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          <Field label="Deal Code Name" required error={errors.dealName}>
+          <Field label="Deal Code Name" required error={errors.dealName} fieldId="dealName">
             <input
+              id="dealName"
               type="text"
               value={form.dealName}
               onChange={(e) => set("dealName", e.target.value)}
@@ -218,8 +235,9 @@ export default function IntakeForm({ onSubmit }: Props) {
             </div>
           </Field>
 
-          <Field label="Target Close Date" required error={errors.closeDate}>
+          <Field label="Target Close Date" required error={errors.closeDate} fieldId="closeDate">
             <input
+              id="closeDate"
               type="date"
               value={form.closeDate}
               onChange={(e) => set("closeDate", e.target.value)}
@@ -464,14 +482,14 @@ export default function IntakeForm({ onSubmit }: Props) {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Field({
-  label, required, hint, error, children
+  label, required, hint, error, children, fieldId
 }: {
-  label: string; required?: boolean; hint?: string; error?: string; children: React.ReactNode;
+  label: string; required?: boolean; hint?: string; error?: string; children: React.ReactNode; fieldId?: string;
 }) {
   return (
     <div>
       <div style={{ marginBottom: 8 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: COLORS.textMuted }}>
+        <label htmlFor={fieldId} style={{ fontSize: 12, fontWeight: 600, color: COLORS.textMuted }}>
           {label}{required && <span style={{ color: COLORS.danger, marginLeft: 2 }}>*</span>}
         </label>
         {hint && <div style={{ fontSize: 11, color: COLORS.textLight, marginTop: 2 }}>{hint}</div>}
@@ -487,13 +505,16 @@ function SelectCard({
 }: {
   label: string; desc: string; selected: boolean; onClick: () => void; warning?: string;
 }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <button
       onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         padding: "12px 14px", borderRadius: 8, border: `2px solid`,
-        borderColor: selected ? COLORS.accent : COLORS.border,
-        background: selected ? COLORS.accentBg : COLORS.card,
+        borderColor: selected ? COLORS.accent : hovered ? "#9ca3af" : COLORS.border,
+        background: selected ? COLORS.accentBg : hovered ? "#f9fafb" : COLORS.card,
         textAlign: "left", cursor: "pointer", transition: "all 0.15s",
       }}
     >

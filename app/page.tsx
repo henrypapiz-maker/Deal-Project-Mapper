@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
 import type { DealIntake, GeneratedDeal, ItemStatus } from "@/lib/types";
@@ -76,6 +76,15 @@ export default function Home() {
   const [appState, setAppState] = useState<AppState>("landing");
   const [deal, setDeal] = useState<GeneratedDeal | null>(null);
   const [activeNav, setActiveNav] = useState<NavItem>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number; msg: string; color: string }[]>([]);
+  const toastId = useRef(0);
+
+  const showToast = useCallback((msg: string, color = "#16a34a") => {
+    const id = ++toastId.current;
+    setToasts((prev) => [...prev, { id, msg, color }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 3000);
+  }, []);
 
   function handleIntakeSubmit(intake: DealIntake) {
     setAppState("generating");
@@ -100,6 +109,7 @@ export default function Home() {
   }, []);
 
   function handleReset() {
+    if (deal && !window.confirm("Start a new deal? Your current deal plan will be cleared.")) return;
     setDeal(null);
     setAppState("landing");
     setActiveNav("dashboard");
@@ -185,6 +195,7 @@ export default function Home() {
           onUpdateStatus={handleUpdateStatus}
           onReset={handleReset}
           onTabChange={(tab) => setActiveNav(tab as NavItem)}
+          onToast={showToast}
         />
       );
     }
@@ -240,12 +251,23 @@ export default function Home() {
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", fontFamily: "'Inter', sans-serif" }}>
+      {/* ─── Mobile overlay ─── */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 199 }}
+        />
+      )}
+
       {/* ─── Sidebar ─── */}
-      <aside style={{
-        width: 240, flexShrink: 0, background: "#192819",
-        display: "flex", flexDirection: "column",
-        borderRight: "1px solid #2a3f2a",
-      }}>
+      <aside
+        className={`sidebar ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}
+        style={{
+          width: 240, flexShrink: 0, background: "#192819",
+          display: "flex", flexDirection: "column",
+          borderRight: "1px solid #2a3f2a",
+        }}
+      >
         {/* Logo */}
         <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid #2a3f2a" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -283,7 +305,8 @@ export default function Home() {
                   </div>
                 )}
                 <button
-                  onClick={() => handleNavClick(item.id)}
+                  onClick={() => { handleNavClick(item.id); setSidebarOpen(false); }}
+                  aria-label={item.label}
                   style={{
                     width: "100%", display: "flex", alignItems: "center", gap: 10,
                     padding: "9px 16px", border: "none", cursor: "pointer",
@@ -321,7 +344,7 @@ export default function Home() {
             + New Deal
           </button>
           {deal && (
-            <div style={{ marginTop: 10, fontSize: 11, color: "#4a6b4a", textAlign: "center" }}>
+            <div style={{ marginTop: 10, fontSize: 11, color: "#6b9a6b", textAlign: "center" }}>
               {deal.intake.dealName}
             </div>
           )}
@@ -338,6 +361,21 @@ export default function Home() {
             borderBottom: "1px solid #e2e8e2",
             display: "flex", alignItems: "center", justifyContent: "space-between",
           }}>
+            {/* Hamburger — mobile only */}
+            <button
+              className="hamburger"
+              onClick={() => setSidebarOpen((o) => !o)}
+              aria-label="Open navigation menu"
+              style={{
+                display: "none", alignItems: "center", justifyContent: "center",
+                width: 36, height: 36, borderRadius: 6, border: "1px solid #e2e8e2",
+                background: "#fff", cursor: "pointer", marginRight: 12, flexShrink: 0,
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2">
+                <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 2 }}>
                 {pageTitle.title}
@@ -363,6 +401,27 @@ export default function Home() {
           {renderContent()}
         </div>
       </main>
+
+      {/* ─── Toast notifications ─── */}
+      <div style={{
+        position: "fixed", bottom: 20, right: 20,
+        display: "flex", flexDirection: "column", gap: 8, zIndex: 1000,
+        pointerEvents: "none",
+      }}>
+        {toasts.map((t) => (
+          <div key={t.id} style={{
+            padding: "10px 16px", borderRadius: 8,
+            background: "#fff", border: `1px solid ${t.color}`,
+            borderLeft: `4px solid ${t.color}`,
+            color: t.color, fontSize: 13, fontWeight: 500,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            animation: "toastSlideIn 0.25s ease-out",
+            whiteSpace: "nowrap",
+          }}>
+            {t.msg}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

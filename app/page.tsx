@@ -277,7 +277,7 @@ export default function Home() {
                   <div style={{
                     padding: "14px 16px 6px",
                     fontSize: 9, fontWeight: 700, letterSpacing: 1.2,
-                    color: "#4a6b4a", textTransform: "uppercase",
+                    color: "#6b9a6b", textTransform: "uppercase",
                   }}>
                     {sectionLabel}
                   </div>
@@ -288,7 +288,7 @@ export default function Home() {
                     width: "100%", display: "flex", alignItems: "center", gap: 10,
                     padding: "9px 16px", border: "none", cursor: "pointer",
                     background: isActive ? "#2e4a2e" : "transparent",
-                    color: isActive ? "#86efac" : "#9ab89a",
+                    color: isActive ? "#86efac" : "#b8d4b8",
                     borderLeft: isActive ? "3px solid #22c55e" : "3px solid transparent",
                     fontSize: 13, fontWeight: isActive ? 600 : 400,
                     textAlign: "left", transition: "all 0.15s",

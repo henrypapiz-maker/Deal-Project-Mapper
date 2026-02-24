@@ -69,7 +69,7 @@ const NAV_ITEMS: {
   },
   {
     id: "risks",
-    label: "Risk Register",
+    label: "Program Status",
     requiresDeal: true,
     icon: (
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

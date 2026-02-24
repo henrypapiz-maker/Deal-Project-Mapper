@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
 import WorkstreamView from "@/components/workstream/WorkstreamView";
-import type { DealIntake, GeneratedDeal, ItemStatus, ChecklistItem } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, ChecklistItem, RagStatus } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
+
+const STORAGE_KEY = "dealMapper_savedDeal";
 
 type NavItem = "dashboard" | "deal-setup" | "checklist" | "risks" | "timeline" | "workstreams";
 type AppState = "landing" | "intake" | "generating" | "dashboard";
@@ -101,7 +103,36 @@ export default function Home() {
   const [activeNav, setActiveNav] = useState<NavItem>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toasts, setToasts] = useState<{ id: number; msg: string; color: string }[]>([]);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
   const toastId = useRef(0);
+
+  // ── Restore saved deal on mount ──────────────────────────────────────────
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as GeneratedDeal;
+        // Ensure workstreamUpdates exists for deals saved before this field was added
+        if (!parsed.workstreamUpdates) parsed.workstreamUpdates = {};
+        setDeal(parsed);
+        setAppState("dashboard");
+        setActiveNav("dashboard");
+        const savedAt = localStorage.getItem(STORAGE_KEY + "_ts");
+        if (savedAt) setLastSaved(savedAt);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // ── Auto-save whenever deal changes ──────────────────────────────────────
+  useEffect(() => {
+    if (!deal) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(deal));
+      const ts = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      localStorage.setItem(STORAGE_KEY + "_ts", ts);
+      setLastSaved(ts);
+    } catch { /* ignore quota errors */ }
+  }, [deal]);
 
   const showToast = useCallback((msg: string, color = "#16a34a") => {
     const id = ++toastId.current;
@@ -119,9 +150,9 @@ export default function Home() {
     }, 1200);
   }
 
-  // Generic item updater — handles status, notes, and blockedReason
+  // Generic item updater — handles status, notes, blockedReason, and dependencies
   const handleUpdateItem = useCallback(
-    (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason">>) => {
+    (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason" | "dependencies">>) => {
       setDeal((prev) => {
         if (!prev) return prev;
         return {
@@ -135,6 +166,24 @@ export default function Home() {
     []
   );
 
+  // Workstream weekly status update handler
+  const handleUpdateWorkstreamStatus = useCallback(
+    (workstream: string, ragStatus: RagStatus, updateText: string) => {
+      setDeal((prev) => {
+        if (!prev) return prev;
+        const ts = new Date().toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+        return {
+          ...prev,
+          workstreamUpdates: {
+            ...prev.workstreamUpdates,
+            [workstream]: { workstream, ragStatus, updateText, updatedAt: ts },
+          },
+        };
+      });
+    },
+    []
+  );
+
   // Kept for Dashboard backward-compat
   const handleUpdateStatus = useCallback((itemId: string, status: ItemStatus) => {
     handleUpdateItem(itemId, { status });
@@ -142,7 +191,10 @@ export default function Home() {
 
   function handleReset() {
     if (deal && !window.confirm("Start a new deal? Your current deal plan will be cleared.")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_KEY + "_ts");
     setDeal(null);
+    setLastSaved(null);
     setAppState("landing");
     setActiveNav("dashboard");
   }
@@ -220,6 +272,7 @@ export default function Home() {
           <WorkstreamView
             deal={deal}
             onUpdateItem={handleUpdateItem}
+            onUpdateWorkstreamStatus={handleUpdateWorkstreamStatus}
             onToast={showToast}
           />
         );
@@ -386,6 +439,11 @@ export default function Home() {
           {deal && (
             <div style={{ marginTop: 10, fontSize: 11, color: "#6b9a6b", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {deal.intake.dealName}
+            </div>
+          )}
+          {lastSaved && (
+            <div style={{ marginTop: 6, fontSize: 10, color: "#4a7a4a", textAlign: "center" }}>
+              ✓ Saved {lastSaved}
             </div>
           )}
         </div>

@@ -56,6 +56,13 @@ const PHASE_LABELS: Record<string, string> = {
   year_1: "Year 1",
 };
 
+const RAG_CFG = {
+  red:     { label: "Red",    color: C.danger,  bg: C.dangerBg,  border: "#fecaca" },
+  amber:   { label: "Amber",  color: C.warning, bg: C.warningBg, border: "#fde68a" },
+  green:   { label: "Green",  color: C.green,   bg: C.greenBg,   border: C.greenBorder },
+  not_set: { label: "—",      color: C.light,   bg: "#f9fafb",   border: C.border },
+};
+
 interface Props {
   deal: GeneratedDeal;
   activeTab: "overview" | "checklist" | "risks" | "timeline";
@@ -72,10 +79,45 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
   const [guidanceLoading, setGuidanceLoading] = useState(false);
   const [filterPhase, setFilterPhase] = useState<string>("all");
   const [filterWs, setFilterWs] = useState<string>("all");
+  const [showExcluded, setShowExcluded] = useState(false);
 
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
   const wsStats = getWorkstreamStats(checklistItems);
+
+  // Build item lookup map for dependency resolution
+  const itemByItemId = new Map<string, ChecklistItem>();
+  checklistItems.forEach(item => itemByItemId.set(item.itemId, item));
+
+  // Open dependencies: active items whose upstream deps aren't all complete
+  const openDepsItems = checklistItems.filter(item =>
+    item.status !== "na" &&
+    item.status !== "complete" &&
+    item.dependencies.length > 0 &&
+    item.dependencies.some(depId => {
+      const dep = itemByItemId.get(depId);
+      return dep && dep.status !== "complete" && dep.status !== "na";
+    })
+  );
+  const openDepsCount = openDepsItems.length;
+
+  // Latest comments across all items (parse timestamp from note format)
+  const allComments: { ts: string; body: string; itemId: string; workstream: string }[] = [];
+  checklistItems.forEach(item => {
+    item.notes.forEach(note => {
+      const sepIdx = note.indexOf(" — ");
+      if (sepIdx > -1) {
+        allComments.push({
+          ts: note.slice(0, sepIdx),
+          body: note.slice(sepIdx + 3),
+          itemId: item.itemId,
+          workstream: item.workstream,
+        });
+      }
+    });
+  });
+  // Sort most-recent first (lexicographic on timestamp string is sufficient for display)
+  const latestComments = allComments.reverse().slice(0, 8);
 
   async function fetchGuidance(item: ChecklistItem) {
     setSelectedItem(item);
@@ -117,6 +159,13 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
     return true;
   });
 
+  const excludedItems = checklistItems.filter((item) => {
+    if (item.status !== "na") return false;
+    if (filterPhase !== "all" && item.phase !== filterPhase) return false;
+    if (filterWs !== "all" && item.workstream !== filterWs) return false;
+    return true;
+  });
+
   const today = new Date();
   const closeDate = intake.closeDate ? new Date(intake.closeDate) : null;
 
@@ -128,7 +177,7 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
   };
   const { title, sub } = pageTitles[activeTab] || pageTitles.overview;
 
-  // ─── Workstream stratification (for overview) ──────────────────────────────
+  // ─── Workstream stratification ──────────────────────────────────────────────
   const wsStratified = (() => {
     const critical: [string, ReturnType<typeof wsStats.get>][] = [];
     const high: [string, ReturnType<typeof wsStats.get>][] = [];
@@ -152,38 +201,23 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.bg }}>
       {/* Page Header */}
-      <div style={{
-        padding: "20px 32px 0",
-        background: C.bg,
-        borderBottom: `1px solid ${C.border}`,
-        flexShrink: 0,
-      }}>
+      <div style={{ padding: "20px 32px 0", background: C.bg, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 2 }}>{title}</h1>
             <p style={{ fontSize: 13, color: C.muted }}>{sub}</p>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{
-              padding: "6px 12px", borderRadius: 6, background: C.greenBg,
-              border: `1px solid ${C.greenBorder}`, fontSize: 12, fontWeight: 600, color: C.green,
-            }}>
+            <div style={{ padding: "6px 12px", borderRadius: 6, background: C.greenBg, border: `1px solid ${C.greenBorder}`, fontSize: 12, fontWeight: 600, color: C.green }}>
               {intake.dealName}
             </div>
-            <button
-              onClick={onReset}
-              style={{
-                padding: "7px 14px", borderRadius: 6,
-                border: `1px solid ${C.border}`, background: C.card,
-                color: C.muted, fontSize: 12, cursor: "pointer",
-              }}
-            >
+            <button onClick={onReset} style={{ padding: "7px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, color: C.muted, fontSize: 12, cursor: "pointer" }}>
               ← New Deal
             </button>
           </div>
         </div>
 
-        {/* Deal context pills — all 8 fields from 984JT */}
+        {/* Deal context pills */}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
           {[
             { label: STRUCTURE_LABELS[intake.dealStructure] },
@@ -195,11 +229,7 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
             { label: intake.crossBorder ? `Cross-Border (${intake.jurisdictions.join(", ")})` : "Domestic" },
             { label: `TSA: ${intake.tsaRequired.toUpperCase()}` },
           ].map((pill) => (
-            <span key={pill.label} style={{
-              padding: "3px 10px", borderRadius: 20,
-              background: C.card, border: `1px solid ${C.border}`,
-              fontSize: 11, color: C.muted,
-            }}>{pill.label}</span>
+            <span key={pill.label} style={{ padding: "3px 10px", borderRadius: 20, background: C.card, border: `1px solid ${C.border}`, fontSize: 11, color: C.muted }}>{pill.label}</span>
           ))}
         </div>
       </div>
@@ -211,131 +241,71 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
         {/* ─── OVERVIEW ─── */}
         {activeTab === "overview" && (
           <>
-            {/* KPI Cards */}
-            <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            {/* KPI Cards — 5-up grid */}
+            <div className="kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
                 { label: "Overall Progress", value: `${kpis.pctComplete}%`, sub: `${kpis.complete} of ${kpis.total} complete`, color: C.green, bg: C.greenBg, border: C.greenBorder },
                 { label: "In Progress", value: kpis.inProgress, sub: "items actively worked", color: C.accent, bg: C.accentBg, border: "#bfdbfe" },
                 { label: "Blocked", value: kpis.blocked, sub: "require escalation", color: C.danger, bg: C.dangerBg, border: "#fecaca" },
+                { label: "Open Dependencies", value: openDepsCount, sub: "items awaiting upstream", color: "#7c3aed", bg: "#f5f3ff", border: "#ddd6fe" },
                 { label: "Active Risks", value: riskAlerts.filter(r => r.status === "open").length, sub: `${riskAlerts.filter(r => r.severity === "critical").length} critical`, color: C.warning, bg: C.warningBg, border: "#fde68a" },
               ].map((kpi, i) => (
-                <div key={i} style={{
-                  padding: "16px 18px", borderRadius: 10, background: kpi.bg,
-                  border: `1px solid ${kpi.border}`,
-                }}>
+                <div key={i} style={{ padding: "16px 18px", borderRadius: 10, background: kpi.bg, border: `1px solid ${kpi.border}` }}>
                   <div style={{ fontSize: 11, color: C.muted, fontWeight: 500, marginBottom: 8 }}>{kpi.label}</div>
-                  <div style={{ fontSize: 30, fontWeight: 700, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
+                  <div style={{ fontSize: 28, fontWeight: 700, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
                   <div style={{ fontSize: 11, color: C.light, marginTop: 4 }}>{kpi.sub}</div>
                 </div>
               ))}
             </div>
 
-            <div className="overview-grid" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }}>
-              {/* Workstream Progress — stratified by tier */}
+            {/* Main overview grid */}
+            <div className="overview-grid" style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, marginBottom: 16 }}>
+              {/* Workstream Progress */}
               <div style={{ padding: 20, borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                    Workstream Progress
-                  </div>
-                  <button
-                    onClick={() => onTabChange("workstreams")}
-                    style={{
-                      fontSize: 11, color: C.accent, background: C.accentBg,
-                      border: `1px solid #bfdbfe`, borderRadius: 4,
-                      padding: "3px 10px", cursor: "pointer", fontWeight: 600,
-                    }}
-                  >
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>Workstream Progress</div>
+                  <button onClick={() => onTabChange("workstreams")} style={{ fontSize: 11, color: C.accent, background: C.accentBg, border: `1px solid #bfdbfe`, borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontWeight: 600 }}>
                     Open Workstreams →
                   </button>
                 </div>
-
-                {/* Tier: Needs Attention */}
                 {wsStratified.critical.length > 0 && (
-                  <WorkstreamTier
-                    label="Needs Attention"
-                    color={C.danger}
-                    bgColor={C.dangerBg}
-                    entries={wsStratified.critical}
-                    selectedWs={selectedWs}
-                    setSelectedWs={setSelectedWs}
-                    onOpen={(ws) => onTabChange("workstreams")}
-                  />
+                  <WorkstreamTier label="Needs Attention" color={C.danger} bgColor={C.dangerBg} entries={wsStratified.critical} selectedWs={selectedWs} setSelectedWs={setSelectedWs} onOpen={() => onTabChange("workstreams")} deal={deal} />
                 )}
-
-                {/* Tier: High Priority */}
                 {wsStratified.high.length > 0 && (
-                  <WorkstreamTier
-                    label="High Priority"
-                    color={C.warning}
-                    bgColor={C.warningBg}
-                    entries={wsStratified.high}
-                    selectedWs={selectedWs}
-                    setSelectedWs={setSelectedWs}
-                    onOpen={(ws) => onTabChange("workstreams")}
-                  />
+                  <WorkstreamTier label="High Priority" color={C.warning} bgColor={C.warningBg} entries={wsStratified.high} selectedWs={selectedWs} setSelectedWs={setSelectedWs} onOpen={() => onTabChange("workstreams")} deal={deal} />
                 )}
-
-                {/* Tier: On Track */}
                 {wsStratified.standard.length > 0 && (
-                  <WorkstreamTier
-                    label="On Track"
-                    color={C.green}
-                    bgColor={C.greenBg}
-                    entries={wsStratified.standard}
-                    selectedWs={selectedWs}
-                    setSelectedWs={setSelectedWs}
-                    onOpen={(ws) => onTabChange("workstreams")}
-                  />
+                  <WorkstreamTier label="On Track" color={C.green} bgColor={C.greenBg} entries={wsStratified.standard} selectedWs={selectedWs} setSelectedWs={setSelectedWs} onOpen={() => onTabChange("workstreams")} deal={deal} />
                 )}
               </div>
 
-              {/* Right panel: Risk + Milestones */}
+              {/* Right column: Risk + Milestones */}
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                {/* Risk Register */}
                 <div style={{ padding: 18, borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>
-                    Risk Register — {riskAlerts.length} Active
-                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>Risk Register — {riskAlerts.length} Active</div>
                   {riskAlerts.length === 0 ? (
                     <div style={{ fontSize: 12, color: C.green }}>✓ No material risks detected</div>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {riskAlerts.map((r) => (
-                        <RiskCard key={r.id} risk={r} />
-                      ))}
+                      {riskAlerts.map((r) => <RiskCard key={r.id} risk={r} />)}
                     </div>
                   )}
                 </div>
-
-                {/* Milestones */}
                 <div style={{ padding: 18, borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>
-                    Milestones
-                  </div>
-                  {milestones.length === 0 && (
-                    <div style={{ fontSize: 12, color: C.light }}>No close date set — milestones unavailable</div>
-                  )}
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 12 }}>Milestones</div>
+                  {milestones.length === 0 && <div style={{ fontSize: 12, color: C.light }}>No close date set</div>}
                   {milestones.map((ms, i) => {
                     const msDate = new Date(ms.date);
-                    const daysOut = closeDate
-                      ? Math.round((msDate.getTime() - today.getTime()) / 86400000)
-                      : ms.daysFromClose;
+                    const daysOut = closeDate ? Math.round((msDate.getTime() - today.getTime()) / 86400000) : ms.daysFromClose;
                     const isPast = daysOut < 0;
                     return (
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                        <div style={{
-                          width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
-                          background: isPast ? C.green : daysOut < 30 ? C.warning : "#d1d5db",
-                        }} />
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: isPast ? C.green : daysOut < 30 ? C.warning : "#d1d5db" }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{ms.label}</div>
                           <div style={{ fontSize: 10, color: C.light }}>{ms.date}</div>
                         </div>
-                        <span style={{
-                          fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 4,
-                          background: isPast ? C.greenBg : daysOut < 30 ? C.warningBg : "#f9fafb",
-                          color: isPast ? C.green : daysOut < 30 ? C.warning : C.light,
-                        }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 4, background: isPast ? C.greenBg : daysOut < 30 ? C.warningBg : "#f9fafb", color: isPast ? C.green : daysOut < 30 ? C.warning : C.light }}>
                           {isPast ? "Done" : `${daysOut}d`}
                         </span>
                       </div>
@@ -344,6 +314,70 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
                 </div>
               </div>
             </div>
+
+            {/* ─── Program Status by Workstream ─── */}
+            <ProgramStatusPanel deal={deal} wsStats={wsStats} openDepsItems={openDepsItems} onOpenWorkstreams={() => onTabChange("workstreams")} />
+
+            {/* ─── Latest Activity ─── */}
+            {latestComments.length > 0 && (
+              <div style={{ padding: 20, borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, marginTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 14 }}>
+                  Latest Activity
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {latestComments.map((c, i) => (
+                    <div key={i} style={{ display: "flex", gap: 12, padding: "8px 10px", borderRadius: 6, background: "#fafafa", border: `1px solid ${C.border}` }}>
+                      <div style={{ flexShrink: 0, paddingTop: 1 }}>
+                        <div style={{ width: 26, height: 26, borderRadius: "50%", background: C.accentBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.accent} strokeWidth="2.5">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                          </svg>
+                        </div>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: "flex", gap: 8, marginBottom: 2 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.accent }}>{c.itemId}</span>
+                          <span style={{ fontSize: 11, color: C.light }}>{c.workstream.split(" ").slice(0, 2).join(" ")}</span>
+                          <span style={{ fontSize: 10, color: C.light, marginLeft: "auto" }}>{c.ts}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.4 }}>{c.body}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ─── Open Dependencies Monitor ─── */}
+            {openDepsCount > 0 && (
+              <div style={{ padding: 20, borderRadius: 10, background: C.card, border: `1px solid #ddd6fe`, marginTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 14 }}>
+                  Open Dependency Monitor — {openDepsCount} items blocked by upstream
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {openDepsItems.slice(0, 10).map(item => {
+                    const blockerDeps = item.dependencies
+                      .map(d => itemByItemId.get(d))
+                      .filter(d => d && d.status !== "complete" && d.status !== "na") as ChecklistItem[];
+                    return (
+                      <div key={item.id} style={{ padding: "8px 12px", borderRadius: 6, background: "#f5f3ff", border: `1px solid #ddd6fe`, display: "flex", gap: 10, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed", minWidth: 72 }}>{item.itemId}</span>
+                        <span style={{ flex: 1, fontSize: 12, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</span>
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          {blockerDeps.slice(0, 3).map(d => (
+                            <span key={d.id} style={{ fontSize: 10, color: d.status === "blocked" ? C.danger : C.warning, background: d.status === "blocked" ? C.dangerBg : C.warningBg, padding: "1px 6px", borderRadius: 3, border: `1px solid ${d.status === "blocked" ? "#fecaca" : "#fde68a"}` }}>
+                              {d.itemId}
+                            </span>
+                          ))}
+                          {blockerDeps.length > 3 && <span style={{ fontSize: 10, color: C.light }}>+{blockerDeps.length - 3}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {openDepsCount > 10 && <div style={{ fontSize: 11, color: C.light, paddingLeft: 12 }}>+{openDepsCount - 10} more items with open dependencies</div>}
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -364,59 +398,122 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
                   <option key={ws} value={ws}>{ws}</option>
                 ))}
               </select>
-              <div style={{ marginLeft: "auto", fontSize: 12, color: C.muted }}>{visibleItems.length} items</div>
+              {/* Show excluded toggle */}
+              <button
+                onClick={() => setShowExcluded(v => !v)}
+                style={{
+                  padding: "7px 14px", borderRadius: 7, cursor: "pointer", fontSize: 12,
+                  border: showExcluded ? `1px solid ${C.warning}` : `1px solid ${C.border}`,
+                  background: showExcluded ? C.warningBg : C.card,
+                  color: showExcluded ? C.warning : C.muted, fontWeight: showExcluded ? 600 : 400,
+                }}
+              >
+                {showExcluded ? "▼ Excluded Items" : "▶ Show Excluded Items"} ({excludedItems.length})
+              </button>
+              <div style={{ marginLeft: "auto", fontSize: 12, color: C.muted }}>{visibleItems.length} active items</div>
             </div>
 
             <div className="checklist-grid" style={{ display: "grid", gridTemplateColumns: selectedItem ? "1fr 340px" : "1fr", gap: 16 }}>
-              {/* Table */}
-              <div style={{ borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                      {["ID", "Workstream", "Task", "Phase", "Priority", "Status", ""].map((h) => (
-                        <th key={h} style={{ padding: "10px 12px", textAlign: "left", color: C.muted, fontSize: 11, fontWeight: 600, background: "#f9fafb" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleItems.map((item) => {
-                      const statusColor = item.status === "complete" ? C.green : item.status === "in_progress" ? C.accent : item.status === "blocked" ? C.danger : C.light;
-                      const isSelected = selectedItem?.id === item.id;
-                      return (
-                        <tr key={item.id} onClick={() => fetchGuidance(item)} style={{ borderBottom: `1px solid ${C.border}`, background: isSelected ? "#f0fdf4" : "transparent", cursor: "pointer" }}>
-                          <td style={{ padding: "8px 12px", fontWeight: 600, color: C.accent, whiteSpace: "nowrap", fontSize: 11 }}>{item.itemId}</td>
-                          <td style={{ padding: "8px 12px", color: C.muted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
-                          <td style={{ padding: "8px 12px", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{item.description}</td>
-                          <td style={{ padding: "8px 12px" }}>
-                            <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, background: item.phase === "day_1" ? C.warningBg : "#f3f4f6", color: item.phase === "day_1" ? C.warning : C.muted }}>
-                              {PHASE_LABELS[item.phase]}
-                            </span>
-                          </td>
-                          <td style={{ padding: "8px 12px" }}>
-                            <span style={{ color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.muted, fontWeight: 600, fontSize: 11, textTransform: "capitalize" }}>
-                              {item.priority}
-                            </span>
-                          </td>
-                          <td style={{ padding: "8px 12px" }}>
-                            <select value={item.status} onChange={(e) => { e.stopPropagation(); onUpdateStatus(item.id, e.target.value as ItemStatus); }} onClick={(e) => e.stopPropagation()}
-                              style={{ background: "transparent", border: "none", color: statusColor, fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
-                              <option value="not_started">Not Started</option>
-                              <option value="in_progress">In Progress</option>
-                              <option value="blocked">Blocked</option>
-                              <option value="complete">Complete</option>
-                            </select>
-                          </td>
-                          <td style={{ padding: "8px 12px" }}>
-                            <button onClick={(e) => { e.stopPropagation(); fetchGuidance(item); }}
-                              style={{ background: C.accentBg, border: `1px solid #bfdbfe`, color: C.accent, fontSize: 11, fontWeight: 600, cursor: "pointer", borderRadius: 4, padding: "2px 8px" }}>
-                              AI
-                            </button>
-                          </td>
+              <div>
+                {/* Active items table */}
+                <div style={{ borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, overflowX: "auto", marginBottom: 16 }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                        {["ID", "Workstream", "Task", "Phase", "Priority", "Status", ""].map((h) => (
+                          <th key={h} style={{ padding: "10px 12px", textAlign: "left", color: C.muted, fontSize: 11, fontWeight: 600, background: "#f9fafb" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleItems.map((item) => {
+                        const statusColor = item.status === "complete" ? C.green : item.status === "in_progress" ? C.accent : item.status === "blocked" ? C.danger : C.light;
+                        const isSelected = selectedItem?.id === item.id;
+                        const hasOpenDep = openDepsItems.some(d => d.id === item.id);
+                        return (
+                          <tr key={item.id} onClick={() => fetchGuidance(item)} style={{ borderBottom: `1px solid ${C.border}`, background: isSelected ? "#f0fdf4" : "transparent", cursor: "pointer" }}>
+                            <td style={{ padding: "8px 12px", fontWeight: 600, color: C.accent, whiteSpace: "nowrap", fontSize: 11 }}>
+                              {item.itemId}
+                              {hasOpenDep && <span style={{ marginLeft: 4, fontSize: 9, color: "#7c3aed" }}>⬡</span>}
+                            </td>
+                            <td style={{ padding: "8px 12px", color: C.muted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
+                            <td style={{ padding: "8px 12px", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{item.description}</td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, background: item.phase === "day_1" ? C.warningBg : "#f3f4f6", color: item.phase === "day_1" ? C.warning : C.muted }}>
+                                {PHASE_LABELS[item.phase]}
+                              </span>
+                            </td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <span style={{ color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.muted, fontWeight: 600, fontSize: 11, textTransform: "capitalize" }}>
+                                {item.priority}
+                              </span>
+                            </td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <select value={item.status} onChange={(e) => { e.stopPropagation(); onUpdateStatus(item.id, e.target.value as ItemStatus); }} onClick={(e) => e.stopPropagation()}
+                                style={{ background: "transparent", border: "none", color: statusColor, fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "capitalize" }}>
+                                <option value="not_started">Not Started</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="blocked">Blocked</option>
+                                <option value="complete">Complete</option>
+                              </select>
+                            </td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <button onClick={(e) => { e.stopPropagation(); fetchGuidance(item); }}
+                                style={{ background: C.accentBg, border: `1px solid #bfdbfe`, color: C.accent, fontSize: 11, fontWeight: 600, cursor: "pointer", borderRadius: 4, padding: "2px 8px" }}>
+                                AI
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Excluded / N/A items section */}
+                {showExcluded && (
+                  <div style={{ borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                    <div style={{ padding: "10px 14px", background: C.warningBg, borderBottom: `1px solid #fde68a`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: C.warning }}>Excluded Items (N/A)</span>
+                        <span style={{ fontSize: 11, color: C.warning, marginLeft: 8 }}>{excludedItems.length} items excluded from in-scope plan</span>
+                      </div>
+                      <span style={{ fontSize: 11, color: C.warning }}>Click "Include" to add back to active plan</span>
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                          {["ID", "Workstream", "Task", "Phase", "Reason", ""].map((h) => (
+                            <th key={h} style={{ padding: "8px 12px", textAlign: "left", color: C.light, fontSize: 11, fontWeight: 600, background: "#fffdf0" }}>{h}</th>
+                          ))}
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {excludedItems.map((item) => (
+                          <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}`, opacity: 0.8 }}>
+                            <td style={{ padding: "8px 12px", fontWeight: 600, color: C.light, fontSize: 11 }}>{item.itemId}</td>
+                            <td style={{ padding: "8px 12px", color: C.light, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.workstream.split(" ")[0]}</td>
+                            <td style={{ padding: "8px 12px", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.light }}>{item.description}</td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <span style={{ padding: "2px 7px", borderRadius: 4, fontSize: 11, background: "#f9fafb", color: C.light }}>{PHASE_LABELS[item.phase]}</span>
+                            </td>
+                            <td style={{ padding: "8px 12px", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              <span style={{ fontSize: 11, color: C.light, fontStyle: "italic" }}>{item.naJustification || "Excluded from scope"}</span>
+                            </td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <button
+                                onClick={() => { onUpdateStatus(item.id, "not_started"); onToast?.(`${item.itemId} added to active plan`, C.green); }}
+                                style={{ fontSize: 11, fontWeight: 600, color: C.green, background: C.greenBg, border: `1px solid ${C.greenBorder}`, borderRadius: 4, padding: "3px 10px", cursor: "pointer" }}
+                              >
+                                Include
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               {/* AI Guidance Panel */}
@@ -455,6 +552,9 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
         {/* ─── RISKS ─── */}
         {activeTab === "risks" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Program Status summary at top of risk register */}
+            <ProgramStatusPanel deal={deal} wsStats={wsStats} openDepsItems={openDepsItems} onOpenWorkstreams={() => onTabChange("workstreams")} compact />
+
             {riskAlerts.length === 0 ? (
               <div style={{ padding: 32, borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, textAlign: "center" }}>
                 <div style={{ fontSize: 28, marginBottom: 8 }}>✓</div>
@@ -571,10 +671,91 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
   );
 }
 
+// ─── Program Status Panel ─────────────────────────────────────────────────────
+
+function ProgramStatusPanel({
+  deal,
+  wsStats,
+  openDepsItems,
+  onOpenWorkstreams,
+  compact = false,
+}: {
+  deal: GeneratedDeal;
+  wsStats: ReturnType<typeof getWorkstreamStats>;
+  openDepsItems: ChecklistItem[];
+  onOpenWorkstreams: () => void;
+  compact?: boolean;
+}) {
+  const workstreams = Array.from(wsStats.keys());
+  const updatesCount = Object.keys(deal.workstreamUpdates || {}).length;
+
+  return (
+    <div style={{ padding: compact ? 14 : 20, borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8 }}>
+          Program Status — by In-Scope Workstream
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: C.light }}>{updatesCount}/{workstreams.length} updated</span>
+          <button onClick={onOpenWorkstreams} style={{ fontSize: 11, color: C.accent, background: C.accentBg, border: `1px solid #bfdbfe`, borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontWeight: 600 }}>
+            Update →
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "repeat(auto-fill, minmax(320px, 1fr))", gap: 8 }}>
+        {workstreams.map(ws => {
+          const stats = wsStats.get(ws);
+          if (!stats) return null;
+          const pct = stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
+          const update = deal.workstreamUpdates?.[ws];
+          const rag = update?.ragStatus ?? "not_set";
+          const ragC = RAG_CFG[rag];
+          const openDepsForWs = openDepsItems.filter(i => i.workstream === ws).length;
+          const barColor = stats.blocked > 0 ? C.danger : pct > 50 ? C.green : C.accent;
+
+          return (
+            <div key={ws} style={{
+              padding: "10px 12px", borderRadius: 8, border: `1px solid ${rag !== "not_set" ? ragC.border : C.border}`,
+              background: rag !== "not_set" ? ragC.bg : "#fafafa",
+              borderLeft: `3px solid ${ragC.color}`,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: ragC.color, flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: C.text, flex: 1 }}>{ws}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: barColor }}>{pct}%</span>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ width: "100%", height: 3, background: "#e5e7eb", borderRadius: 2, marginBottom: 6 }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 2 }} />
+              </div>
+
+              <div style={{ display: "flex", gap: 10, fontSize: 10, color: C.light, marginBottom: update?.updateText ? 6 : 0 }}>
+                <span style={{ color: C.green }}>✓ {stats.complete}</span>
+                <span style={{ color: C.accent }}>→ {stats.inProgress}</span>
+                {stats.blocked > 0 && <span style={{ color: C.danger, fontWeight: 700 }}>✕ {stats.blocked} blocked</span>}
+                {openDepsForWs > 0 && <span style={{ color: "#7c3aed" }}>⬡ {openDepsForWs} dep{openDepsForWs > 1 ? "s" : ""}</span>}
+                {update?.updatedAt && <span style={{ marginLeft: "auto" }}>{update.updatedAt}</span>}
+              </div>
+
+              {update?.updateText && (
+                <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.4, borderTop: `1px solid ${ragC.border}`, paddingTop: 6, marginTop: 4 }}>
+                  {update.updateText.length > 120 ? update.updateText.slice(0, 120) + "…" : update.updateText}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Workstream Tier Section ──────────────────────────────────────────────────
 
 function WorkstreamTier({
-  label, color, bgColor, entries, selectedWs, setSelectedWs, onOpen,
+  label, color, bgColor, entries, selectedWs, setSelectedWs, onOpen, deal,
 }: {
   label: string;
   color: string;
@@ -583,12 +764,13 @@ function WorkstreamTier({
   selectedWs: string | null;
   setSelectedWs: (ws: string | null) => void;
   onOpen: (ws: string) => void;
+  deal: GeneratedDeal;
 }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
-        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color }} >{label}</div>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color }}>{label}</div>
         <div style={{ flex: 1, height: 1, background: C.border }} />
         <span style={{ fontSize: 10, color: C.light }}>{entries.length}</span>
       </div>
@@ -598,6 +780,9 @@ function WorkstreamTier({
           const pct = stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
           const barColor = stats.blocked > 0 ? C.danger : pct > 50 ? C.green : C.accent;
           const isSelected = selectedWs === ws;
+          const wsUpdate = deal.workstreamUpdates?.[ws];
+          const rag = wsUpdate?.ragStatus ?? "not_set";
+          const ragC = RAG_CFG[rag];
           return (
             <div key={ws} onClick={() => setSelectedWs(isSelected ? null : ws)}
               style={{
@@ -607,7 +792,10 @@ function WorkstreamTier({
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                <div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{ws}</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  {rag !== "not_set" && <div style={{ width: 7, height: 7, borderRadius: "50%", background: ragC.color, flexShrink: 0 }} title={`Status: ${ragC.label}`} />}
+                  <div style={{ fontSize: 12, fontWeight: 500, color: C.text }}>{ws}</div>
+                </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   {stats.blocked > 0 && <span style={{ fontSize: 11, color: C.danger, fontWeight: 600 }}>{stats.blocked} blocked</span>}
                   <span style={{ fontSize: 13, fontWeight: 700, color: barColor }}>{pct}%</span>
@@ -617,11 +805,16 @@ function WorkstreamTier({
                 <div style={{ width: `${pct}%`, height: "100%", background: barColor, borderRadius: 3, transition: "width 0.5s" }} />
               </div>
               {isSelected && (
-                <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 11, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 11, alignItems: "center", flexWrap: "wrap" }}>
                   <span style={{ color: C.green }}>✓ {stats.complete}</span>
                   <span style={{ color: C.accent }}>→ {stats.inProgress}</span>
                   <span style={{ color: C.danger }}>✕ {stats.blocked}</span>
                   <span style={{ color: C.light }}>○ {stats.notStarted}</span>
+                  {wsUpdate?.updateText && (
+                    <span style={{ fontSize: 11, color: C.muted, fontStyle: "italic", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      "{wsUpdate.updateText.slice(0, 60)}{wsUpdate.updateText.length > 60 ? "…" : ""}"
+                    </span>
+                  )}
                   <button onClick={(e) => { e.stopPropagation(); onOpen(ws); }}
                     style={{ marginLeft: "auto", fontSize: 10, color: C.accent, background: C.accentBg, border: `1px solid #bfdbfe`, borderRadius: 4, padding: "2px 8px", cursor: "pointer" }}>
                     Open →

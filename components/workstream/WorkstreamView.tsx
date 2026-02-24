@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { GeneratedDeal, ChecklistItem, ItemStatus } from "@/lib/types";
+import type { GeneratedDeal, ChecklistItem, ItemStatus, RagStatus } from "@/lib/types";
 import { getWorkstreamStats } from "@/lib/decision-tree";
 
 const C = {
@@ -49,13 +49,21 @@ const STATUS_CONFIG: Record<ItemStatus | "na", { label: string; color: string; b
   na:           { label: "N/A",         color: C.light,   bg: "#f9fafb" },
 };
 
+const RAG_CONFIG: Record<RagStatus, { label: string; color: string; bg: string; border: string }> = {
+  red:     { label: "Red",    color: C.danger,  bg: C.dangerBg,  border: "#fecaca" },
+  amber:   { label: "Amber",  color: C.warning, bg: C.warningBg, border: "#fde68a" },
+  green:   { label: "Green",  color: C.green,   bg: C.greenBg,   border: C.greenBorder },
+  not_set: { label: "Not Set", color: C.light,  bg: "#f9fafb",   border: C.border },
+};
+
 interface Props {
   deal: GeneratedDeal;
-  onUpdateItem: (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason">>) => void;
+  onUpdateItem: (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason" | "dependencies">>) => void;
+  onUpdateWorkstreamStatus: (workstream: string, ragStatus: RagStatus, updateText: string) => void;
   onToast?: (msg: string, color?: string) => void;
 }
 
-export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
+export default function WorkstreamView({ deal, onUpdateItem, onUpdateWorkstreamStatus, onToast }: Props) {
   const { checklistItems } = deal;
   const wsStats = getWorkstreamStats(checklistItems);
   const workstreams = Array.from(wsStats.keys());
@@ -87,6 +95,8 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
 
   const stats = wsStats.get(selectedWs);
   const pct = stats && stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
+  const wsUpdate = deal.workstreamUpdates?.[selectedWs];
+  const ragCfg = RAG_CONFIG[wsUpdate?.ragStatus ?? "not_set"];
 
   function toggleItem(id: string) {
     setExpandedItems(prev => {
@@ -117,7 +127,6 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
     const newNote = `${timestamp} — ${text}`;
     onUpdateItem(item.id, { notes: [...item.notes, newNote] });
     commentRefs.current[item.id] = "";
-    // Clear the textarea by forcing a re-render via a different mechanism
     const el = document.getElementById(`note-input-${item.id}`) as HTMLTextAreaElement | null;
     if (el) el.value = "";
     onToast?.("Comment added", C.green);
@@ -157,6 +166,8 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
             const p = s.total ? Math.round((s.complete / s.total) * 100) : 0;
             const barColor = s.blocked > 0 ? C.danger : p === 100 ? C.green : p > 50 ? C.green : C.accent;
             const isActive = selectedWs === ws;
+            const wsRag = deal.workstreamUpdates?.[ws];
+            const ragDot = wsRag ? RAG_CONFIG[wsRag.ragStatus] : null;
             return (
               <button
                 key={ws}
@@ -172,10 +183,15 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
                 onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
-                  <div style={{ fontSize: 12, fontWeight: isActive ? 600 : 500, color: isActive ? C.accent : C.text, lineHeight: 1.3, maxWidth: 160 }}>
+                  <div style={{ fontSize: 12, fontWeight: isActive ? 600 : 500, color: isActive ? C.accent : C.text, lineHeight: 1.3, maxWidth: 145 }}>
                     {ws}
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: barColor, flexShrink: 0 }}>{p}%</span>
+                  <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
+                    {ragDot && wsRag?.ragStatus !== "not_set" && (
+                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: ragDot.color, flexShrink: 0 }} title={`Status: ${ragDot.label}`} />
+                    )}
+                    <span style={{ fontSize: 12, fontWeight: 700, color: barColor }}>{p}%</span>
+                  </div>
                 </div>
                 {/* Mini progress bar */}
                 <div style={{ width: "100%", height: 3, background: "#f3f4f6", borderRadius: 2 }}>
@@ -205,7 +221,7 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
                 {stats?.total ?? 0} active items · {stats?.blocked ?? 0} blocked · {pct}% complete
               </p>
             </div>
-            {/* Overall progress bar */}
+            {/* Progress mini card */}
             <div style={{ minWidth: 180, padding: "12px 16px", borderRadius: 8, background: C.card, border: `1px solid ${C.border}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                 <span style={{ fontSize: 11, color: C.muted }}>Progress</span>
@@ -243,8 +259,21 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
           </div>
         </div>
 
-        {/* Phase sections */}
+        {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 28px 32px" }}>
+
+          {/* ─── Weekly Status Update Panel ─── */}
+          <WeeklyStatusPanel
+            key={selectedWs}
+            workstream={selectedWs}
+            current={wsUpdate}
+            onSave={(ragStatus, updateText) => {
+              onUpdateWorkstreamStatus(selectedWs, ragStatus, updateText);
+              onToast?.("Weekly status saved", C.green);
+            }}
+          />
+
+          {/* Phase sections */}
           {PHASE_ORDER.map(phase => {
             const items = byPhase[phase];
             if (items.length === 0) return null;
@@ -297,6 +326,7 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
                         onStatusChange={(s) => handleStatusChange(item, s)}
                         onAddNote={() => handleAddNote(item)}
                         onBlockedReasonChange={(r) => handleBlockedReasonChange(item, r)}
+                        onUpdateDependencies={(deps) => onUpdateItem(item.id, { dependencies: deps })}
                         commentRef={commentRefs}
                       />
                     ))}
@@ -317,6 +347,125 @@ export default function WorkstreamView({ deal, onUpdateItem, onToast }: Props) {
   );
 }
 
+// ─── WeeklyStatusPanel ──────────────────────────────────────────────────────
+
+function WeeklyStatusPanel({
+  workstream,
+  current,
+  onSave,
+}: {
+  workstream: string;
+  current?: { ragStatus: RagStatus; updateText: string; updatedAt: string };
+  onSave: (ragStatus: RagStatus, updateText: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [rag, setRag] = useState<RagStatus>(current?.ragStatus ?? "not_set");
+  const [text, setText] = useState(current?.updateText ?? "");
+
+  const hasSaved = !!current;
+  const cfg = RAG_CONFIG[hasSaved ? current!.ragStatus : "not_set"];
+
+  if (!editing && hasSaved) {
+    return (
+      <div style={{
+        marginBottom: 16, padding: "12px 16px", borderRadius: 8,
+        background: C.card, border: `1px solid ${cfg.border}`,
+        borderLeft: `4px solid ${cfg.color}`,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: cfg.color, flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: cfg.color }}>{cfg.label} — Weekly Status</span>
+          <span style={{ fontSize: 10, color: C.light, marginLeft: "auto" }}>{current!.updatedAt}</span>
+          <button
+            onClick={() => { setRag(current!.ragStatus); setText(current!.updateText); setEditing(true); }}
+            style={{ fontSize: 11, color: C.accent, background: C.accentBg, border: `1px solid ${C.accentBorder}`, borderRadius: 4, padding: "2px 8px", cursor: "pointer" }}
+          >
+            Edit
+          </button>
+        </div>
+        <p style={{ fontSize: 12, color: C.muted, margin: 0, lineHeight: 1.5 }}>{current!.updateText || <em>No update text provided.</em>}</p>
+      </div>
+    );
+  }
+
+  if (!editing && !hasSaved) {
+    return (
+      <div style={{
+        marginBottom: 16, padding: "10px 16px", borderRadius: 8,
+        background: "#f9fafb", border: `1px dashed ${C.border}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+      }}>
+        <span style={{ fontSize: 12, color: C.light }}>No weekly status update yet for this workstream.</span>
+        <button
+          onClick={() => setEditing(true)}
+          style={{ fontSize: 11, color: C.accent, background: C.accentBg, border: `1px solid ${C.accentBorder}`, borderRadius: 5, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}
+        >
+          + Add Status Update
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 16, padding: "14px 16px", borderRadius: 8, background: C.card, border: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, color: C.muted, marginBottom: 10 }}>
+        Weekly Status Update
+      </div>
+
+      {/* RAG selector */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {(["green", "amber", "red"] as RagStatus[]).map(r => {
+          const rc = RAG_CONFIG[r];
+          return (
+            <button
+              key={r}
+              onClick={() => setRag(r)}
+              style={{
+                padding: "5px 14px", borderRadius: 5, border: `1px solid ${rag === r ? rc.color : C.border}`,
+                background: rag === r ? rc.bg : "#f9fafb",
+                color: rag === r ? rc.color : C.light,
+                fontSize: 12, fontWeight: rag === r ? 700 : 400, cursor: "pointer",
+                transition: "all 0.12s",
+              }}
+            >
+              {rc.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Text area */}
+      <textarea
+        value={text}
+        onChange={e => setText(e.target.value)}
+        placeholder={`Summarize progress, issues, and next steps for ${workstream}…`}
+        rows={3}
+        style={{
+          width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 12,
+          border: `1px solid ${C.border}`, background: "#fff",
+          color: C.text, fontFamily: "inherit", resize: "vertical", outline: "none",
+          marginBottom: 8,
+        }}
+      />
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <button
+          onClick={() => { onSave(rag, text); setEditing(false); }}
+          style={{ padding: "6px 16px", borderRadius: 5, border: "none", background: C.green, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+        >
+          Save Update
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          style={{ padding: "6px 12px", borderRadius: 5, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontSize: 12, cursor: "pointer" }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── WorkstreamItem ────────────────────────────────────────────────────────────
 
 function WorkstreamItem({
@@ -328,6 +477,7 @@ function WorkstreamItem({
   onStatusChange,
   onAddNote,
   onBlockedReasonChange,
+  onUpdateDependencies,
   commentRef,
 }: {
   item: ChecklistItem;
@@ -338,6 +488,7 @@ function WorkstreamItem({
   onStatusChange: (s: ItemStatus) => void;
   onAddNote: () => void;
   onBlockedReasonChange: (r: string) => void;
+  onUpdateDependencies: (deps: string[]) => void;
   commentRef: React.MutableRefObject<Record<string, string>>;
 }) {
   // Resolve dependency items
@@ -368,17 +519,12 @@ function WorkstreamItem({
           background: isExpanded ? "#fafafa" : "transparent",
         }}
       >
-        {/* Expand chevron */}
         <span style={{ fontSize: 10, color: C.light, flexShrink: 0, userSelect: "none" }}>
           {isExpanded ? "▼" : "▶"}
         </span>
-
-        {/* Item ID */}
         <span style={{ fontSize: 11, fontWeight: 700, color: C.accent, flexShrink: 0, minWidth: 72 }}>
           {item.itemId}
         </span>
-
-        {/* Description */}
         <span style={{
           flex: 1, fontSize: 12, color: C.text,
           overflow: "hidden", textOverflow: "ellipsis",
@@ -386,8 +532,6 @@ function WorkstreamItem({
         }}>
           {item.description}
         </span>
-
-        {/* Flags */}
         <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
           {item.tsaRelevant && (
             <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: "#fef9c3", color: "#a16207", border: "1px solid #fde68a", fontWeight: 600 }}>TSA</span>
@@ -406,8 +550,6 @@ function WorkstreamItem({
             </span>
           )}
         </div>
-
-        {/* Priority */}
         <span style={{
           fontSize: 10, fontWeight: 600, flexShrink: 0, minWidth: 50, textAlign: "center",
           color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.light,
@@ -415,8 +557,6 @@ function WorkstreamItem({
         }}>
           {item.priority}
         </span>
-
-        {/* Status dropdown */}
         <select
           value={item.status}
           onClick={e => e.stopPropagation()}
@@ -445,7 +585,7 @@ function WorkstreamItem({
                 Dependencies
               </div>
 
-              {/* Depends on */}
+              {/* Depends on (read) */}
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 11, color: C.light, marginBottom: 4 }}>
                   Requires ({dependsOn.length}):
@@ -465,15 +605,14 @@ function WorkstreamItem({
                           border: `1px solid ${isBlocker && item.status !== "not_started" ? "#fecaca" : C.border}`,
                         }}>
                           <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, minWidth: 68 }}>{dep.itemId}</span>
-                          <span style={{ flex: 1, fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {dep.description}
-                          </span>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: depSc.color, background: depSc.bg, padding: "1px 6px", borderRadius: 3, flexShrink: 0 }}>
-                            {depSc.label}
-                          </span>
-                          {isBlocker && item.status !== "not_started" && (
-                            <span style={{ fontSize: 9, color: C.danger, fontWeight: 700 }}>⚠</span>
-                          )}
+                          <span style={{ flex: 1, fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dep.description}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: depSc.color, background: depSc.bg, padding: "1px 6px", borderRadius: 3, flexShrink: 0 }}>{depSc.label}</span>
+                          {isBlocker && item.status !== "not_started" && <span style={{ fontSize: 9, color: C.danger, fontWeight: 700 }}>⚠</span>}
+                          <button
+                            onClick={() => onUpdateDependencies(item.dependencies.filter(d => d !== dep.itemId))}
+                            style={{ fontSize: 10, color: C.danger, background: "transparent", border: "none", cursor: "pointer", padding: "0 2px", flexShrink: 0 }}
+                            title="Remove dependency"
+                          >✕</button>
                         </div>
                       );
                     })}
@@ -481,8 +620,17 @@ function WorkstreamItem({
                 )}
               </div>
 
+              {/* Add Dependency selector */}
+              <DependencySelector
+                currentDependencies={item.dependencies}
+                currentItemId={item.itemId}
+                allItems={allItems}
+                itemByItemId={itemByItemId}
+                onAdd={(depItemId) => onUpdateDependencies([...item.dependencies, depItemId])}
+              />
+
               {/* Blocking (downstream) */}
-              <div>
+              <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 11, color: C.light, marginBottom: 4 }}>
                   Blocking ({blockingItems.length}):
                 </div>
@@ -499,12 +647,8 @@ function WorkstreamItem({
                           background: "#f9fafb", border: `1px solid ${C.border}`,
                         }}>
                           <span style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", minWidth: 68 }}>{dep.itemId}</span>
-                          <span style={{ flex: 1, fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {dep.description}
-                          </span>
-                          <span style={{ fontSize: 10, fontWeight: 600, color: depSc.color, background: depSc.bg, padding: "1px 6px", borderRadius: 3, flexShrink: 0 }}>
-                            {depSc.label}
-                          </span>
+                          <span style={{ flex: 1, fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dep.description}</span>
+                          <span style={{ fontSize: 10, fontWeight: 600, color: depSc.color, background: depSc.bg, padding: "1px 6px", borderRadius: 3, flexShrink: 0 }}>{depSc.label}</span>
                         </div>
                       );
                     })}
@@ -522,7 +666,6 @@ function WorkstreamItem({
                 Status Notes & Comments
               </div>
 
-              {/* Blocked reason (shown when blocked) */}
               {item.status === "blocked" && (
                 <div style={{ marginBottom: 10 }}>
                   <div style={{ fontSize: 11, color: C.danger, fontWeight: 600, marginBottom: 4 }}>Block Reason:</div>
@@ -540,7 +683,6 @@ function WorkstreamItem({
                 </div>
               )}
 
-              {/* Existing notes */}
               {item.notes.length > 0 && (
                 <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>
                   {item.notes.map((note, i) => {
@@ -548,10 +690,7 @@ function WorkstreamItem({
                     const ts = sepIdx > -1 ? note.slice(0, sepIdx) : null;
                     const body = sepIdx > -1 ? note.slice(sepIdx + 3) : note;
                     return (
-                      <div key={i} style={{
-                        padding: "8px 10px", borderRadius: 6,
-                        background: "#fafafa", border: `1px solid ${C.border}`,
-                      }}>
+                      <div key={i} style={{ padding: "8px 10px", borderRadius: 6, background: "#fafafa", border: `1px solid ${C.border}` }}>
                         {ts && <div style={{ fontSize: 10, color: C.light, marginBottom: 3 }}>{ts}</div>}
                         <div style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>{body}</div>
                       </div>
@@ -560,7 +699,6 @@ function WorkstreamItem({
                 </div>
               )}
 
-              {/* Add comment */}
               <div>
                 <textarea
                   id={`note-input-${item.id}`}
@@ -576,27 +714,18 @@ function WorkstreamItem({
                 />
                 <button
                   onClick={onAddNote}
-                  style={{
-                    padding: "6px 14px", borderRadius: 5, border: "none",
-                    background: C.green, color: "#fff",
-                    fontSize: 12, fontWeight: 600, cursor: "pointer",
-                  }}
+                  style={{ padding: "6px 14px", borderRadius: 5, border: "none", background: C.green, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
                 >
                   + Add Comment
                 </button>
               </div>
 
-              {/* Risk indicators */}
               {item.riskIndicators.length > 0 && (
                 <div style={{ marginTop: 12 }}>
                   <div style={{ fontSize: 10, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Risk Indicators</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {item.riskIndicators.map(r => (
-                      <span key={r} style={{
-                        fontSize: 10, padding: "2px 7px", borderRadius: 3,
-                        background: C.warningBg, color: C.warning,
-                        border: `1px solid #fde68a`, fontWeight: 500,
-                      }}>
+                      <span key={r} style={{ fontSize: 10, padding: "2px 7px", borderRadius: 3, background: C.warningBg, color: C.warning, border: `1px solid #fde68a`, fontWeight: 500 }}>
                         {r.replace(/_/g, " ")}
                       </span>
                     ))}
@@ -613,6 +742,91 @@ function WorkstreamItem({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── DependencySelector ────────────────────────────────────────────────────────
+
+function DependencySelector({
+  currentDependencies,
+  currentItemId,
+  allItems,
+  itemByItemId,
+  onAdd,
+}: {
+  currentDependencies: string[];
+  currentItemId: string;
+  allItems: ChecklistItem[];
+  itemByItemId: Map<string, ChecklistItem>;
+  onAdd: (depItemId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filterWs, setFilterWs] = useState<string>("all");
+  const [search, setSearch] = useState("");
+
+  const workstreams = Array.from(new Set(allItems.filter(i => i.status !== "na").map(i => i.workstream)));
+
+  const candidates = allItems.filter(i => {
+    if (i.status === "na") return false;
+    if (i.itemId === currentItemId) return false;
+    if (currentDependencies.includes(i.itemId)) return false;
+    if (filterWs !== "all" && i.workstream !== filterWs) return false;
+    if (search && !i.itemId.toLowerCase().includes(search.toLowerCase()) && !i.description.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  }).slice(0, 30);
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        style={{ fontSize: 11, color: C.accent, background: C.accentBg, border: `1px solid ${C.accentBorder}`, borderRadius: 5, padding: "4px 10px", cursor: "pointer", fontWeight: 600, marginTop: 4 }}
+      >
+        + Add Dependency
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 6, padding: "10px", borderRadius: 8, background: "#f9fafb", border: `1px solid ${C.border}` }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 8 }}>Add Dependency</div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        <select
+          value={filterWs}
+          onChange={e => setFilterWs(e.target.value)}
+          style={{ ...selectStyle, fontSize: 11, padding: "4px 8px", flex: 1 }}
+        >
+          <option value="all">All Workstreams</option>
+          {workstreams.map(ws => <option key={ws} value={ws}>{ws.split(" ").slice(0, 2).join(" ")}</option>)}
+        </select>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search…"
+          style={{ flex: 1, padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.border}`, fontSize: 11, outline: "none", color: C.text }}
+        />
+        <button onClick={() => setOpen(false)} style={{ fontSize: 11, color: C.muted, background: "transparent", border: "none", cursor: "pointer" }}>✕</button>
+      </div>
+      <div style={{ maxHeight: 180, overflowY: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
+        {candidates.length === 0 && <div style={{ fontSize: 11, color: C.light, padding: 8 }}>No matching items.</div>}
+        {candidates.map(c => {
+          const sc = STATUS_CONFIG[c.status] ?? STATUS_CONFIG.not_started;
+          return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", borderRadius: 5, background: C.card, border: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.accent, minWidth: 65, flexShrink: 0 }}>{c.itemId}</span>
+              <span style={{ flex: 1, fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description}</span>
+              <span style={{ fontSize: 9, color: sc.color, background: sc.bg, padding: "1px 5px", borderRadius: 3, flexShrink: 0 }}>{sc.label}</span>
+              <button
+                onClick={() => { onAdd(c.itemId); }}
+                style={{ fontSize: 11, color: C.green, background: C.greenBg, border: `1px solid ${C.greenBorder}`, borderRadius: 4, padding: "1px 7px", cursor: "pointer", fontWeight: 700, flexShrink: 0 }}
+              >
+                +
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

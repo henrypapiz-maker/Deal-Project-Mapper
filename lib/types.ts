@@ -18,6 +18,15 @@ export type DealStatus = "pre_close" | "active" | "complete" | "archived";
 
 export type Priority = "critical" | "high" | "medium" | "low";
 
+export type RagStatus = "red" | "amber" | "green" | "not_set";
+
+export interface WorkstreamUpdate {
+  workstream: string;
+  ragStatus: RagStatus;
+  updateText: string;
+  updatedAt: string;
+}
+
 export type ItemStatus =
   | "not_started"
   | "in_progress"
@@ -123,6 +132,7 @@ export interface GeneratedDeal {
   workstreamSummary: WorkstreamSummary[];
   milestones: Milestone[];
   generatedAt: string;
+  workstreamUpdates: Record<string, WorkstreamUpdate>;
 }
 
 export interface WorkstreamSummary {

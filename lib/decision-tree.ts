@@ -141,6 +141,23 @@ const RISK_RULES: RiskRule[] = [
       "Integration Budget & PMO",
     ],
   },
+  {
+    category: "operational_cutover",
+    severity: "high",
+    check: (i) =>
+      i.dealStructure === "carve_out" ||
+      i.targetEntities > 5 ||
+      (i.crossBorder && i.targetErp !== ""),
+    descriptionFn: (i) =>
+      `Operational cutover complexity is elevated. ${i.dealStructure === "carve_out" ? "Carve-out requires full system separation and parallel-run sequencing. " : ""}${i.targetEntities > 5 ? `${i.targetEntities} legal entities require individual cutover plans and rollback procedures. ` : ""}${i.crossBorder && i.targetErp !== "" ? `Cross-border ERP migration (${i.targetErp}) introduces data-localisation and cutover-timing risks.` : "Day-1 operational continuity plan not yet baselined."}`,
+    mitigationFn: () =>
+      "Develop a detailed cutover runbook with explicit rollback procedures. Define go/no-go criteria at least 30 days before cutover. Establish a cutover command centre with 24/7 escalation path. Run a dry-run simulation in staging. Align TSA exit and cutover sequencing to avoid concurrent dependency conflicts.",
+    affectedWorkstreams: [
+      "Integration Budget & PMO",
+      "TSA Assessment & Exit",
+      "Operational Accounting",
+    ],
+  },
 ];
 
 // ============================================================

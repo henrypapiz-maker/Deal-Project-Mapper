@@ -150,9 +150,9 @@ export default function Home() {
     }, 1200);
   }
 
-  // Generic item updater — handles status, notes, blockedReason, and dependencies
+  // Generic item updater — handles status, notes, blockedReason, dependencies, and phase
   const handleUpdateItem = useCallback(
-    (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason" | "dependencies">>) => {
+    (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason" | "dependencies" | "phase">>) => {
       setDeal((prev) => {
         if (!prev) return prev;
         return {
@@ -160,6 +160,21 @@ export default function Home() {
           checklistItems: prev.checklistItems.map((item) =>
             item.id === itemId ? { ...item, ...updates } : item
           ),
+        };
+      });
+    },
+    []
+  );
+
+  // Add a brand-new custom checklist item
+  const handleAddItem = useCallback(
+    (newItem: Omit<ChecklistItem, "id">) => {
+      const id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+      setDeal((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          checklistItems: [...prev.checklistItems, { ...newItem, id }],
         };
       });
     },
@@ -273,6 +288,7 @@ export default function Home() {
             deal={deal}
             onUpdateItem={handleUpdateItem}
             onUpdateWorkstreamStatus={handleUpdateWorkstreamStatus}
+            onAddItem={handleAddItem}
             onToast={showToast}
           />
         );
@@ -288,6 +304,8 @@ export default function Home() {
           deal={deal}
           activeTab={dashTab as "overview" | "checklist" | "risks" | "timeline"}
           onUpdateStatus={handleUpdateStatus}
+          onUpdateItem={handleUpdateItem}
+          onAddItem={handleAddItem}
           onReset={handleReset}
           onTabChange={(tab) => {
             const nav = tab as NavItem;

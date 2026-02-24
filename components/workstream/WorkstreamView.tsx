@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import type { GeneratedDeal, ChecklistItem, ItemStatus, RagStatus } from "@/lib/types";
+import type { GeneratedDeal, ChecklistItem, ItemStatus, RagStatus, Phase, Priority, Workstream } from "@/lib/types";
 import { getWorkstreamStats } from "@/lib/decision-tree";
 
 const C = {
@@ -60,19 +60,26 @@ interface Props {
   deal: GeneratedDeal;
   onUpdateItem: (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason" | "dependencies">>) => void;
   onUpdateWorkstreamStatus: (workstream: string, ragStatus: RagStatus, updateText: string) => void;
+  onAddItem?: (item: Omit<ChecklistItem, "id">) => void;
   onToast?: (msg: string, color?: string) => void;
 }
 
-export default function WorkstreamView({ deal, onUpdateItem, onUpdateWorkstreamStatus, onToast }: Props) {
+export default function WorkstreamView({ deal, onUpdateItem, onUpdateWorkstreamStatus, onAddItem, onToast }: Props) {
   const { checklistItems } = deal;
   const wsStats = getWorkstreamStats(checklistItems);
   const workstreams = Array.from(wsStats.keys());
+  const allWorkstreams = Array.from(new Set(checklistItems.map(i => i.workstream))) as Workstream[];
 
   const [selectedWs, setSelectedWs] = useState<string>(workstreams[0] ?? "");
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   const [filterPhase, setFilterPhase] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [showNewActivity, setShowNewActivity] = useState(false);
+  const [newDesc, setNewDesc] = useState("");
+  const [newWs, setNewWs] = useState<Workstream>(allWorkstreams[0]);
+  const [newPhase, setNewPhase] = useState<Phase>("day_1");
+  const [newPriority, setNewPriority] = useState<Priority>("high");
   const commentRefs = useRef<Record<string, string>>({});
 
   // Build a lookup map: itemId → ChecklistItem for dependency resolution
@@ -96,7 +103,7 @@ export default function WorkstreamView({ deal, onUpdateItem, onUpdateWorkstreamS
   const stats = wsStats.get(selectedWs);
   const pct = stats && stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
   const wsUpdate = deal.workstreamUpdates?.[selectedWs];
-  const ragCfg = RAG_CONFIG[wsUpdate?.ragStatus ?? "not_set"];
+  const wsRagDot = wsUpdate?.ragStatus && wsUpdate.ragStatus !== "not_set" ? RAG_CONFIG[wsUpdate.ragStatus] : null;
 
   function toggleItem(id: string) {
     setExpandedItems(prev => {
@@ -136,212 +143,272 @@ export default function WorkstreamView({ deal, onUpdateItem, onUpdateWorkstreamS
     onUpdateItem(item.id, { blockedReason: reason });
   }
 
-  return (
-    <div style={{ flex: 1, display: "flex", overflow: "hidden", background: C.bg }}>
+  function handleSubmitNewActivity() {
+    if (!newDesc.trim()) return;
+    const customId = "CUST-" + Math.random().toString(36).slice(2, 7).toUpperCase();
+    const newItem: Omit<ChecklistItem, "id"> = {
+      itemId: customId,
+      workstream: newWs,
+      section: "Custom",
+      description: newDesc.trim(),
+      phase: newPhase,
+      priority: newPriority,
+      status: "not_started",
+      dependencies: [],
+      tsaRelevant: false,
+      crossBorderFlag: false,
+      riskIndicators: [],
+      notes: [],
+    };
+    onAddItem?.(newItem);
+    setNewDesc("");
+    setShowNewActivity(false);
+    setSelectedWs(newWs);
+    onToast?.(`Activity "${customId}" added to ${newWs}`, C.green);
+  }
 
-      {/* ─── Left: Workstream List ─── */}
-      <div
-        className="ws-list-panel"
-        style={{
-          width: 260, flexShrink: 0,
-          background: C.card, borderRight: `1px solid ${C.border}`,
-          display: "flex", flexDirection: "column", overflow: "hidden",
-        }}
-      >
-        {/* Header */}
-        <div style={{ padding: "16px 16px 12px", borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: C.muted }}>
-            Workstreams
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: C.bg }}>
+
+      {/* ─── Header with workstream dropdown ─── */}
+      <div style={{ padding: "16px 28px 0", borderBottom: `1px solid ${C.border}`, background: C.bg, flexShrink: 0 }}>
+
+        {/* Top row: workstream selector + stats + buttons */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12, flexWrap: "wrap" }}>
+          {/* Workstream dropdown */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 260 }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.8, flexShrink: 0 }}>
+              Workstream
+            </label>
+            <select
+              value={selectedWs}
+              onChange={e => { setSelectedWs(e.target.value); setShowNewActivity(false); }}
+              style={{ ...selectStyle, fontSize: 13, fontWeight: 600, color: C.text, flex: 1, maxWidth: 360 }}
+            >
+              {workstreams.map(ws => {
+                const s = wsStats.get(ws);
+                const p = s && s.total ? Math.round((s.complete / s.total) * 100) : 0;
+                const hasBlocked = (s?.blocked ?? 0) > 0;
+                return (
+                  <option key={ws} value={ws}>
+                    {ws} — {p}%{hasBlocked ? ` (${s!.blocked} blocked)` : ""}
+                  </option>
+                );
+              })}
+            </select>
+            {wsRagDot && (
+              <div
+                style={{ width: 10, height: 10, borderRadius: "50%", background: wsRagDot.color, flexShrink: 0 }}
+                title={`Status: ${wsRagDot.label}`}
+              />
+            )}
           </div>
-          <div style={{ fontSize: 11, color: C.light, marginTop: 2 }}>
-            {deal.intake.dealName}
+
+          {/* Stats */}
+          <div style={{ display: "flex", gap: 16, fontSize: 12, color: C.muted, flexShrink: 0 }}>
+            <span style={{ color: C.green, fontWeight: 600 }}>✓ {stats?.complete ?? 0} done</span>
+            <span style={{ color: C.accent }}>→ {stats?.inProgress ?? 0} active</span>
+            {(stats?.blocked ?? 0) > 0 && <span style={{ color: C.danger, fontWeight: 700 }}>✕ {stats!.blocked} blocked</span>}
+            <span style={{ color: C.light }}>○ {stats?.notStarted ?? 0} pending</span>
           </div>
+
+          {/* Progress bar */}
+          <div style={{ minWidth: 140, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <div style={{ flex: 1, height: 6, background: "#e5e7eb", borderRadius: 3, overflow: "hidden" }}>
+              <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? C.green : C.accent, borderRadius: 3, transition: "width 0.5s" }} />
+            </div>
+            <span style={{ fontSize: 13, fontWeight: 700, color: pct === 100 ? C.green : C.accent, flexShrink: 0 }}>{pct}%</span>
+          </div>
+
+          {/* New Activity button */}
+          <button
+            onClick={() => setShowNewActivity(v => !v)}
+            style={{
+              padding: "7px 14px", borderRadius: 6, border: `1px solid ${showNewActivity ? C.accent : C.border}`,
+              background: showNewActivity ? C.accentBg : C.card,
+              color: showNewActivity ? C.accent : C.muted,
+              fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0,
+            }}
+          >
+            {showNewActivity ? "✕ Cancel" : "+ New Activity"}
+          </button>
         </div>
 
-        {/* Workstream list */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-          {workstreams.map(ws => {
-            const s = wsStats.get(ws);
-            if (!s) return null;
-            const p = s.total ? Math.round((s.complete / s.total) * 100) : 0;
-            const barColor = s.blocked > 0 ? C.danger : p === 100 ? C.green : p > 50 ? C.green : C.accent;
-            const isActive = selectedWs === ws;
-            const wsRag = deal.workstreamUpdates?.[ws];
-            const ragDot = wsRag ? RAG_CONFIG[wsRag.ragStatus] : null;
-            return (
+        {/* New Activity inline form */}
+        {showNewActivity && (
+          <div style={{
+            marginBottom: 12, padding: "14px 16px", borderRadius: 8,
+            background: C.card, border: `1px solid ${C.accentBorder}`,
+            borderLeft: `4px solid ${C.accent}`,
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.accent, marginBottom: 10 }}>Add New Activity</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+              {/* Description */}
+              <div style={{ flex: "1 1 280px" }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, fontWeight: 600 }}>Description</div>
+                <input
+                  type="text"
+                  value={newDesc}
+                  onChange={e => setNewDesc(e.target.value)}
+                  placeholder="Describe the activity…"
+                  style={{ width: "100%", padding: "7px 10px", borderRadius: 6, border: `1px solid ${C.border}`, fontSize: 12, color: C.text, outline: "none", fontFamily: "inherit" }}
+                  onKeyDown={e => { if (e.key === "Enter") handleSubmitNewActivity(); }}
+                />
+              </div>
+              {/* Workstream */}
+              <div style={{ flex: "0 1 220px" }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, fontWeight: 600 }}>Workstream</div>
+                <select
+                  value={newWs}
+                  onChange={e => setNewWs(e.target.value as Workstream)}
+                  style={{ ...selectStyle, width: "100%", fontSize: 12 }}
+                >
+                  {allWorkstreams.map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                </select>
+              </div>
+              {/* Phase */}
+              <div style={{ flex: "0 1 120px" }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, fontWeight: 600 }}>Phase</div>
+                <select
+                  value={newPhase}
+                  onChange={e => setNewPhase(e.target.value as Phase)}
+                  style={{ ...selectStyle, width: "100%", fontSize: 12 }}
+                >
+                  {PHASE_ORDER.map(p => <option key={p} value={p}>{PHASE_LABELS[p]}</option>)}
+                </select>
+              </div>
+              {/* Priority */}
+              <div style={{ flex: "0 1 110px" }}>
+                <div style={{ fontSize: 10, color: C.muted, marginBottom: 4, fontWeight: 600 }}>Priority</div>
+                <select
+                  value={newPriority}
+                  onChange={e => setNewPriority(e.target.value as Priority)}
+                  style={{ ...selectStyle, width: "100%", fontSize: 12 }}
+                >
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
+              {/* Add button */}
               <button
-                key={ws}
-                onClick={() => setSelectedWs(ws)}
+                onClick={handleSubmitNewActivity}
+                disabled={!newDesc.trim()}
                 style={{
-                  width: "100%", textAlign: "left", padding: "10px 16px",
-                  border: "none", cursor: "pointer",
-                  background: isActive ? C.accentBg : "transparent",
-                  borderLeft: `3px solid ${isActive ? C.accent : "transparent"}`,
-                  transition: "all 0.12s",
+                  padding: "7px 18px", borderRadius: 6, border: "none",
+                  background: newDesc.trim() ? C.green : "#d1d5db",
+                  color: "#fff", fontSize: 12, fontWeight: 700,
+                  cursor: newDesc.trim() ? "pointer" : "not-allowed", flexShrink: 0,
                 }}
-                onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "#f9fafb"; }}
-                onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
-                  <div style={{ fontSize: 12, fontWeight: isActive ? 600 : 500, color: isActive ? C.accent : C.text, lineHeight: 1.3, maxWidth: 145 }}>
-                    {ws}
-                  </div>
-                  <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
-                    {ragDot && wsRag?.ragStatus !== "not_set" && (
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: ragDot.color, flexShrink: 0 }} title={`Status: ${ragDot.label}`} />
-                    )}
-                    <span style={{ fontSize: 12, fontWeight: 700, color: barColor }}>{p}%</span>
-                  </div>
-                </div>
-                {/* Mini progress bar */}
-                <div style={{ width: "100%", height: 3, background: "#f3f4f6", borderRadius: 2 }}>
-                  <div style={{ width: `${p}%`, height: "100%", background: barColor, borderRadius: 2, transition: "width 0.4s" }} />
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 5, fontSize: 10 }}>
-                  <span style={{ color: C.green }}>✓ {s.complete}</span>
-                  <span style={{ color: C.accent }}>→ {s.inProgress}</span>
-                  {s.blocked > 0 && <span style={{ color: C.danger, fontWeight: 700 }}>✕ {s.blocked}</span>}
-                  <span style={{ color: C.light }}>○ {s.notStarted}</span>
-                </div>
+                Add
               </button>
-            );
-          })}
+            </div>
+          </div>
+        )}
+
+        {/* Filters */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <select value={filterPhase} onChange={e => setFilterPhase(e.target.value)} style={selectStyle}>
+            <option value="all">All Phases</option>
+            {PHASE_ORDER.map(p => <option key={p} value={p}>{PHASE_LABELS[p]}</option>)}
+          </select>
+          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
+            <option value="all">All Statuses</option>
+            <option value="not_started">Not Started</option>
+            <option value="in_progress">In Progress</option>
+            <option value="blocked">Blocked</option>
+            <option value="complete">Complete</option>
+          </select>
+          <span style={{ fontSize: 12, color: C.muted, alignSelf: "center", marginLeft: "auto" }}>
+            {wsItems.length} item{wsItems.length !== 1 ? "s" : ""}
+          </span>
         </div>
       </div>
 
-      {/* ─── Right: Workstream Detail ─── */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {/* ─── Scrollable body ─── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 28px 32px" }}>
 
-        {/* Workstream header */}
-        <div style={{ padding: "20px 28px 0", borderBottom: `1px solid ${C.border}`, background: C.bg, flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
-            <div>
-              <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, marginBottom: 2 }}>{selectedWs}</h2>
-              <p style={{ fontSize: 12, color: C.muted }}>
-                {stats?.total ?? 0} active items · {stats?.blocked ?? 0} blocked · {pct}% complete
-              </p>
-            </div>
-            {/* Progress mini card */}
-            <div style={{ minWidth: 180, padding: "12px 16px", borderRadius: 8, background: C.card, border: `1px solid ${C.border}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                <span style={{ fontSize: 11, color: C.muted }}>Progress</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: pct === 100 ? C.green : C.accent }}>{pct}%</span>
-              </div>
-              <div style={{ width: "100%", height: 6, background: "#f3f4f6", borderRadius: 3 }}>
-                <div style={{ width: `${pct}%`, height: "100%", background: pct === 100 ? C.green : C.accent, borderRadius: 3, transition: "width 0.5s" }} />
-              </div>
-              {stats && (
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 10, color: C.light }}>
-                  <span>{stats.complete} done</span>
-                  <span>{stats.inProgress} active</span>
-                  <span>{stats.notStarted} pending</span>
+        {/* ─── Weekly Status Update Panel ─── */}
+        <WeeklyStatusPanel
+          key={selectedWs}
+          workstream={selectedWs}
+          current={wsUpdate}
+          onSave={(ragStatus, updateText) => {
+            onUpdateWorkstreamStatus(selectedWs, ragStatus, updateText);
+            onToast?.("Weekly status saved", C.green);
+          }}
+        />
+
+        {/* Phase sections */}
+        {PHASE_ORDER.map(phase => {
+          const items = byPhase[phase];
+          if (items.length === 0) return null;
+          const phaseColor = PHASE_COLORS[phase];
+          const isCollapsed = collapsedPhases.has(phase);
+          const completedInPhase = items.filter(i => i.status === "complete").length;
+          const blockedInPhase = items.filter(i => i.status === "blocked").length;
+
+          return (
+            <div key={phase} style={{ marginBottom: 20 }}>
+              {/* Phase header */}
+              <button
+                onClick={() => togglePhase(phase)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 10,
+                  padding: "8px 12px", borderRadius: 7, border: "none", cursor: "pointer",
+                  background: `${phaseColor}10`, marginBottom: isCollapsed ? 0 : 8,
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ width: 10, height: 10, borderRadius: "50%", background: phaseColor, flexShrink: 0 }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: phaseColor, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                  {PHASE_LABELS[phase]}
+                </span>
+                <span style={{ fontSize: 11, color: C.light }}>{items.length} items</span>
+                {blockedInPhase > 0 && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: C.danger, background: C.dangerBg, padding: "1px 6px", borderRadius: 3 }}>
+                    {blockedInPhase} blocked
+                  </span>
+                )}
+                <span style={{ fontSize: 11, color: C.green, marginLeft: "auto" }}>
+                  {completedInPhase}/{items.length}
+                </span>
+                <span style={{ fontSize: 10, color: C.light }}>
+                  {isCollapsed ? "▶" : "▼"}
+                </span>
+              </button>
+
+              {/* Items */}
+              {!isCollapsed && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {items.map(item => (
+                    <WorkstreamItem
+                      key={item.id}
+                      item={item}
+                      allItems={checklistItems}
+                      itemByItemId={itemByItemId}
+                      isExpanded={expandedItems.has(item.id)}
+                      onToggle={() => toggleItem(item.id)}
+                      onStatusChange={(s) => handleStatusChange(item, s)}
+                      onAddNote={() => handleAddNote(item)}
+                      onBlockedReasonChange={(r) => handleBlockedReasonChange(item, r)}
+                      onUpdateDependencies={(deps) => onUpdateItem(item.id, { dependencies: deps })}
+                      commentRef={commentRefs}
+                    />
+                  ))}
                 </div>
               )}
             </div>
+          );
+        })}
+
+        {wsItems.length === 0 && (
+          <div style={{ padding: 40, textAlign: "center", color: C.light, fontSize: 13 }}>
+            No items match the current filters.
           </div>
-
-          {/* Filters */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-            <select value={filterPhase} onChange={e => setFilterPhase(e.target.value)} style={selectStyle}>
-              <option value="all">All Phases</option>
-              {PHASE_ORDER.map(p => <option key={p} value={p}>{PHASE_LABELS[p]}</option>)}
-            </select>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={selectStyle}>
-              <option value="all">All Statuses</option>
-              <option value="not_started">Not Started</option>
-              <option value="in_progress">In Progress</option>
-              <option value="blocked">Blocked</option>
-              <option value="complete">Complete</option>
-            </select>
-            <span style={{ fontSize: 12, color: C.muted, alignSelf: "center", marginLeft: "auto" }}>
-              {wsItems.length} item{wsItems.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-        </div>
-
-        {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "16px 28px 32px" }}>
-
-          {/* ─── Weekly Status Update Panel ─── */}
-          <WeeklyStatusPanel
-            key={selectedWs}
-            workstream={selectedWs}
-            current={wsUpdate}
-            onSave={(ragStatus, updateText) => {
-              onUpdateWorkstreamStatus(selectedWs, ragStatus, updateText);
-              onToast?.("Weekly status saved", C.green);
-            }}
-          />
-
-          {/* Phase sections */}
-          {PHASE_ORDER.map(phase => {
-            const items = byPhase[phase];
-            if (items.length === 0) return null;
-            const phaseColor = PHASE_COLORS[phase];
-            const isCollapsed = collapsedPhases.has(phase);
-            const completedInPhase = items.filter(i => i.status === "complete").length;
-            const blockedInPhase = items.filter(i => i.status === "blocked").length;
-
-            return (
-              <div key={phase} style={{ marginBottom: 20 }}>
-                {/* Phase header */}
-                <button
-                  onClick={() => togglePhase(phase)}
-                  style={{
-                    width: "100%", display: "flex", alignItems: "center", gap: 10,
-                    padding: "8px 12px", borderRadius: 7, border: "none", cursor: "pointer",
-                    background: `${phaseColor}10`, marginBottom: isCollapsed ? 0 : 8,
-                    textAlign: "left",
-                  }}
-                >
-                  <div style={{ width: 10, height: 10, borderRadius: "50%", background: phaseColor, flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: phaseColor, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                    {PHASE_LABELS[phase]}
-                  </span>
-                  <span style={{ fontSize: 11, color: C.light }}>{items.length} items</span>
-                  {blockedInPhase > 0 && (
-                    <span style={{ fontSize: 11, fontWeight: 600, color: C.danger, background: C.dangerBg, padding: "1px 6px", borderRadius: 3 }}>
-                      {blockedInPhase} blocked
-                    </span>
-                  )}
-                  <span style={{ fontSize: 11, color: C.green, marginLeft: "auto" }}>
-                    {completedInPhase}/{items.length}
-                  </span>
-                  <span style={{ fontSize: 10, color: C.light }}>
-                    {isCollapsed ? "▶" : "▼"}
-                  </span>
-                </button>
-
-                {/* Items */}
-                {!isCollapsed && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {items.map(item => (
-                      <WorkstreamItem
-                        key={item.id}
-                        item={item}
-                        allItems={checklistItems}
-                        itemByItemId={itemByItemId}
-                        isExpanded={expandedItems.has(item.id)}
-                        onToggle={() => toggleItem(item.id)}
-                        onStatusChange={(s) => handleStatusChange(item, s)}
-                        onAddNote={() => handleAddNote(item)}
-                        onBlockedReasonChange={(r) => handleBlockedReasonChange(item, r)}
-                        onUpdateDependencies={(deps) => onUpdateItem(item.id, { dependencies: deps })}
-                        commentRef={commentRefs}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {wsItems.length === 0 && (
-            <div style={{ padding: 40, textAlign: "center", color: C.light, fontSize: 13 }}>
-              No items match the current filters.
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );

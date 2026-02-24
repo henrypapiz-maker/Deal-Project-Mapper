@@ -43,7 +43,8 @@ export type RiskCategory =
   | "data_privacy_breach"
   | "cultural_integration"
   | "financial_reporting_gap"
-  | "stranded_costs";
+  | "stranded_costs"
+  | "operational_cutover";
 
 export type Phase = "pre_close" | "day_1" | "day_30" | "day_60" | "day_90" | "year_1";
 

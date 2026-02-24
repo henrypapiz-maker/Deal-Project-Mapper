@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus } from "@/lib/types";
+import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, Phase } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 
 const C = {
@@ -45,6 +45,7 @@ const RISK_LABELS: Record<string, string> = {
   cultural_integration: "Cultural Integration",
   financial_reporting_gap: "Financial Reporting Gap",
   stranded_costs: "Stranded Costs",
+  operational_cutover: "Operational Cutover / Migration",
 };
 
 const PHASE_LABELS: Record<string, string> = {
@@ -67,12 +68,14 @@ interface Props {
   deal: GeneratedDeal;
   activeTab: "overview" | "checklist" | "risks" | "timeline";
   onUpdateStatus: (itemId: string, status: ItemStatus) => void;
+  onUpdateItem?: (itemId: string, updates: Partial<Pick<ChecklistItem, "status" | "notes" | "blockedReason" | "dependencies" | "phase">>) => void;
+  onAddItem?: (item: Omit<ChecklistItem, "id">) => void;
   onReset: () => void;
   onTabChange: (tab: string) => void;
   onToast?: (msg: string, color?: string) => void;
 }
 
-export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, onTabChange, onToast }: Props) {
+export default function Dashboard({ deal, activeTab, onUpdateStatus, onUpdateItem, onAddItem, onReset, onTabChange, onToast }: Props) {
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [guidanceText, setGuidanceText] = useState<string>("");
@@ -438,10 +441,20 @@ export default function Dashboard({ deal, activeTab, onUpdateStatus, onReset, on
                             </td>
                             <td style={{ padding: "8px 12px", color: C.muted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
                             <td style={{ padding: "8px 12px", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: C.text }}>{item.description}</td>
-                            <td style={{ padding: "8px 12px" }}>
-                              <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, background: item.phase === "day_1" ? C.warningBg : "#f3f4f6", color: item.phase === "day_1" ? C.warning : C.muted }}>
-                                {PHASE_LABELS[item.phase]}
-                              </span>
+                            <td style={{ padding: "8px 12px" }} onClick={e => e.stopPropagation()}>
+                              <select
+                                value={item.phase}
+                                onClick={e => e.stopPropagation()}
+                                onChange={e => { e.stopPropagation(); onUpdateItem?.(item.id, { phase: e.target.value as Phase }); }}
+                                style={{ padding: "2px 7px", borderRadius: 4, fontSize: 11, border: `1px solid ${C.border}`, background: item.phase === "day_1" ? C.warningBg : "#f9fafb", color: item.phase === "day_1" ? C.warning : C.muted, cursor: "pointer", fontFamily: "inherit", outline: "none" }}
+                              >
+                                <option value="pre_close">Pre-Close</option>
+                                <option value="day_1">Day 1</option>
+                                <option value="day_30">Day 30</option>
+                                <option value="day_60">Day 60</option>
+                                <option value="day_90">Day 90</option>
+                                <option value="year_1">Year 1</option>
+                              </select>
                             </td>
                             <td style={{ padding: "8px 12px" }}>
                               <span style={{ color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.muted, fontWeight: 600, fontSize: 11, textTransform: "capitalize" }}>
@@ -715,10 +728,11 @@ function ProgramStatusDashboard({
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
       {/* ── Row 1: Hero Summary Cards ─────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "200px 1fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
 
         {/* Donut: Overall Completion */}
-        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", alignItems: "center" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 14, alignSelf: "flex-start" }}>Overall Completion</div>
           <div style={{ position: "relative", width: SIZE, height: SIZE }}>
             <DonutSegments />
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
@@ -915,28 +929,40 @@ function ProgramStatusDashboard({
 
         {/* Risk Heat Map */}
         <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 16 }}>Risk Heat Map</div>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 10 }}>Risk Heat Map</div>
+          <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", marginBottom: 6 }}>
+            {[{ label: "R", color: C.danger }, { label: "A", color: C.warning }, { label: "G", color: C.green }].map(h => (
+              <div key={h.label} style={{ width: 28, fontSize: 9, fontWeight: 700, textAlign: "center", color: h.color }}>{h.label}</div>
+            ))}
+            <div style={{ width: 60 }} />
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             {Object.entries(RISK_LABELS).map(([key, label]) => {
               const alert = riskAlerts.find(r => r.category === key);
-              const level = alert ? (alert.severity === "critical" ? 3 : alert.severity === "high" ? 2 : 1) : 0;
-              const cellColors = ["#f3f4f6", "#bfdbfe", "#fde68a", "#fecaca"];
-              const textColors = ["#d1d5db", C.accent, C.warning, C.danger];
+              const sev = alert?.severity;
+              const CELLS = [
+                { label: "R", match: "critical", color: C.danger,  bg: C.dangerBg,  border: "#fecaca" },
+                { label: "A", match: "high",     color: C.warning, bg: C.warningBg, border: "#fde68a" },
+                { label: "G", match: "medium",   color: C.green,   bg: C.greenBg,   border: C.greenBorder },
+              ] as const;
               return (
                 <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ flex: 1, fontSize: 12, color: C.text }}>{label}</div>
                   <div style={{ display: "flex", gap: 3 }}>
-                    {[1, 2, 3].map(l => (
-                      <div key={l} style={{
-                        width: 28, height: 18, borderRadius: 4,
-                        background: l <= level ? cellColors[l] : "#f3f4f6",
-                        border: `1px solid ${l <= level ? textColors[l] + "66" : "#e5e7eb"}`,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 9, fontWeight: 700, color: l <= level ? textColors[l] : "#d1d5db",
-                      }}>
-                        {l === 1 ? "M" : l === 2 ? "H" : "C"}
-                      </div>
-                    ))}
+                    {CELLS.map(cell => {
+                      const isLit = sev === cell.match;
+                      return (
+                        <div key={cell.label} style={{
+                          width: 28, height: 18, borderRadius: 4,
+                          background: isLit ? cell.bg : "#f3f4f6",
+                          border: `1px solid ${isLit ? cell.border : "#e5e7eb"}`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 9, fontWeight: 700, color: isLit ? cell.color : "#d1d5db",
+                        }}>
+                          {cell.label}
+                        </div>
+                      );
+                    })}
                   </div>
                   <div style={{ width: 60, textAlign: "right" }}>
                     {alert ? <SeverityBadge severity={alert.severity} /> : <span style={{ fontSize: 10, color: "#d1d5db" }}>—</span>}

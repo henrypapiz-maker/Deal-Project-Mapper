@@ -651,18 +651,21 @@ function ProgramStatusDashboard({
   checklistItems: ChecklistItem[];
   onOpenWorkstreams: () => void;
 }) {
+  const [viewMode, setViewMode] = useState<"visual" | "report">("visual");
+  const [drillWs, setDrillWs] = useState<string | null>(null);
   const [expandedRisk, setExpandedRisk] = useState<string | null>(null);
   const workstreams = Array.from(wsStats.keys());
 
+  // Item lookup for dependency resolution
+  const itemMap = new Map<string, ChecklistItem>();
+  checklistItems.forEach(i => itemMap.set(i.itemId, i));
+
   // RAG counts
   const ragCounts = { red: 0, amber: 0, green: 0, not_set: 0 };
-  workstreams.forEach(ws => {
-    const rag = deal.workstreamUpdates?.[ws]?.ragStatus ?? "not_set";
-    ragCounts[rag]++;
-  });
+  workstreams.forEach(ws => { ragCounts[deal.workstreamUpdates?.[ws]?.ragStatus ?? "not_set"]++; });
   const totalWs = workstreams.length;
 
-  // Phase completion stats
+  // Phase stats
   const phases = ["pre_close", "day_1", "day_30", "day_60", "day_90", "year_1"] as const;
   const phaseLabels: Record<string, string> = { pre_close: "Pre-Close", day_1: "Day 1", day_30: "Day 30", day_60: "Day 60", day_90: "Day 90", year_1: "Year 1" };
   const phaseStats = phases.map(p => {
@@ -673,7 +676,7 @@ function ProgramStatusDashboard({
     return { phase: p, label: phaseLabels[p], total: items.length, complete, inProg, blocked, pct: items.length ? Math.round((complete / items.length) * 100) : 0 };
   });
 
-  // Workstream rows sorted: blocked first, then by % asc
+  // Workstream rows sorted: blocked first, then % asc
   const wsRows = workstreams.map(ws => {
     const s = wsStats.get(ws)!;
     const pct = s.total ? Math.round((s.complete / s.total) * 100) : 0;
@@ -681,360 +684,579 @@ function ProgramStatusDashboard({
     const update = deal.workstreamUpdates?.[ws];
     const openDeps = openDepsItems.filter(i => i.workstream === ws).length;
     return { ws, s, pct, rag, update, openDeps };
-  }).sort((a, b) => {
-    if (b.s.blocked !== a.s.blocked) return b.s.blocked - a.s.blocked;
-    return a.pct - b.pct;
-  });
+  }).sort((a, b) => b.s.blocked !== a.s.blocked ? b.s.blocked - a.s.blocked : a.pct - b.pct);
 
-  // Donut helpers
-  const SIZE = 120;
-  const R = 44;
-  const CIRC = 2 * Math.PI * R;
-  const center = SIZE / 2;
+  // Open dependencies register
+  const depsWithBlockers = checklistItems.filter(item =>
+    item.status !== "na" && item.dependencies.length > 0 &&
+    item.dependencies.some(dId => { const d = itemMap.get(dId); return d && d.status !== "complete" && d.status !== "na"; })
+  );
+  const wsDepCounts = new Map<string, number>();
+  depsWithBlockers.forEach(i => wsDepCounts.set(i.workstream, (wsDepCounts.get(i.workstream) ?? 0) + 1));
 
+  // Donut
+  const SIZE = 100; const R = 36; const CIRC = 2 * Math.PI * R; const center = SIZE / 2;
   function DonutSegments() {
     const t = kpis.total || 1;
-    const complete = (kpis.complete / t) * CIRC;
-    const inProg = (kpis.inProgress / t) * CIRC;
-    const blocked = (kpis.blocked / t) * CIRC;
-    const notStarted = CIRC - complete - inProg - blocked;
-
-    const segs = [
-      { pct: complete, color: C.green,   offset: 0 },
-      { pct: inProg,   color: C.accent,  offset: complete },
-      { pct: blocked,  color: C.danger,  offset: complete + inProg },
-      { pct: notStarted, color: "#e5e7eb", offset: complete + inProg + blocked },
-    ];
-
+    const c = (kpis.complete / t) * CIRC;
+    const ip = (kpis.inProgress / t) * CIRC;
+    const bl = (kpis.blocked / t) * CIRC;
+    const ns = CIRC - c - ip - bl;
     return (
       <svg width={SIZE} height={SIZE} style={{ transform: "rotate(-90deg)" }}>
-        {segs.map((seg, i) => (
-          <circle
-            key={i}
-            cx={center} cy={center} r={R}
-            fill="none"
-            stroke={seg.color}
-            strokeWidth={16}
-            strokeDasharray={`${seg.pct} ${CIRC - seg.pct}`}
-            strokeDashoffset={-seg.offset}
-            strokeLinecap="butt"
-          />
+        {[{ pct: c, color: C.green, off: 0 }, { pct: ip, color: C.accent, off: c }, { pct: bl, color: C.danger, off: c + ip }, { pct: ns, color: "#e5e7eb", off: c + ip + bl }].map((s, i) => (
+          <circle key={i} cx={center} cy={center} r={R} fill="none" stroke={s.color} strokeWidth={14} strokeDasharray={`${s.pct} ${CIRC - s.pct}`} strokeDashoffset={-s.off} strokeLinecap="butt" />
         ))}
       </svg>
     );
   }
 
+  // CSV export
+  function handleExport() {
+    const esc = (v: string | number | undefined) => { const s = String(v ?? ""); return (s.includes(",") || s.includes('"') || s.includes("\n")) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const row = (cells: (string | number | undefined)[]) => cells.map(esc).join(",");
+    const L: string[] = [];
+    L.push(row(["DealMapper — Program Status Export"]));
+    L.push(row([deal.intake.dealName, `Exported: ${new Date().toLocaleString()}`]));
+    L.push("");
+    L.push(row(["=== KPI SUMMARY ==="]));
+    L.push(row(["Metric", "Value"]));
+    [["Overall Progress", `${kpis.pctComplete}%`], ["Total Active Items", kpis.total], ["Complete", kpis.complete], ["In Progress", kpis.inProgress], ["Blocked", kpis.blocked], ["Not Started", kpis.notStarted], ["Open Dependencies", depsWithBlockers.length], ["Active Risks", riskAlerts.length], ["Critical Risks", riskAlerts.filter(r => r.severity === "critical").length]].forEach(r => L.push(row(r)));
+    L.push(""); L.push(row(["=== WORKSTREAM STATUS ==="]));
+    L.push(row(["Workstream", "RAG", "% Complete", "Complete", "In Progress", "Blocked", "Not Started", "Open Deps", "Update", "Updated At"]));
+    wsRows.forEach(({ ws, s, pct, rag, update, openDeps }) => L.push(row([ws, rag === "not_set" ? "No Update" : rag, `${pct}%`, s.complete, s.inProgress, s.blocked, s.notStarted, openDeps, update?.updateText ?? "", update?.updatedAt ?? ""])));
+    L.push(""); L.push(row(["=== RISK REGISTER ==="]));
+    L.push(row(["Risk Category", "Severity", "Description", "Mitigation", "Affected Workstreams"]));
+    riskAlerts.forEach(r => L.push(row([RISK_LABELS[r.category] ?? r.category, r.severity, r.description, r.mitigation, r.affectedWorkstreams.join("; ")])));
+    L.push(""); L.push(row(["=== OPEN DEPENDENCIES ==="]));
+    L.push(row(["Item ID", "Workstream", "Description", "Status", "Waiting On"]));
+    depsWithBlockers.forEach(item => { const bl = item.dependencies.filter(dId => { const d = itemMap.get(dId); return d && d.status !== "complete" && d.status !== "na"; }); L.push(row([item.itemId, item.workstream, item.description, item.status, bl.join("; ")])); });
+    L.push(""); L.push(row(["=== FULL CHECKLIST ==="]));
+    L.push(row(["ID", "Workstream", "Description", "Phase", "Priority", "Status", "Notes"]));
+    checklistItems.filter(i => i.status !== "na").forEach(item => L.push(row([item.itemId, item.workstream, item.description, item.phase, item.priority, item.status, item.notes.join(" || ")])));
+    const blob = new Blob(["\ufeff" + L.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${deal.intake.dealName.replace(/[^a-z0-9]/gi, "-")}-program-status-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+
+  const weekStr = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const drillItems = drillWs ? checklistItems.filter(i => i.workstream === drillWs && i.status !== "na") : [];
+  const CELLS_DEF = [
+    { label: "R", match: "critical" as const, color: C.danger, bg: C.dangerBg, border: "#fecaca" },
+    { label: "A", match: "high" as const, color: C.warning, bg: C.warningBg, border: "#fde68a" },
+    { label: "G", match: "medium" as const, color: C.green, bg: C.greenBg, border: C.greenBorder },
+  ];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
 
-      {/* ── Row 1: Hero Summary Cards ─────────────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+      {/* ── Main content ── */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
 
-        {/* Donut: Overall Completion */}
-        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, display: "flex", flexDirection: "column", alignItems: "center" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 14, alignSelf: "flex-start" }}>Overall Completion</div>
-          <div style={{ position: "relative", width: SIZE, height: SIZE }}>
-            <DonutSegments />
-            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ fontSize: 26, fontWeight: 800, color: C.text, lineHeight: 1 }}>{kpis.pctComplete}%</div>
-              <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>complete</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 10px", marginTop: 10, justifyContent: "center" }}>
-            {[
-              { color: C.green,   label: `${kpis.complete} done` },
-              { color: C.accent,  label: `${kpis.inProgress} active` },
-              { color: C.danger,  label: `${kpis.blocked} blocked` },
-              { color: "#e5e7eb", label: `${kpis.notStarted} pending` },
-            ].map(leg => (
-              <div key={leg.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 2, background: leg.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 10, color: C.muted }}>{leg.label}</span>
-              </div>
+        {/* Action bar: date + view toggle + export */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1, fontSize: 11, color: C.muted }}>As of {weekStr}</div>
+          <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 7, padding: 2, gap: 1 }}>
+            {(["visual", "report"] as const).map(m => (
+              <button key={m} onClick={() => setViewMode(m)} style={{ padding: "5px 14px", borderRadius: 5, border: "none", background: viewMode === m ? C.card : "transparent", color: viewMode === m ? C.text : C.muted, fontSize: 11, fontWeight: viewMode === m ? 700 : 400, cursor: "pointer", boxShadow: viewMode === m ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
+                {m === "visual" ? "📊 Visual" : "📋 Weekly Report"}
+              </button>
             ))}
           </div>
-        </div>
-
-        {/* RAG Distribution */}
-        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 14 }}>RAG Status Distribution</div>
-          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-            {[
-              { rag: "green" as const, label: "Green",   color: C.green,   bg: C.greenBg,   border: C.greenBorder, count: ragCounts.green },
-              { rag: "amber" as const, label: "Amber",   color: C.warning, bg: C.warningBg,  border: "#fde68a",     count: ragCounts.amber },
-              { rag: "red"   as const, label: "Red",     color: C.danger,  bg: C.dangerBg,   border: "#fecaca",     count: ragCounts.red },
-              { rag: "not_set" as const, label: "No Update", color: C.light, bg: "#f9fafb", border: C.border,     count: ragCounts.not_set },
-            ].map(s => (
-              <div key={s.rag} style={{ flex: 1, padding: "12px 8px", borderRadius: 8, background: s.bg, border: `1px solid ${s.border}`, textAlign: "center" }}>
-                <div style={{ fontSize: 26, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.count}</div>
-                <div style={{ fontSize: 10, color: s.color, marginTop: 4, fontWeight: 600 }}>{s.label}</div>
-              </div>
-            ))}
-          </div>
-          {/* Proportional bar */}
-          <div style={{ height: 10, borderRadius: 6, overflow: "hidden", display: "flex" }}>
-            {[
-              { w: (ragCounts.green / totalWs) * 100,   color: C.green },
-              { w: (ragCounts.amber / totalWs) * 100,   color: C.warning },
-              { w: (ragCounts.red / totalWs) * 100,     color: C.danger },
-              { w: (ragCounts.not_set / totalWs) * 100, color: "#d1d5db" },
-            ].filter(s => s.w > 0).map((s, i) => (
-              <div key={i} style={{ width: `${s.w}%`, background: s.color, transition: "width 0.5s" }} />
-            ))}
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 10, color: C.light }}>
-            <span>{totalWs} workstreams</span>
-            <span>{Object.keys(deal.workstreamUpdates || {}).length} with updates</span>
-          </div>
-        </div>
-
-        {/* Risk + Dependency Summary */}
-        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 14 }}>Risk &amp; Dependency Health</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-            {[
-              { label: "Critical Risks", value: riskAlerts.filter(r => r.severity === "critical").length, color: C.danger, bg: C.dangerBg },
-              { label: "High Risks",     value: riskAlerts.filter(r => r.severity === "high").length,     color: C.warning, bg: C.warningBg },
-              { label: "Open Deps",      value: openDepsItems.length,                                      color: "#7c3aed", bg: "#f5f3ff" },
-              { label: "Blocked Items",  value: kpis.blocked,                                              color: C.danger,  bg: C.dangerBg },
-            ].map(m => (
-              <div key={m.label} style={{ padding: "10px 12px", borderRadius: 7, background: m.bg, textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</div>
-                <div style={{ fontSize: 10, color: m.color, marginTop: 3 }}>{m.label}</div>
-              </div>
-            ))}
-          </div>
-          {/* Risk severity mini-bar */}
-          {riskAlerts.length > 0 && (
-            <div>
-              <div style={{ fontSize: 10, color: C.light, marginBottom: 5 }}>Risk severity distribution</div>
-              <div style={{ height: 8, borderRadius: 4, overflow: "hidden", display: "flex" }}>
-                {[
-                  { w: (riskAlerts.filter(r => r.severity === "critical").length / riskAlerts.length) * 100, color: C.danger },
-                  { w: (riskAlerts.filter(r => r.severity === "high").length / riskAlerts.length) * 100, color: C.warning },
-                  { w: (riskAlerts.filter(r => r.severity === "medium").length / riskAlerts.length) * 100, color: C.accent },
-                ].filter(s => s.w > 0).map((s, i) => (
-                  <div key={i} style={{ width: `${s.w}%`, background: s.color }} />
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── Row 2: Workstream Status Chart ───────────────────────────────────── */}
-      <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted }}>Workstream Status — Stacked Progress</div>
-          <button onClick={onOpenWorkstreams} style={{ fontSize: 11, color: C.accent, background: C.accentBg, border: `1px solid #bfdbfe`, borderRadius: 4, padding: "3px 10px", cursor: "pointer", fontWeight: 600 }}>
-            Open Workstreams →
+          <button onClick={handleExport} style={{ padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: C.card, color: C.muted, fontSize: 11, cursor: "pointer", fontWeight: 600 }}>
+            ⬇ Export CSV
           </button>
         </div>
 
-        {/* Legend */}
-        <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
-          {[
-            { color: C.green,   label: "Complete" },
-            { color: C.accent,  label: "In Progress" },
-            { color: C.danger,  label: "Blocked" },
-            { color: "#e5e7eb", label: "Not Started" },
-          ].map(l => (
-            <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 2, background: l.color }} />
-              <span style={{ fontSize: 11, color: C.muted }}>{l.label}</span>
-            </div>
-          ))}
-        </div>
+        {/* ── VISUAL MODE ── */}
+        {viewMode === "visual" && (
+          <>
+            {/* Row 1: 3 equal summary cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {wsRows.map(({ ws, s, pct, rag, update, openDeps }) => {
-            const ragC = RAG_CFG[rag];
-            const pComplete  = s.total ? (s.complete  / s.total) * 100 : 0;
-            const pInProg    = s.total ? (s.inProgress / s.total) * 100 : 0;
-            const pBlocked   = s.total ? (s.blocked    / s.total) * 100 : 0;
-            const pNotStart  = s.total ? (s.notStarted / s.total) * 100 : 0;
-            return (
-              <div key={ws} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {/* RAG dot */}
-                <div style={{ width: 10, height: 10, borderRadius: "50%", background: ragC.color, flexShrink: 0 }} title={`Status: ${ragC.label}`} />
-                {/* Workstream name */}
-                <div style={{ width: 180, fontSize: 12, color: C.text, fontWeight: s.blocked > 0 ? 600 : 400, flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {ws}
+              {/* Overall Completion donut */}
+              <div style={{ padding: "16px 18px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, display: "flex", flexDirection: "column" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 12 }}>Overall Completion</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, flex: 1 }}>
+                  <div style={{ position: "relative", width: SIZE, height: SIZE, flexShrink: 0 }}>
+                    <DonutSegments />
+                    <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: C.text, lineHeight: 1 }}>{kpis.pctComplete}%</div>
+                      <div style={{ fontSize: 9, color: C.muted }}>complete</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {[{ color: C.green, label: "Done", value: kpis.complete }, { color: C.accent, label: "Active", value: kpis.inProgress }, { color: C.danger, label: "Blocked", value: kpis.blocked }, { color: "#d1d5db", label: "Pending", value: kpis.notStarted }].map(l => (
+                      <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: 2, background: l.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 11, color: C.muted, minWidth: 42 }}>{l.label}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: l.color }}>{l.value}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                {/* Stacked bar */}
-                <div style={{ flex: 1, height: 22, borderRadius: 5, overflow: "hidden", display: "flex", background: "#f3f4f6" }}>
-                  {pComplete > 0 && <div style={{ width: `${pComplete}%`,  background: C.green,   transition: "width 0.5s" }} />}
-                  {pInProg  > 0 && <div style={{ width: `${pInProg}%`,   background: C.accent,  transition: "width 0.5s" }} />}
-                  {pBlocked > 0 && <div style={{ width: `${pBlocked}%`,  background: C.danger,  transition: "width 0.5s" }} />}
-                  {pNotStart > 0 && <div style={{ width: `${pNotStart}%`, background: "#e5e7eb", transition: "width 0.5s" }} />}
+              </div>
+
+              {/* RAG Distribution */}
+              <div style={{ padding: "16px 18px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 12 }}>RAG Distribution</div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  {[{ rag: "red" as const, label: "Red", color: C.danger, bg: C.dangerBg, border: "#fecaca", count: ragCounts.red }, { rag: "amber" as const, label: "Amber", color: C.warning, bg: C.warningBg, border: "#fde68a", count: ragCounts.amber }, { rag: "green" as const, label: "Green", color: C.green, bg: C.greenBg, border: C.greenBorder, count: ragCounts.green }, { rag: "not_set" as const, label: "None", color: C.light, bg: "#f9fafb", border: C.border, count: ragCounts.not_set }].map(s => (
+                    <div key={s.rag} style={{ flex: 1, padding: "10px 6px", borderRadius: 7, background: s.bg, border: `1px solid ${s.border}`, textAlign: "center" }}>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.count}</div>
+                      <div style={{ fontSize: 9, color: s.color, marginTop: 3, fontWeight: 600 }}>{s.label}</div>
+                    </div>
+                  ))}
                 </div>
-                {/* % label */}
-                <div style={{ width: 38, textAlign: "right", fontSize: 12, fontWeight: 700, color: s.blocked > 0 ? C.danger : pct > 50 ? C.green : C.accent, flexShrink: 0 }}>
-                  {pct}%
+                <div style={{ height: 8, borderRadius: 4, overflow: "hidden", display: "flex" }}>
+                  {[{ w: (ragCounts.red / totalWs) * 100, color: C.danger }, { w: (ragCounts.amber / totalWs) * 100, color: C.warning }, { w: (ragCounts.green / totalWs) * 100, color: C.green }, { w: (ragCounts.not_set / totalWs) * 100, color: "#d1d5db" }].filter(s => s.w > 0).map((s, i) => (
+                    <div key={i} style={{ width: `${s.w}%`, background: s.color }} />
+                  ))}
                 </div>
-                {/* Blocked badge */}
-                {s.blocked > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: C.danger, background: C.dangerBg, border: "1px solid #fecaca", borderRadius: 3, padding: "1px 5px", flexShrink: 0 }}>
-                    {s.blocked}✕
-                  </span>
-                )}
-                {/* Deps badge */}
-                {openDeps > 0 && (
-                  <span style={{ fontSize: 10, color: "#7c3aed", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 3, padding: "1px 5px", flexShrink: 0 }}>
-                    ⬡{openDeps}
-                  </span>
-                )}
-                {/* Update snippet */}
-                {update?.updateText && (
-                  <div style={{ width: 160, fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: "italic", flexShrink: 0 }}>
-                    "{update.updateText.slice(0, 40)}{update.updateText.length > 40 ? "…" : ""}"
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 10, color: C.light }}>
+                  <span>{totalWs} workstreams</span>
+                  <span>{Object.keys(deal.workstreamUpdates || {}).length} updated</span>
+                </div>
+              </div>
+
+              {/* Risk & Dep Health */}
+              <div style={{ padding: "16px 18px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 12 }}>Risk &amp; Dependency Health</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+                  {[{ label: "Critical Risks", value: riskAlerts.filter(r => r.severity === "critical").length, color: C.danger, bg: C.dangerBg }, { label: "High Risks", value: riskAlerts.filter(r => r.severity === "high").length, color: C.warning, bg: C.warningBg }, { label: "Open Deps", value: depsWithBlockers.length, color: "#7c3aed", bg: "#f5f3ff" }, { label: "Blocked Items", value: kpis.blocked, color: C.danger, bg: C.dangerBg }].map(m => (
+                    <div key={m.label} style={{ padding: "9px 10px", borderRadius: 6, background: m.bg, textAlign: "center" }}>
+                      <div style={{ fontSize: 20, fontWeight: 800, color: m.color, lineHeight: 1 }}>{m.value}</div>
+                      <div style={{ fontSize: 9, color: m.color, marginTop: 2 }}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+                {riskAlerts.length > 0 && (
+                  <div style={{ height: 6, borderRadius: 3, overflow: "hidden", display: "flex" }}>
+                    {[{ w: (riskAlerts.filter(r => r.severity === "critical").length / riskAlerts.length) * 100, color: C.danger }, { w: (riskAlerts.filter(r => r.severity === "high").length / riskAlerts.length) * 100, color: C.warning }, { w: (riskAlerts.filter(r => r.severity === "medium").length / riskAlerts.length) * 100, color: C.accent }].filter(s => s.w > 0).map((s, i) => <div key={i} style={{ width: `${s.w}%`, background: s.color }} />)}
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
-      </div>
+            </div>
 
-      {/* ── Row 3: Phase Funnel + Risk Heat Map ──────────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-
-        {/* Phase Completion Funnel */}
-        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 16 }}>Phase Completion</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {phaseStats.map(p => {
-              const barColor = p.blocked > 0 ? C.danger : p.pct === 100 ? C.green : p.pct > 50 ? C.green : p.pct > 0 ? C.accent : "#e5e7eb";
-              return (
-                <div key={p.phase}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{p.label}</span>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {p.blocked > 0 && <span style={{ fontSize: 10, color: C.danger, fontWeight: 600 }}>{p.blocked} blocked</span>}
-                      <span style={{ fontSize: 12, fontWeight: 700, color: barColor }}>{p.pct}%</span>
-                      <span style={{ fontSize: 10, color: C.light }}>{p.complete}/{p.total}</span>
+            {/* Row 2: Compact Workstream Status Table — click row for drill-through */}
+            <div style={{ borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: `1px solid ${C.border}`, background: "#f9fafb" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted }}>Workstream Status</div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  {[{ color: C.green, label: "Complete" }, { color: C.accent, label: "In Progress" }, { color: C.danger, label: "Blocked" }, { color: "#e5e7eb", label: "Not Started" }].map(l => (
+                    <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: 1, background: l.color }} />
+                      <span style={{ fontSize: 10, color: C.muted }}>{l.label}</span>
+                    </div>
+                  ))}
+                  <span style={{ fontSize: 10, color: C.light, borderLeft: `1px solid ${C.border}`, paddingLeft: 10 }}>Click row to drill →</span>
+                  <button onClick={onOpenWorkstreams} style={{ fontSize: 11, color: C.accent, background: C.accentBg, border: `1px solid #bfdbfe`, borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontWeight: 600 }}>Open →</button>
+                </div>
+              </div>
+              {wsRows.map(({ ws, s, pct, rag, update, openDeps }, idx) => {
+                const ragC = RAG_CFG[rag];
+                const pC = s.total ? (s.complete / s.total) * 100 : 0;
+                const pI = s.total ? (s.inProgress / s.total) * 100 : 0;
+                const pB = s.total ? (s.blocked / s.total) * 100 : 0;
+                const pN = s.total ? (s.notStarted / s.total) * 100 : 0;
+                const isSel = drillWs === ws;
+                return (
+                  <div key={ws} onClick={() => setDrillWs(isSel ? null : ws)}
+                    style={{ display: "grid", gridTemplateColumns: "12px 178px 1fr 44px 110px 150px", alignItems: "center", gap: 10, padding: "7px 16px", borderBottom: idx < wsRows.length - 1 ? `1px solid ${C.border}` : "none", cursor: "pointer", background: isSel ? C.accentBg : "transparent", transition: "background 0.1s" }}
+                    onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = "#f9fafb"; }}
+                    onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+                  >
+                    <div style={{ width: 10, height: 10, borderRadius: "50%", background: ragC.color }} title={`RAG: ${ragC.label}`} />
+                    <div style={{ fontSize: 12, color: C.text, fontWeight: s.blocked > 0 ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws}</div>
+                    <div style={{ height: 18, borderRadius: 3, overflow: "hidden", display: "flex", background: "#f3f4f6" }}>
+                      {pC > 0 && <div style={{ width: `${pC}%`, background: C.green }} />}
+                      {pI > 0 && <div style={{ width: `${pI}%`, background: C.accent }} />}
+                      {pB > 0 && <div style={{ width: `${pB}%`, background: C.danger }} />}
+                      {pN > 0 && <div style={{ width: `${pN}%`, background: "#e5e7eb" }} />}
+                    </div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: s.blocked > 0 ? C.danger : pct > 50 ? C.green : C.accent, textAlign: "right" }}>{pct}%</div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      {s.blocked > 0 && <span style={{ fontSize: 10, color: C.danger, background: C.dangerBg, border: "1px solid #fecaca", borderRadius: 3, padding: "1px 5px" }}>{s.blocked}✕</span>}
+                      {openDeps > 0 && <span style={{ fontSize: 10, color: "#7c3aed", background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 3, padding: "1px 5px" }}>⬡{openDeps}</span>}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontStyle: "italic" }}>
+                      {update?.updateText ? `"${update.updateText.slice(0, 32)}${update.updateText.length > 32 ? "…" : ""}"` : <span style={{ color: "#d1d5db" }}>No update</span>}
                     </div>
                   </div>
-                  {/* Segmented bar */}
-                  <div style={{ height: 14, borderRadius: 4, overflow: "hidden", display: "flex", background: "#f3f4f6" }}>
-                    {p.complete  > 0 && <div style={{ width: `${(p.complete / p.total) * 100}%`,  background: C.green,  transition: "width 0.5s" }} />}
-                    {p.inProg    > 0 && <div style={{ width: `${(p.inProg   / p.total) * 100}%`,  background: C.accent, transition: "width 0.5s" }} />}
-                    {p.blocked   > 0 && <div style={{ width: `${(p.blocked  / p.total) * 100}%`,  background: C.danger, transition: "width 0.5s" }} />}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                );
+              })}
+            </div>
 
-        {/* Risk Heat Map */}
-        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 10 }}>Risk Heat Map</div>
-          <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", marginBottom: 6 }}>
-            {[{ label: "R", color: C.danger }, { label: "A", color: C.warning }, { label: "G", color: C.green }].map(h => (
-              <div key={h.label} style={{ width: 28, fontSize: 9, fontWeight: 700, textAlign: "center", color: h.color }}>{h.label}</div>
-            ))}
-            <div style={{ width: 60 }} />
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            {Object.entries(RISK_LABELS).map(([key, label]) => {
-              const alert = riskAlerts.find(r => r.category === key);
-              const sev = alert?.severity;
-              const CELLS = [
-                { label: "R", match: "critical", color: C.danger,  bg: C.dangerBg,  border: "#fecaca" },
-                { label: "A", match: "high",     color: C.warning, bg: C.warningBg, border: "#fde68a" },
-                { label: "G", match: "medium",   color: C.green,   bg: C.greenBg,   border: C.greenBorder },
-              ] as const;
-              return (
-                <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ flex: 1, fontSize: 12, color: C.text }}>{label}</div>
-                  <div style={{ display: "flex", gap: 3 }}>
-                    {CELLS.map(cell => {
-                      const isLit = sev === cell.match;
-                      return (
-                        <div key={cell.label} style={{
-                          width: 28, height: 18, borderRadius: 4,
-                          background: isLit ? cell.bg : "#f3f4f6",
-                          border: `1px solid ${isLit ? cell.border : "#e5e7eb"}`,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 9, fontWeight: 700, color: isLit ? cell.color : "#d1d5db",
-                        }}>
-                          {cell.label}
+            {/* Row 3: Phase Completion + Risk Heat Map */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div style={{ padding: "16px 18px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 14 }}>Phase Completion</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {phaseStats.map(p => {
+                    const bc = p.blocked > 0 ? C.danger : p.pct === 100 ? C.green : p.pct > 0 ? C.accent : "#e5e7eb";
+                    return (
+                      <div key={p.phase}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{p.label}</span>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                            {p.blocked > 0 && <span style={{ fontSize: 10, color: C.danger, fontWeight: 600 }}>{p.blocked} blocked</span>}
+                            <span style={{ fontSize: 12, fontWeight: 700, color: bc }}>{p.pct}%</span>
+                            <span style={{ fontSize: 10, color: C.light }}>{p.complete}/{p.total}</span>
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ width: 60, textAlign: "right" }}>
-                    {alert ? <SeverityBadge severity={alert.severity} /> : <span style={{ fontSize: 10, color: "#d1d5db" }}>—</span>}
-                  </div>
+                        <div style={{ height: 12, borderRadius: 3, overflow: "hidden", display: "flex", background: "#f3f4f6" }}>
+                          {p.complete > 0 && <div style={{ width: `${(p.complete / p.total) * 100}%`, background: C.green }} />}
+                          {p.inProg   > 0 && <div style={{ width: `${(p.inProg / p.total) * 100}%`, background: C.accent }} />}
+                          {p.blocked  > 0 && <div style={{ width: `${(p.blocked / p.total) * 100}%`, background: C.danger }} />}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+              </div>
+              <div style={{ padding: "16px 18px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 8 }}>Risk Heat Map</div>
+                <div style={{ display: "flex", gap: 3, justifyContent: "flex-end", marginBottom: 6 }}>
+                  {[{ label: "R", color: C.danger }, { label: "A", color: C.warning }, { label: "G", color: C.green }].map(h => (
+                    <div key={h.label} style={{ width: 28, fontSize: 9, fontWeight: 700, textAlign: "center", color: h.color }}>{h.label}</div>
+                  ))}
+                  <div style={{ width: 60 }} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {Object.entries(RISK_LABELS).map(([key, label]) => {
+                    const alert = riskAlerts.find(r => r.category === key);
+                    const sev = alert?.severity;
+                    return (
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ flex: 1, fontSize: 11, color: C.text }}>{label}</div>
+                        <div style={{ display: "flex", gap: 3 }}>
+                          {CELLS_DEF.map(cell => {
+                            const isLit = sev === cell.match;
+                            return <div key={cell.label} style={{ width: 28, height: 16, borderRadius: 3, background: isLit ? cell.bg : "#f3f4f6", border: `1px solid ${isLit ? cell.border : "#e5e7eb"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: isLit ? cell.color : "#d1d5db" }}>{cell.label}</div>;
+                          })}
+                        </div>
+                        <div style={{ width: 60, textAlign: "right" }}>
+                          {alert ? <SeverityBadge severity={alert.severity} /> : <span style={{ fontSize: 10, color: "#d1d5db" }}>—</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
 
-      {/* ── Row 4: Active Risk Cards ──────────────────────────────────────────── */}
-      {riskAlerts.length > 0 && (
-        <div style={{ padding: "18px 20px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 14 }}>
-            Active Risk Alerts — {riskAlerts.length} open
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-            {riskAlerts.map(r => {
-              const isExpanded = expandedRisk === r.id;
-              const borderColor = r.severity === "critical" ? C.danger : r.severity === "high" ? C.warning : C.accent;
-              const bgColor     = r.severity === "critical" ? C.dangerBg : r.severity === "high" ? C.warningBg : C.accentBg;
-              return (
-                <div
-                  key={r.id}
-                  onClick={() => setExpandedRisk(isExpanded ? null : r.id)}
-                  style={{
-                    padding: "14px 16px", borderRadius: 9, background: bgColor,
-                    border: `1px solid ${borderColor}44`, borderLeft: `4px solid ${borderColor}`,
-                    cursor: "pointer", transition: "box-shadow 0.15s",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 4 }}>{RISK_LABELS[r.category]}</div>
-                      <SeverityBadge severity={r.severity} />
-                    </div>
-                    <span style={{ fontSize: 10, color: C.light, marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</span>
+            {/* Row 4: Weekly Dependencies Summary */}
+            {depsWithBlockers.length > 0 && (
+              <div style={{ borderRadius: 10, background: C.card, border: `1px solid #ddd6fe`, overflow: "hidden" }}>
+                <div style={{ padding: "10px 16px", background: "#f5f3ff", borderBottom: `1px solid #ddd6fe`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: "#7c3aed" }}>Weekly Dependencies Summary</span>
+                    <span style={{ fontSize: 11, color: "#7c3aed", marginLeft: 10 }}>{depsWithBlockers.length} items awaiting upstream</span>
                   </div>
-                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: isExpanded ? 10 : 0 }}>
-                    {r.affectedWorkstreams.map(ws => (
-                      <span key={ws} style={{ fontSize: 10, padding: "1px 7px", borderRadius: 3, background: "rgba(255,255,255,0.6)", color: C.text, border: `1px solid ${borderColor}33` }}>
-                        {ws.split(" ")[0]}
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {Array.from(wsDepCounts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([ws, count]) => (
+                      <span key={ws} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "#ede9fe", color: "#7c3aed", border: "1px solid #ddd6fe", fontWeight: 600 }}>
+                        {ws.split(" ")[0]}: {count}
                       </span>
                     ))}
                   </div>
-                  {isExpanded && (
-                    <div>
-                      <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 10 }}>{r.description}</div>
-                      <div style={{ borderTop: `1px solid ${borderColor}33`, paddingTop: 10 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>Mitigation</div>
-                        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{r.mitigation}</div>
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                      {["Item ID", "Workstream", "Description", "Status", "Waiting On"].map(h => (
+                        <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 10, fontWeight: 600, color: C.muted, background: "#fafafa" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {depsWithBlockers.slice(0, 12).map(item => {
+                      const blockers = item.dependencies.map(dId => itemMap.get(dId)).filter(d => d && d.status !== "complete" && d.status !== "na") as ChecklistItem[];
+                      return (
+                        <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                          <td style={{ padding: "6px 12px", fontWeight: 700, color: "#7c3aed", fontSize: 11 }}>{item.itemId}</td>
+                          <td style={{ padding: "6px 12px", color: C.muted, fontSize: 11, whiteSpace: "nowrap" }}>{item.workstream.split(" ").slice(0, 2).join(" ")}</td>
+                          <td style={{ padding: "6px 12px", color: C.text, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</td>
+                          <td style={{ padding: "6px 12px" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: item.status === "blocked" ? C.danger : C.warning, background: item.status === "blocked" ? C.dangerBg : C.warningBg, padding: "1px 6px", borderRadius: 3 }}>{item.status.replace("_", " ")}</span>
+                          </td>
+                          <td style={{ padding: "6px 12px" }}>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {blockers.slice(0, 3).map(d => <span key={d.id} style={{ fontSize: 10, color: d.status === "blocked" ? C.danger : C.muted, background: d.status === "blocked" ? C.dangerBg : "#f9fafb", padding: "1px 6px", borderRadius: 3, border: `1px solid ${d.status === "blocked" ? "#fecaca" : C.border}` }}>{d.itemId}</span>)}
+                              {blockers.length > 3 && <span style={{ fontSize: 10, color: C.light }}>+{blockers.length - 3}</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {depsWithBlockers.length > 12 && <div style={{ padding: "7px 12px", fontSize: 11, color: C.light, borderTop: `1px solid ${C.border}` }}>+{depsWithBlockers.length - 12} more with open dependencies</div>}
+              </div>
+            )}
+
+            {/* Row 5: Active Risk Cards */}
+            {riskAlerts.length > 0 && (
+              <div style={{ padding: "16px 18px", borderRadius: 10, background: C.card, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.9, color: C.muted, marginBottom: 12 }}>Active Risk Alerts — {riskAlerts.length} open</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 10 }}>
+                  {riskAlerts.map(r => {
+                    const isExp = expandedRisk === r.id;
+                    const bc = r.severity === "critical" ? C.danger : r.severity === "high" ? C.warning : C.accent;
+                    const bg = r.severity === "critical" ? C.dangerBg : r.severity === "high" ? C.warningBg : C.accentBg;
+                    return (
+                      <div key={r.id} onClick={() => setExpandedRisk(isExp ? null : r.id)} style={{ padding: "12px 14px", borderRadius: 8, background: bg, border: `1px solid ${bc}44`, borderLeft: `4px solid ${bc}`, cursor: "pointer" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 3 }}>{RISK_LABELS[r.category]}</div>
+                            <SeverityBadge severity={r.severity} />
+                          </div>
+                          <span style={{ fontSize: 10, color: C.light }}>{isExp ? "▲" : "▼"}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: isExp ? 8 : 0 }}>
+                          {r.affectedWorkstreams.map(ws => <span key={ws} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 3, background: "rgba(255,255,255,0.6)", color: C.text, border: `1px solid ${bc}33` }}>{ws.split(" ")[0]}</span>)}
+                        </div>
+                        {isExp && (
+                          <div>
+                            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6, marginBottom: 8 }}>{r.description}</div>
+                            <div style={{ borderTop: `1px solid ${bc}33`, paddingTop: 8 }}>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Mitigation</div>
+                              <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>{r.mitigation}</div>
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {riskAlerts.length === 0 && (
+              <div style={{ padding: 22, borderRadius: 10, background: C.greenBg, border: `1px solid ${C.greenBorder}`, textAlign: "center" }}>
+                <div style={{ fontSize: 16, marginBottom: 4 }}>✓</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.green }}>No material risks detected</div>
+                <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>The decision tree found no risk triggers for this deal profile.</div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── WEEKLY REPORT MODE ── */}
+        {viewMode === "report" && (
+          <WeeklyReportView
+            deal={deal} kpis={kpis} wsRows={wsRows} riskAlerts={riskAlerts}
+            depsWithBlockers={depsWithBlockers} itemMap={itemMap} weekStr={weekStr}
+          />
+        )}
+      </div>
+
+      {/* ── Drill-through panel ── */}
+      {drillWs && (
+        <div style={{ width: 340, flexShrink: 0, borderRadius: 10, background: C.card, border: `1px solid ${C.border}`, overflow: "hidden", position: "sticky", top: 0, maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.border}`, background: "#f9fafb", display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 270 }}>{drillWs}</div>
+              <div style={{ fontSize: 10, color: C.muted, marginTop: 1 }}>Drill-through · {drillItems.length} items</div>
+            </div>
+            <button onClick={() => setDrillWs(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18, color: C.light, lineHeight: 1, padding: "2px 4px" }}>✕</button>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: "10px 0" }}>
+            {(["blocked", "in_progress", "not_started", "complete"] as const).map(status => {
+              const items = drillItems.filter(i => i.status === status);
+              if (items.length === 0) return null;
+              const sc: Record<string, { color: string; bg: string }> = {
+                blocked: { color: C.danger, bg: C.dangerBg }, in_progress: { color: C.accent, bg: C.accentBg },
+                not_started: { color: C.light, bg: "#f9fafb" }, complete: { color: C.green, bg: C.greenBg },
+              };
+              const c = sc[status];
+              const lbl = { blocked: "Blocked", in_progress: "In Progress", not_started: "Not Started", complete: "Complete" }[status];
+              return (
+                <div key={status} style={{ marginBottom: 10, padding: "0 12px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: c.color, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 5 }}>{lbl} ({items.length})</div>
+                  {items.slice(0, 7).map(item => (
+                    <div key={item.id} style={{ padding: "6px 8px", marginBottom: 3, borderRadius: 5, background: c.bg, border: `1px solid ${c.color}22` }}>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 2 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: c.color, flexShrink: 0 }}>{item.itemId}</span>
+                        <span style={{ fontSize: 10, color: C.light }}>{PHASE_LABELS[item.phase] ?? item.phase}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: C.text, lineHeight: 1.3 }}>{item.description}</div>
+                      {item.blockedReason && <div style={{ fontSize: 10, color: C.danger, marginTop: 3, fontStyle: "italic" }}>⚠ {item.blockedReason}</div>}
                     </div>
-                  )}
+                  ))}
+                  {items.length > 7 && <div style={{ fontSize: 10, color: C.light, paddingLeft: 4, marginTop: 2 }}>+{items.length - 7} more</div>}
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
-
-      {riskAlerts.length === 0 && (
-        <div style={{ padding: 28, borderRadius: 10, background: C.greenBg, border: `1px solid ${C.greenBorder}`, textAlign: "center" }}>
-          <div style={{ fontSize: 22, marginBottom: 6 }}>✓</div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.green }}>No material risks detected</div>
-          <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>The decision tree found no risk triggers for this deal profile.</div>
         </div>
       )}
     </div>
   );
 }
+
+// ─── Weekly Report View ───────────────────────────────────────────────────────
+
+function WeeklyReportView({
+  deal, kpis, wsRows, riskAlerts, depsWithBlockers, itemMap, weekStr,
+}: {
+  deal: GeneratedDeal;
+  kpis: ReturnType<typeof getKpis>;
+  wsRows: { ws: string; s: { complete: number; inProgress: number; blocked: number; notStarted: number; total: number }; pct: number; rag: string; update: { ragStatus: string; updateText: string; updatedAt: string } | undefined; openDeps: number }[];
+  riskAlerts: RiskAlert[];
+  depsWithBlockers: ChecklistItem[];
+  itemMap: Map<string, ChecklistItem>;
+  weekStr: string;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Report header */}
+      <div style={{ padding: "20px 24px", borderRadius: 10, background: "linear-gradient(135deg, #192819, #2e4a2e)", color: "#f0fdf4" }}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 3 }}>Program Status — Weekly Report</div>
+        <div style={{ fontSize: 11, color: "#86efac", marginBottom: 16 }}>{deal.intake.dealName} · {weekStr}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          {[
+            { label: "Overall Progress", value: `${kpis.pctComplete}%`, sub: `${kpis.complete} / ${kpis.total} items` },
+            { label: "Blocked", value: kpis.blocked, sub: "items need attention", warn: true },
+            { label: "Active Risks", value: riskAlerts.length, sub: `${riskAlerts.filter(r => r.severity === "critical").length} critical` },
+            { label: "Open Dependencies", value: depsWithBlockers.length, sub: "awaiting upstream" },
+          ].map(m => (
+            <div key={m.label} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: m.warn && Number(m.value) > 0 ? "#fca5a5" : "#86efac", lineHeight: 1 }}>{m.value}</div>
+              <div style={{ fontSize: 10, color: "#86efac", marginTop: 3 }}>{m.label}</div>
+              <div style={{ fontSize: 9, color: "#4ade8044", marginTop: 1 }}>{m.sub}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Workstream RAG status table */}
+      <div style={{ borderRadius: 10, background: "#fff", border: `1px solid ${C.border}`, overflow: "hidden" }}>
+        <div style={{ padding: "10px 14px", background: "#f9fafb", borderBottom: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.9 }}>Workstream RAG Status</div>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${C.border}`, background: "#f9fafb" }}>
+              {["RAG", "Workstream", "Done %", "✓", "→", "✕", "○", "Status Update"].map(h => (
+                <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 10, fontWeight: 600, color: C.muted }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {wsRows.map(({ ws, s, pct, rag, update }) => {
+              const ragC = RAG_CFG[rag as keyof typeof RAG_CFG];
+              return (
+                <tr key={ws} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <td style={{ padding: "7px 12px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                      <div style={{ width: 9, height: 9, borderRadius: "50%", background: ragC.color }} />
+                      <span style={{ fontSize: 10, fontWeight: 700, color: ragC.color }}>{ragC.label}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: "7px 12px", fontWeight: 600, color: C.text }}>{ws}</td>
+                  <td style={{ padding: "7px 12px" }}>
+                    <span style={{ fontWeight: 700, color: pct === 100 ? C.green : pct > 50 ? C.green : pct > 0 ? C.accent : C.light }}>{pct}%</span>
+                  </td>
+                  <td style={{ padding: "7px 12px", color: C.green, fontWeight: 600 }}>{s.complete}</td>
+                  <td style={{ padding: "7px 12px", color: C.accent }}>{s.inProgress}</td>
+                  <td style={{ padding: "7px 12px", color: s.blocked > 0 ? C.danger : C.light, fontWeight: s.blocked > 0 ? 700 : 400 }}>{s.blocked}</td>
+                  <td style={{ padding: "7px 12px", color: C.light }}>{s.notStarted}</td>
+                  <td style={{ padding: "7px 12px", maxWidth: 220 }}>
+                    {update?.updateText ? (
+                      <div>
+                        <div style={{ fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{update.updateText}</div>
+                        {update.updatedAt && <div style={{ fontSize: 9, color: C.light, marginTop: 1 }}>{update.updatedAt}</div>}
+                      </div>
+                    ) : <span style={{ fontSize: 11, color: "#d1d5db", fontStyle: "italic" }}>No update logged</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Dependency Register */}
+      {depsWithBlockers.length > 0 && (
+        <div style={{ borderRadius: 10, background: "#fff", border: `1px solid #ddd6fe`, overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", background: "#f5f3ff", borderBottom: `1px solid #ddd6fe` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#7c3aed", textTransform: "uppercase", letterSpacing: 0.9 }}>
+              Dependency Register — {depsWithBlockers.length} Open Items
+            </div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {["Item ID", "Workstream", "Description", "Status", "Waiting On"].map(h => (
+                  <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 10, fontWeight: 600, color: C.muted, background: "#fafafa" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {depsWithBlockers.map(item => {
+                const blockers = item.dependencies.map(dId => itemMap.get(dId)).filter(d => d && d.status !== "complete" && d.status !== "na") as ChecklistItem[];
+                return (
+                  <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "7px 12px", fontWeight: 700, color: "#7c3aed", fontSize: 11 }}>{item.itemId}</td>
+                    <td style={{ padding: "7px 12px", color: C.muted, fontSize: 11 }}>{item.workstream.split(" ").slice(0, 2).join(" ")}</td>
+                    <td style={{ padding: "7px 12px", color: C.text, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</td>
+                    <td style={{ padding: "7px 12px" }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: item.status === "blocked" ? C.danger : C.warning, background: item.status === "blocked" ? C.dangerBg : C.warningBg, padding: "1px 6px", borderRadius: 3 }}>{item.status.replace("_", " ")}</span>
+                    </td>
+                    <td style={{ padding: "7px 12px" }}>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {blockers.map(d => <span key={d.id} style={{ fontSize: 10, color: d.status === "blocked" ? C.danger : C.muted, background: d.status === "blocked" ? C.dangerBg : "#f9fafb", padding: "1px 6px", borderRadius: 3, border: `1px solid ${d.status === "blocked" ? "#fecaca" : C.border}` }}>{d.itemId}</span>)}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Risk Register */}
+      {riskAlerts.length > 0 && (
+        <div style={{ borderRadius: 10, background: "#fff", border: `1px solid ${C.border}`, overflow: "hidden" }}>
+          <div style={{ padding: "10px 14px", background: "#f9fafb", borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.9 }}>
+              Risk Register — {riskAlerts.length} Active
+            </div>
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                {["Risk Category", "Severity", "Description", "Mitigation", "Workstreams"].map(h => (
+                  <th key={h} style={{ padding: "7px 12px", textAlign: "left", fontSize: 10, fontWeight: 600, color: C.muted, background: "#fafafa" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {riskAlerts.map(r => (
+                <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                  <td style={{ padding: "7px 12px", fontWeight: 600, color: C.text }}>{RISK_LABELS[r.category]}</td>
+                  <td style={{ padding: "7px 12px" }}><SeverityBadge severity={r.severity} /></td>
+                  <td style={{ padding: "7px 12px", color: C.muted, maxWidth: 200, fontSize: 11, lineHeight: 1.4 }}>{r.description}</td>
+                  <td style={{ padding: "7px 12px", color: C.muted, maxWidth: 180, fontSize: 11, lineHeight: 1.4 }}>{r.mitigation}</td>
+                  <td style={{ padding: "7px 12px" }}>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {r.affectedWorkstreams.map(ws => <span key={ws} style={{ fontSize: 10, padding: "1px 6px", borderRadius: 3, background: C.accentBg, color: C.accent, border: "1px solid #bfdbfe" }}>{ws.split(" ")[0]}</span>)}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // ─── Program Status Panel ─────────────────────────────────────────────────────
 

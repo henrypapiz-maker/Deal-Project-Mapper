@@ -71,7 +71,7 @@ export default function Home() {
             Generating Integration Plan…
           </div>
           <div style={{ fontSize: 12, color: "#94A3B8", maxWidth: 380, lineHeight: 1.6 }}>
-            Running decision tree · Scanning for risks · Configuring 489-item checklist across 22 workstreams
+            Running decision tree · Scanning for risks · Configuring 530-item checklist across 24 workstreams
           </div>
           <div style={{ marginTop: 24, display: "flex", gap: 6, justifyContent: "center" }}>
             {[0, 1, 2].map((i) => (
@@ -138,10 +138,10 @@ export default function Home() {
         {/* Feature Pills */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginBottom: 44 }}>
           {[
-            { label: "489-Item Checklist", icon: "\u2610" },
+            { label: "530-Item Checklist", icon: "\u2610" },
             { label: "8-Category Risk Engine", icon: "\u26A1" },
             { label: "Claude AI Guidance", icon: "\u2726" },
-            { label: "22 Workstreams", icon: "\u25CE" },
+            { label: "24 Workstreams", icon: "\u25CE" },
             { label: "5-Phase Timeline", icon: "\u25B8" },
             { label: "10 IT Domains", icon: "\u2B21" },
           ].map((f) => (
@@ -174,7 +174,7 @@ export default function Home() {
         }}>
           <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16, fontWeight: 600 }}>How it works</div>
           {[
-            ["01", "Decision tree maps 13 intake fields across 3 tiers to 489 checklist items"],
+            ["01", "Decision tree maps 13 intake fields across 3 tiers to 530 checklist items"],
             ["02", "Risk scanner runs 8 detection rules across 22 workstreams"],
             ["03", "Functional scope filters IT + Finance items; milestones auto-calculated"],
             ["04", "Claude AI generates contextual guidance per item with priority override"],

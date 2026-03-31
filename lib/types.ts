@@ -39,34 +39,54 @@ export type RiskCategory =
 
 export type Phase = "pre_close" | "day_1" | "day_30" | "day_60" | "day_90" | "year_1";
 
+// ── Workstream taxonomy (v4) ─────────────────────────────────
+// Finance Track
+// Controls & Governance Track
+// IT Track  (parent + 5 sub-workstreams; prefix "IT > " denotes sub-workstream)
+// Other Track
+// Removed: "Cybersecurity & Data Privacy" → Controls / IT Strategy & Governance
+//          "Cybersecurity & Risk"          → IT Strategy & Governance
+//          "IT Organization & Talent"      → IT Strategy & Governance
+//          "IT General Controls (ITGC)"    → IT Strategy & Governance
+//          "IT Financial Mgmt & Synergies" → IT Strategy & Governance
 export type Workstream =
-  // Finance & Operational workstreams
-  | "TSA Assessment & Exit"
-  | "Consolidation & Reporting"
-  | "Operational Accounting"
-  | "Internal Controls & SOX"
-  | "Income Tax & Compliance"
-  | "Treasury & Banking"
-  | "FP&A & Baselining"
-  | "Cybersecurity & Data Privacy"
-  | "ESG & Sustainability"
-  | "Integration Budget & PMO"
-  | "Facilities & Real Estate"
-  | "HR & Workforce Integration"
-  // Deal mechanics & practitioner workstreams
-  | "Legal & Contract Transition"
-  | "Communications & Change Management"
-  // IT workstreams (from IT Integration Taxonomy v3)
-  | "IT Governance & Strategy"
-  | "IT Organization & Talent"
-  | "Enterprise Applications"
-  | "Infrastructure & Cloud"
-  | "Data Management & Analytics"
-  | "Cybersecurity & Risk"
-  | "IT General Controls (ITGC)"
-  | "Vendor & Third-Party Mgmt"
-  | "Client-Facing Tech & Product"
-  | "IT Financial Mgmt & Synergies";
+  // Finance Track
+  | "TSA"                              // was "TSA Assessment & Exit"
+  | "Technical Accounting"             // NEW — split from Consolidation
+  | "Financial Reporting & Consolidation" // was "Consolidation & Reporting"
+  | "FP&A"                             // was "FP&A & Baselining"
+  | "Operational Finance"              // was "Operational Accounting"
+  | "Income Tax"                       // was "Income Tax & Compliance"
+  | "Treasury"                         // was "Treasury & Banking"
+  // Controls & Governance Track
+  | "Controls"                         // was part of "Internal Controls & SOX"
+  | "Governance & Compliance"          // NEW — split from Internal Controls
+  // IT Track
+  | "IT Strategy & Governance"         // consolidates IT Governance, IT Org, ITGC, IT Financial
+  | "IT > Enterprise Systems"          // was "Enterprise Applications"
+  | "IT > Infrastructure"              // was "Infrastructure & Cloud"
+  | "IT > Data & Analytics"            // was "Data Management & Analytics"
+  | "IT > IT Vendor Management"        // was "Vendor & Third-Party Mgmt"
+  | "IT > Client-Facing & Digital"     // was "Client-Facing Tech & Product"
+  // Other Track
+  | "ESG"                              // was "ESG & Sustainability"
+  | "Integration Management"           // was "Integration Budget & PMO"
+  | "Facilities"                       // was "Facilities & Real Estate"
+  | "Human Resources"                  // was "HR & Workforce Integration"
+  | "Legal"                            // was "Legal & Contract Transition"
+  | "Communications";                  // was "Communications & Change Management"
+
+export type WorkstreamCode =
+  // Finance Track
+  | "FIN-TSA" | "FIN-TECH" | "FIN-CONS" | "FIN-FPA" | "FIN-OPS" | "FIN-TAX" | "FIN-TRE"
+  // Controls & Governance Track
+  | "CGV-CTL" | "CGV-GOV"
+  // IT Track
+  | "IT-STR" | "IT-ENT" | "IT-INF" | "IT-DAT" | "IT-VEN" | "IT-CLI"
+  // Other Track
+  | "ESG" | "INT" | "FAC" | "HR" | "LGL" | "COM";
+
+export type WorkstreamTrack = "Finance" | "Controls & Governance" | "IT" | "Other";
 
 export type FunctionalArea =
   | "finance"
@@ -114,6 +134,8 @@ export interface ChecklistItem {
   id: string; // UUID (generated at runtime)
   itemId: string; // FRC-0001 through FRC-0489
   workstream: Workstream;
+  // workstreamCode: WorkstreamCode; // TODO: populate in checklist-master.ts
+  // track: WorkstreamTrack;         // TODO: populate in checklist-master.ts
   section: string;
   description: string;
   phase: Phase;

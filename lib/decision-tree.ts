@@ -63,7 +63,7 @@ const RISK_RULES: RiskRule[] = [
       `${i.jurisdictions.length} jurisdictions require regulatory filing/clearance. Multiple concurrent processes (CFIUS, EUMR, NSI Act) increase close-date risk and Day 1 complexity.`,
     mitigationFn: () =>
       "Engage external regulatory counsel immediately. Build a jurisdiction-by-jurisdiction clearance tracker. Extend Day 1 planning buffer by 30 days per additional jurisdiction beyond 2.",
-    affectedWorkstreams: ["Income Tax & Compliance", "Integration Budget & PMO"],
+    affectedWorkstreams: ["Income Tax", "Integration Management"],
   },
   {
     category: "tax_structure_leakage",
@@ -79,7 +79,7 @@ const RISK_RULES: RiskRule[] = [
       `Deal involves jurisdictions with potential sub-15% effective tax rates or significant value ($${i.dealValueRange}). Pillar Two top-up tax analysis required; GILTI/BEAT exposure not yet modelled.`,
     mitigationFn: () =>
       "Commission Pillar Two ETR analysis by jurisdiction. Model GILTI and BEAT exposure. Evaluate §338(g) election implications for foreign target entities.",
-    affectedWorkstreams: ["Income Tax & Compliance"],
+    affectedWorkstreams: ["Income Tax"],
   },
   {
     category: "tsa_dependency",
@@ -89,7 +89,7 @@ const RISK_RULES: RiskRule[] = [
       `TSA required${i.dealStructure === "carve_out" ? " (Carve-Out — high TSA complexity)" : ""}. No standalone capability assessment complete. Prolonged TSA dependency increases stranded cost risk and integration timeline.`,
     mitigationFn: () =>
       "Complete standalone capability assessment within Day 30. Define exit criteria for each TSA service. Assign TSA exit owners per service category. Budget for TSA premium pricing (typically cost-plus 15–25%).",
-    affectedWorkstreams: ["TSA Assessment & Exit"],
+    affectedWorkstreams: ["TSA"],
   },
   {
     category: "data_privacy_breach",
@@ -101,7 +101,7 @@ const RISK_RULES: RiskRule[] = [
       `Target processes personal data in ${i.jurisdictions.filter((j) => j.startsWith("EU") || j === "UK").join(", ")}. GDPR/UK GDPR applies. DPIA not yet initiated; AI systems may be in scope under EU AI Act.`,
     mitigationFn: () =>
       "Appoint or confirm DPO coverage. Initiate DPIA immediately for all personal data processing activities. Update privacy notices. Review AI system inventory against EU AI Act risk tiers.",
-    affectedWorkstreams: ["Cybersecurity & Data Privacy"],
+    affectedWorkstreams: ["Controls"],
   },
   {
     category: "cultural_integration",
@@ -113,7 +113,7 @@ const RISK_RULES: RiskRule[] = [
       "Significant cross-border workforce spans multiple cultures and employment law frameworks. Cultural integration and retention risk elevated.",
     mitigationFn: () =>
       "Commission early cultural assessment. Engage local HR/employment counsel per jurisdiction. Design retention incentives for key personnel. Include cultural integration in Day 90 SteerCo review.",
-    affectedWorkstreams: ["HR & Workforce Integration", "Integration Budget & PMO"],
+    affectedWorkstreams: ["Human Resources", "Integration Management"],
   },
   {
     category: "financial_reporting_gap",
@@ -125,7 +125,7 @@ const RISK_RULES: RiskRule[] = [
       `Target uses ${i.targetGaap || "non-US"} accounting standards. ${i.targetEntities} legal entities require consolidation. Significant conversion effort needed for first combined close.`,
     mitigationFn: () =>
       "Engage technical accounting team for GAAP conversion workplan. Allocate budget for external auditor readiness review. Map all policy differences before first consolidated close (Day 30 deadline).",
-    affectedWorkstreams: ["Consolidation & Reporting"],
+    affectedWorkstreams: ["Financial Reporting & Consolidation"],
   },
   {
     category: "stranded_costs",
@@ -136,9 +136,9 @@ const RISK_RULES: RiskRule[] = [
     mitigationFn: () =>
       "Complete stranded cost mapping within Day 60. Build standalone cost model per function. Evaluate insourcing vs. outsourcing for each stranded function. Include run-rate standalone cost in synergy baseline.",
     affectedWorkstreams: [
-      "TSA Assessment & Exit",
-      "Facilities & Real Estate",
-      "Integration Budget & PMO",
+      "TSA",
+      "Facilities",
+      "Integration Management",
     ],
   },
   {
@@ -153,9 +153,9 @@ const RISK_RULES: RiskRule[] = [
     mitigationFn: () =>
       "Complete IT systems inventory within Day 1. Develop ERP migration strategy by Day 30. Assign IT integration PMO lead. Budget for dual-run period during system cutover. Prioritize IAM and access control consolidation for SOX compliance.",
     affectedWorkstreams: [
-      "Enterprise Applications",
-      "Infrastructure & Cloud",
-      "IT General Controls (ITGC)",
+      "IT > Enterprise Systems",
+      "IT > Infrastructure",
+      "IT Strategy & Governance",
     ],
   },
 ];

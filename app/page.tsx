@@ -47,6 +47,18 @@ export default function Home() {
     });
   }, []);
 
+  const handleUpdateBlockedReason = useCallback((itemId: string, reason: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map((item) =>
+          item.id === itemId ? { ...item, blockedReason: reason } : item
+        ),
+      };
+    });
+  }, []);
+
   function handleReset() {
     setDeal(null);
     setAppState("landing");
@@ -92,7 +104,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onReset={handleReset} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} />;
   }
 
   if (appState === "intake") {

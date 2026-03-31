@@ -72,10 +72,11 @@ interface Props {
   deal: GeneratedDeal;
   onUpdateStatus: (itemId: string, status: ItemStatus) => void;
   onUpdatePriority: (itemId: string, priority: Priority) => void;
+  onUpdateBlockedReason: (itemId: string, reason: string) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUpdateBlockedReason, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -130,6 +131,17 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
     item.milestoneDate && item.milestoneDate < todayStr && item.status !== "complete" && item.status !== "na";
 
   const overdueCount = checklistItems.filter(i => i.status !== "na" && isItemOverdue(i)).length;
+
+  // Dependency lookup: itemId → ChecklistItem
+  const itemByItemId = new Map(checklistItems.map(i => [i.itemId, i]));
+
+  // Compute dependency warnings: items whose upstream deps are blocked
+  const blockedItemIds = new Set(checklistItems.filter(i => i.status === "blocked").map(i => i.itemId));
+  const dependencyWarnings = new Map<string, string[]>();
+  checklistItems.forEach(item => {
+    const blockedDeps = item.dependencies.filter(d => blockedItemIds.has(d));
+    if (blockedDeps.length > 0) dependencyWarnings.set(item.id, blockedDeps);
+  });
 
   const visibleItems = checklistItems.filter((item) => {
     if (item.status === "na") return false;
@@ -441,7 +453,35 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
                         >
                           <td style={{ padding: "6px", fontWeight: 700, color: C.accent, whiteSpace: "nowrap" }}>{item.itemId}</td>
                           <td style={{ padding: "6px", color: C.textMuted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
-                          <td style={{ padding: "6px", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</td>
+                          <td style={{ padding: "6px", maxWidth: 320 }}>
+                            <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</div>
+                            {item.dependencies.length > 0 && (
+                              <div style={{ display: "flex", gap: 3, marginTop: 3, flexWrap: "wrap" }}>
+                                {item.dependencies.slice(0, 5).map(depId => {
+                                  const depItem = itemByItemId.get(depId);
+                                  const depStatus = depItem?.status || "not_started";
+                                  const chipColor = depStatus === "complete" ? "#22C55E" : depStatus === "in_progress" ? "#3B82F6" : depStatus === "blocked" ? "#EF4444" : "#64748B";
+                                  return (
+                                    <span key={depId} title={depItem ? `${depId}: ${depItem.description} (${depStatus})` : depId} style={{
+                                      fontSize: 8, padding: "1px 4px", borderRadius: 2,
+                                      background: chipColor + "22", color: chipColor, fontWeight: 600,
+                                      cursor: "default",
+                                    }}>
+                                      {depId} <span style={{ fontSize: 7 }}>{depStatus === "complete" ? "\u2713" : depStatus === "blocked" ? "\u2717" : "\u25CF"}</span>
+                                    </span>
+                                  );
+                                })}
+                                {item.dependencies.length > 5 && (
+                                  <span style={{ fontSize: 8, color: "#64748B" }}>+{item.dependencies.length - 5} more</span>
+                                )}
+                              </div>
+                            )}
+                            {dependencyWarnings.has(item.id) && (
+                              <div style={{ fontSize: 8, color: "#EF4444", marginTop: 2, fontWeight: 600 }}>
+                                &#x26A0; Blocked by: {dependencyWarnings.get(item.id)!.join(", ")}
+                              </div>
+                            )}
+                          </td>
                           <td style={{ padding: "6px" }}>
                             <span style={{ padding: "1px 6px", borderRadius: 3, background: item.phase === "day_1" ? C.warning + "22" : C.cardBg, color: item.phase === "day_1" ? C.warning : C.textMuted, fontSize: 9 }}>
                               {PHASE_LABELS[item.phase]}
@@ -522,6 +562,22 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
                     <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{selectedItem.workstream}</span>
                     <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.warning + "22", color: C.warning }}>{PHASE_LABELS[selectedItem.phase]}</span>
                   </div>
+                  {selectedItem && selectedItem.status === "blocked" && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 9, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Blocked Reason</div>
+                      <input
+                        type="text"
+                        placeholder="Why is this item blocked?"
+                        value={selectedItem.blockedReason || ""}
+                        onChange={(e) => onUpdateBlockedReason(selectedItem.id, e.target.value)}
+                        style={{
+                          width: "100%", padding: "6px 8px", borderRadius: 4, fontSize: 10,
+                          background: "rgba(30, 41, 59, 0.8)", border: "1px solid rgba(51, 65, 85, 0.5)",
+                          color: "#E2E8F0", fontFamily: "inherit",
+                        }}
+                      />
+                    </div>
+                  )}
                   <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
                     {guidanceLoading ? (
                       <div style={{ fontSize: 11, color: C.textMuted }}>Generating guidance…</div>

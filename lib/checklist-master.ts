@@ -1,9 +1,9 @@
 import type { Workstream, Phase, Priority, RiskCategory, FunctionalArea } from "./types";
 
 // ============================================================
-// Master Checklist Template — FRC items (representative set)
-// Finance taxonomy: FRC-0001 through FRC-0443
-// IT taxonomy: FRC-0444+ (from IT_Integration_Taxonomy_v3)
+// Master Checklist Template — 119 FRC items (representative set)
+// Finance & Operational: 73 items (FRC-0001 through FRC-0443)
+// IT Integration Taxonomy v3: 46 items (FRC-0444 through FRC-0489)
 // ============================================================
 
 export interface MasterItem {

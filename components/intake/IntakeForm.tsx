@@ -149,7 +149,7 @@ export default function IntakeForm({ onSubmit }: Props) {
   ];
 
   return (
-    <div style={{ fontFamily: "'JetBrains Mono', monospace", maxWidth: 760, margin: "0 auto", padding: "32px 24px" }}>
+    <div style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", maxWidth: 760, margin: "0 auto", padding: "36px 28px" }}>
 
       {/* Header */}
       <div style={{ marginBottom: 32 }}>

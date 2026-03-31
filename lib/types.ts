@@ -149,7 +149,8 @@ export interface ChecklistItem {
   crossBorderFlag: boolean;
   riskIndicators: RiskCategory[];
   aiGuidance?: string;
-  notes: string[];
+  notes: Note[];
+  attachments?: Attachment[];
   blockedReason?: string;
   naJustification?: string;
 }
@@ -174,6 +175,77 @@ export interface Person {
   id: string;
   name: string;
   role?: string;
+  email?: string;
+}
+
+export interface Note {
+  id: string;
+  text: string;
+  timestamp: string;
+  author?: string;
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  url?: string;
+  addedAt: string;
+  addedBy?: string;
+}
+
+export interface WorkstreamSnapshot {
+  workstream: string;
+  ragStatus: "red" | "amber" | "green";
+  ragOverride?: "red" | "amber" | "green";
+  completed: number;
+  inProgress: number;
+  blocked: number;
+  pastDue: number;
+  total: number;
+  pctComplete: number;
+  narrative?: string;
+  highlightedItems?: string[];
+  keyRisks?: string[];
+  nextSteps?: string[];
+}
+
+export interface OwnerSnapshot {
+  ownerId?: string;
+  ownerName: string;
+  completed: number;
+  inProgress: number;
+  blocked: number;
+  total: number;
+}
+
+export interface ProgressSnapshot {
+  id: string;
+  periodEnd: string;
+  createdAt: string;
+  summary: {
+    totalActive: number;
+    completed: number;
+    newlyInProgress: number;
+    newlyBlocked: number;
+    pastDue: number;
+    unchanged: number;
+  };
+  workstreams: WorkstreamSnapshot[];
+  owners: OwnerSnapshot[];
+}
+
+export interface SavedFilter {
+  id: string;
+  name: string;
+  filters: {
+    phase: string;
+    workstream: string;
+    priority: string;
+    status: string;
+    owner: string;
+  };
+  createdAt: string;
+  isPreset?: boolean;
 }
 
 // ============================================================
@@ -187,6 +259,8 @@ export interface GeneratedDeal {
   milestones: Milestone[];
   generatedAt: string;
   people: Person[];
+  progressSnapshots: ProgressSnapshot[];
+  savedFilters: SavedFilter[];
 }
 
 export interface WorkstreamSummary {

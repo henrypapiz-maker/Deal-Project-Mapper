@@ -13,13 +13,54 @@ export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { guidance: "ANTHROPIC_API_KEY not set. Add it to your .env.local file." },
-      { status: 200 }
+      { error: "no_api_key", message: "API key not configured" },
+      { status: 500 }
     );
   }
 
   const body = await req.json();
-  const { itemId, description, workstream, status, blockedReason, dealContext } = body;
+  const { itemId, description, workstream, status, blockedReason, dealContext, mode } = body;
+
+  if (mode === "report") {
+    // Report drafting mode - different system prompt
+    const reportSystem = `You are an M&A integration reporting assistant. Draft a concise weekly status report for the ${workstream} workstream. Structure: 1) Key Accomplishments (2-3 bullets), 2) Blockers & Risks (2-3 bullets), 3) Next Steps (2-3 bullets). Be specific and actionable. Keep total length under 200 words.`;
+    // Use the report system prompt instead
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-20250414",
+          max_tokens: 400,
+          system: reportSystem,
+          messages: [{ role: "user", content: body.prompt || `Draft a status report for the ${workstream} workstream.` }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Claude API error:", errorText);
+        return NextResponse.json(
+          { error: "api_error", message: "AI service returned an error", detail: errorText },
+          { status: 502 }
+        );
+      }
+
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "No report generated.";
+      return NextResponse.json({ guidance: text });
+    } catch (err) {
+      console.error("Guidance fetch error:", err);
+      return NextResponse.json(
+        { error: "network_error", message: "Failed to reach AI service" },
+        { status: 500 }
+      );
+    }
+  }
 
   const structureLabel = STRUCTURE_LABELS[dealContext?.dealStructure] || dealContext?.dealStructure;
   const jurisdictions = dealContext?.jurisdictions?.join(", ") || "domestic";
@@ -56,7 +97,7 @@ Provide guidance that is:
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-3-5-haiku-20241022",
+        model: "claude-haiku-4-20250414",
         max_tokens: 400,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],
@@ -64,22 +105,22 @@ Provide guidance that is:
     });
 
     if (!response.ok) {
-      const err = await response.text();
-      console.error("Claude API error:", err);
+      const errorText = await response.text();
+      console.error("Claude API error:", errorText);
       return NextResponse.json(
-        { guidance: "AI guidance temporarily unavailable. Please try again." },
-        { status: 200 }
+        { error: "api_error", message: "AI service returned an error", detail: errorText },
+        { status: 502 }
       );
     }
 
     const data = await response.json();
-    const guidance = data.content?.[0]?.text || "No guidance generated.";
-    return NextResponse.json({ guidance });
+    const text = data.content?.[0]?.text || "No guidance generated.";
+    return NextResponse.json({ guidance: text });
   } catch (err) {
     console.error("Guidance fetch error:", err);
     return NextResponse.json(
-      { guidance: "Failed to connect to Claude API. Check your network and API key." },
-      { status: 200 }
+      { error: "network_error", message: "Failed to reach AI service" },
+      { status: 500 }
     );
   }
 }

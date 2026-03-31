@@ -97,10 +97,10 @@ export default function Home() {
     });
   }, []);
 
-  const handleAddPerson = useCallback((name: string, role?: string) => {
+  const handleAddPerson = useCallback((name: string, role?: string, email?: string) => {
     setDeal((prev) => {
       if (!prev) return prev;
-      const person: Person = { id: `person-${Date.now()}`, name, role };
+      const person: Person = { id: `person-${Date.now()}`, name, role, email };
       return { ...prev, people: [...prev.people, person] };
     });
   }, []);
@@ -114,6 +114,87 @@ export default function Home() {
           item.id === itemId ? { ...item, ownerId } : item
         ),
       };
+    });
+  }, []);
+
+  // Add note to checklist item
+  const handleAddNote = useCallback((itemId: string, text: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map((item) =>
+          item.itemId === itemId
+            ? { ...item, notes: [...item.notes, { id: `note-${Date.now()}`, text, timestamp: new Date().toISOString() }] }
+            : item
+        ),
+      };
+    });
+  }, []);
+
+  // Add attachment to checklist item
+  const handleAddAttachment = useCallback((itemId: string, name: string, url?: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map((item) =>
+          item.itemId === itemId
+            ? { ...item, attachments: [...(item.attachments || []), { id: `att-${Date.now()}`, name, url, addedAt: new Date().toISOString() }] }
+            : item
+        ),
+      };
+    });
+  }, []);
+
+  // Save a progress snapshot
+  const handleSaveSnapshot = useCallback((snapshot: any) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return { ...prev, progressSnapshots: [...prev.progressSnapshots, snapshot] };
+    });
+  }, []);
+
+  // Update workstream narrative in a snapshot
+  const handleUpdateNarrative = useCallback((snapshotId: string, workstream: string, updates: { narrative?: string; ragOverride?: "red" | "amber" | "green" | undefined; keyRisks?: string; nextSteps?: string }) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        progressSnapshots: prev.progressSnapshots.map((snap) =>
+          snap.id === snapshotId
+            ? {
+                ...snap,
+                workstreams: snap.workstreams.map((ws) => {
+                  if (ws.workstream !== workstream) return ws;
+                  const { keyRisks, nextSteps, ...rest } = updates;
+                  return {
+                    ...ws,
+                    ...rest,
+                    ...(keyRisks !== undefined ? { keyRisks: keyRisks.split(",").map(s => s.trim()).filter(Boolean) } : {}),
+                    ...(nextSteps !== undefined ? { nextSteps: nextSteps.split(",").map(s => s.trim()).filter(Boolean) } : {}),
+                  };
+                }),
+              }
+            : snap
+        ),
+      };
+    });
+  }, []);
+
+  // Save filter
+  const handleSaveFilter = useCallback((name: string, filters: any) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return { ...prev, savedFilters: [...prev.savedFilters, { id: `filter-${Date.now()}`, name, filters, createdAt: new Date().toISOString() }] };
+    });
+  }, []);
+
+  // Delete filter
+  const handleDeleteFilter = useCallback((filterId: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return { ...prev, savedFilters: prev.savedFilters.filter(f => f.id !== filterId) };
     });
   }, []);
 
@@ -164,7 +245,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} />;
   }
 
   if (appState === "intake") {
@@ -274,7 +355,7 @@ export default function Home() {
         </div>
 
         <div style={{ marginTop: 24, fontSize: 10, color: "#334155", letterSpacing: 0.5 }}>
-          DealMapper v0.2.0 · M&A Integration Engine · March 2026
+          DealMapper v0.4.0 · M&A Integration Engine · March 2026
         </div>
       </div>
     </div>

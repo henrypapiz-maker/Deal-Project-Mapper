@@ -277,6 +277,12 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
     milestones,
     generatedAt: new Date().toISOString(),
     people: [],
+    progressSnapshots: [],
+    savedFilters: [
+      { id: "preset-1", name: "Day 1 Critical Path", filters: { phase: "day_1", workstream: "all", priority: "critical", status: "all", owner: "all" }, isPreset: true, createdAt: new Date().toISOString() },
+      { id: "preset-2", name: "All Blocked", filters: { phase: "all", workstream: "all", priority: "all", status: "blocked", owner: "all" }, isPreset: true, createdAt: new Date().toISOString() },
+      { id: "preset-3", name: "Overdue Items", filters: { phase: "all", workstream: "all", priority: "all", status: "overdue", owner: "all" }, isPreset: true, createdAt: new Date().toISOString() },
+    ],
   };
 }
 

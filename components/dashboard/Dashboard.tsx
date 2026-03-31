@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, Priority } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
+import { generateSnapshot, getCurrentPeriodEnd, computeProgramRAG } from "@/lib/progress";
 
 const C = {
   navy: "#0F1B2D",
@@ -81,8 +82,14 @@ interface Props {
     priority: string;
     section: string;
   }) => void;
-  onAddPerson: (name: string, role?: string) => void;
+  onAddPerson: (name: string, role?: string, email?: string) => void;
   onAssignOwner: (itemId: string, ownerId: string | undefined) => void;
+  onAddNote: (itemId: string, text: string) => void;
+  onAddAttachment: (itemId: string, name: string, url?: string) => void;
+  onSaveSnapshot: (snapshot: any) => void;
+  onUpdateNarrative: (snapshotId: string, workstream: string, updates: any) => void;
+  onSaveFilter: (name: string, filters: any) => void;
+  onDeleteFilter: (filterId: string) => void;
 }
 
 export default function Dashboard({
@@ -94,8 +101,14 @@ export default function Dashboard({
   onAddTask,
   onAddPerson,
   onAssignOwner,
+  onAddNote,
+  onAddAttachment,
+  onSaveSnapshot,
+  onUpdateNarrative,
+  onSaveFilter,
+  onDeleteFilter,
 }: Props) {
-  const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
+  const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco">("live_status");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [guidanceText, setGuidanceText] = useState<string>("");
@@ -114,7 +127,21 @@ export default function Dashboard({
   const [showNaItems, setShowNaItems] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
   const [newPersonRole, setNewPersonRole] = useState("");
+  const [newPersonEmail, setNewPersonEmail] = useState("");
+  const [bulkAssignWs, setBulkAssignWs] = useState("");
+  const [bulkAssignPerson, setBulkAssignPerson] = useState("");
   const [filterOwner, setFilterOwner] = useState<string>("all");
+  const [newNoteText, setNewNoteText] = useState("");
+  const [showAddAttachment, setShowAddAttachment] = useState(false);
+  const [newAttName, setNewAttName] = useState("");
+  const [newAttUrl, setNewAttUrl] = useState("");
+  const [guidanceError, setGuidanceError] = useState<string | null>(null);
+  const [editingNarrative, setEditingNarrative] = useState<string | null>(null);
+  const [narrativeText, setNarrativeText] = useState("");
+  const [narrativeRisks, setNarrativeRisks] = useState("");
+  const [narrativeNext, setNarrativeNext] = useState("");
+  const [showSaveFilter, setShowSaveFilter] = useState(false);
+  const [newFilterName, setNewFilterName] = useState("");
 
   function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
     if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
@@ -206,6 +233,15 @@ export default function Dashboard({
   const today = new Date();
   const closeDate = intake.closeDate ? new Date(intake.closeDate) : null;
 
+  const TAB_CONFIG = [
+    { id: "live_status", label: "Live Status" },
+    { id: "checklist", label: "Checklist Maintenance" },
+    { id: "team", label: "Team Assignments" },
+    { id: "risks", label: "Risks" },
+    { id: "timeline", label: "Timeline" },
+    { id: "steerco", label: "SteerCo" },
+  ] as const;
+
   return (
     <div style={{
       background: `linear-gradient(160deg, #0C1222 0%, #162036 40%, ${C.navy} 100%)`,
@@ -236,14 +272,14 @@ export default function Dashboard({
           </div>
         </div>
         <div style={{ display: "flex", gap: 2, alignItems: "center", background: "rgba(30, 41, 59, 0.5)", borderRadius: 8, padding: 3 }}>
-          {(["overview", "checklist", "risks", "timeline"] as const).map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} style={{
+          {TAB_CONFIG.map((tab) => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
               padding: "7px 16px", borderRadius: 6, border: "none", cursor: "pointer",
-              background: activeTab === tab ? C.accent : "transparent",
-              color: activeTab === tab ? "#fff" : C.textMuted,
-              fontSize: 11, fontWeight: 600, letterSpacing: 0.3, textTransform: "capitalize",
+              background: activeTab === tab.id ? (tab.id === "steerco" ? "#22C55E" : C.accent) : "transparent",
+              color: activeTab === tab.id ? "#fff" : C.textMuted,
+              fontSize: 11, fontWeight: 600, letterSpacing: 0.3,
               transition: "all 0.15s ease",
-            }}>{tab}</button>
+            }}>{tab.label}</button>
           ))}
           <button onClick={() => { if (window.confirm("Starting a new deal will discard all current progress. Continue?")) onReset(); }} style={{
             marginLeft: 8, padding: "6px 14px", borderRadius: 6,
@@ -279,8 +315,8 @@ export default function Dashboard({
           ))}
         </div>
 
-        {/* ─── OVERVIEW TAB ─── */}
-        {activeTab === "overview" && (
+        {/* ─── LIVE STATUS TAB ─── */}
+        {activeTab === "live_status" && (
           <>
             {/* KPI Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
@@ -367,7 +403,7 @@ export default function Dashboard({
                     </tbody>
                   </table>
                   <div style={{ marginTop: 16, fontSize: 9, color: "#94A3B8", textAlign: "center" }}>
-                    DealMapper v0.3.0 · {checklistItems.filter(i => i.status !== "na").length} active items · Exported {new Date().toLocaleDateString()}
+                    DealMapper v0.4.0 · {checklistItems.filter(i => i.status !== "na").length} active items · Exported {new Date().toLocaleDateString()}
                   </div>
                 </div>
               </div>
@@ -573,6 +609,49 @@ export default function Dashboard({
               </label>
             </div>
 
+            {/* Saved Filter Chips */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {(deal.savedFilters || []).map((sf) => {
+                const isActive = sf.filters.phase === filterPhase && sf.filters.workstream === filterWs && sf.filters.priority === filterPriority && sf.filters.status === filterStatus && sf.filters.owner === filterOwner;
+                return (
+                  <button key={sf.id} onClick={() => {
+                    setFilterPhase(sf.filters.phase); setFilterWs(sf.filters.workstream);
+                    setFilterPriority(sf.filters.priority); setFilterStatus(sf.filters.status);
+                    setFilterOwner(sf.filters.owner || "all");
+                  }} style={{
+                    padding: "4px 10px", borderRadius: 12, fontSize: 10, fontWeight: 600,
+                    background: isActive ? C.accent : C.deepBlue, color: isActive ? "#fff" : C.textMuted,
+                    border: `1px solid ${isActive ? C.accent : C.border}`, cursor: "pointer",
+                    display: "flex", alignItems: "center", gap: 4,
+                  }}>
+                    {sf.name}
+                    {!sf.isPreset && (
+                      <span onClick={(e) => { e.stopPropagation(); onDeleteFilter(sf.id); }} style={{ marginLeft: 2, cursor: "pointer", opacity: 0.6 }}>×</span>
+                    )}
+                  </button>
+                );
+              })}
+              {showSaveFilter ? (
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <input value={newFilterName} onChange={(e) => setNewFilterName(e.target.value)} placeholder="Filter name..." style={{
+                    padding: "3px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue,
+                    color: C.text, fontSize: 10, width: 120,
+                  }} onKeyDown={(e) => {
+                    if (e.key === "Enter" && newFilterName.trim()) {
+                      onSaveFilter(newFilterName.trim(), { phase: filterPhase, workstream: filterWs, priority: filterPriority, status: filterStatus, owner: filterOwner });
+                      setNewFilterName(""); setShowSaveFilter(false);
+                    }
+                  }} autoFocus />
+                  <button onClick={() => setShowSaveFilter(false)} style={{ fontSize: 10, background: "none", border: "none", color: C.textMuted, cursor: "pointer" }}>Cancel</button>
+                </div>
+              ) : (
+                <button onClick={() => setShowSaveFilter(true)} style={{
+                  padding: "4px 10px", borderRadius: 12, fontSize: 10, fontWeight: 500,
+                  background: "transparent", color: C.textMuted, border: `1px dashed ${C.border}`, cursor: "pointer",
+                }}>+ Save View</button>
+              )}
+            </div>
+
             {showAddTask && (
               <div style={{
                 padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.accent}44`,
@@ -630,7 +709,7 @@ export default function Dashboard({
             )}
 
             {/* Team Roster — empty state prompt */}
-            {deal.people.length === 0 && activeTab === "checklist" && !showAddTask && (
+            {deal.people.length === 0 && !showAddTask && (
               <div style={{ padding: 8, borderRadius: 6, background: C.accent + "11", border: `1px dashed ${C.accent}44`, marginBottom: 12, fontSize: 10, color: C.textMuted, display: "flex", alignItems: "center", gap: 8 }}>
                 <span>No team members yet.</span>
                 <input type="text" placeholder="Name" value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)}
@@ -646,7 +725,7 @@ export default function Dashboard({
             )}
 
             {/* Team Roster — existing members */}
-            {deal.people.length > 0 && activeTab === "checklist" && (
+            {deal.people.length > 0 && (
               <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Team: </span>
                 {deal.people.map(p => (
@@ -887,9 +966,203 @@ export default function Dashboard({
                       <div style={{ fontSize: 10, color: C.textMuted }}>Click &quot;AI →&quot; on any row or click a row to load guidance.</div>
                     )}
                   </div>
+                  {/* Notes Section */}
+                  {selectedItem && (
+                    <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+                        Notes ({selectedItem.notes.length})
+                      </div>
+                      <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>
+                        {selectedItem.notes.length === 0 ? (
+                          <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>No notes yet</div>
+                        ) : (
+                          selectedItem.notes.map((note: any) => (
+                            <div key={note.id || note} style={{ padding: "4px 0", borderBottom: `1px solid ${C.border}22`, fontSize: 10, color: C.text }}>
+                              <div>{typeof note === "string" ? note : note.text}</div>
+                              {note.timestamp && <div style={{ fontSize: 8, color: C.muted, marginTop: 2 }}>{new Date(note.timestamp).toLocaleString()}</div>}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <input value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder="Add a note..."
+                          style={{ flex: 1, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10 }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && newNoteText.trim()) {
+                              onAddNote(selectedItem.itemId, newNoteText.trim());
+                              setNewNoteText("");
+                            }
+                          }}
+                        />
+                        <button onClick={() => { if (newNoteText.trim()) { onAddNote(selectedItem.itemId, newNoteText.trim()); setNewNoteText(""); } }}
+                          style={{ padding: "4px 8px", borderRadius: 4, background: C.accent, color: "#fff", border: "none", fontSize: 9, cursor: "pointer", fontWeight: 600 }}>
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Attachments Section */}
+                  {selectedItem && (
+                    <div style={{ marginTop: 10, borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
+                        Attachments ({(selectedItem.attachments || []).length})
+                      </div>
+                      {(selectedItem.attachments || []).map((att: any) => (
+                        <div key={att.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <span style={{ fontSize: 10 }}>📎</span>
+                          {att.url ? (
+                            <a href={att.url} target="_blank" rel="noopener" style={{ fontSize: 10, color: C.accentLight }}>{att.name}</a>
+                          ) : (
+                            <span style={{ fontSize: 10, color: C.text }}>{att.name}</span>
+                          )}
+                          <span style={{ fontSize: 8, color: C.muted }}>{att.addedAt ? new Date(att.addedAt).toLocaleDateString() : ""}</span>
+                        </div>
+                      ))}
+                      {showAddAttachment ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+                          <input value={newAttName} onChange={(e) => setNewAttName(e.target.value)} placeholder="File name..." style={{
+                            padding: "3px 6px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10,
+                          }} />
+                          <input value={newAttUrl} onChange={(e) => setNewAttUrl(e.target.value)} placeholder="URL (optional)..." style={{
+                            padding: "3px 6px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10,
+                          }} />
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={() => {
+                              if (newAttName.trim()) { onAddAttachment(selectedItem.itemId, newAttName.trim(), newAttUrl.trim() || undefined); setNewAttName(""); setNewAttUrl(""); setShowAddAttachment(false); }
+                            }} style={{ padding: "3px 8px", borderRadius: 3, background: C.accent, color: "#fff", border: "none", fontSize: 9, cursor: "pointer" }}>Attach</button>
+                            <button onClick={() => setShowAddAttachment(false)} style={{ padding: "3px 8px", borderRadius: 3, background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, fontSize: 9, cursor: "pointer" }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => setShowAddAttachment(true)} style={{
+                          padding: "3px 8px", borderRadius: 3, fontSize: 9, background: "transparent", color: C.textMuted, border: `1px dashed ${C.border}`, cursor: "pointer", marginTop: 4,
+                        }}>+ Add Link</button>
+                      )}
+                    </div>
+                  )}
+
                   <button onClick={() => setSelectedItem(null)} style={{ marginTop: 12, fontSize: 10, color: C.textMuted, background: "transparent", border: "none", cursor: "pointer" }}>
                     ✕ Close
                   </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─── TEAM TAB ─── */}
+        {activeTab === "team" && (
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Team Assignments</h2>
+
+            {/* Add Person */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "flex-end" }}>
+              <div>
+                <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Name</div>
+                <input value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)} placeholder="Full name"
+                  style={{ padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11, width: 160 }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Role</div>
+                <input value={newPersonRole} onChange={(e) => setNewPersonRole(e.target.value)} placeholder="Workstream Lead"
+                  style={{ padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11, width: 160 }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Email</div>
+                <input value={newPersonEmail} onChange={(e) => setNewPersonEmail(e.target.value)} placeholder="email@company.com"
+                  style={{ padding: "6px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11, width: 200 }} />
+              </div>
+              <button onClick={() => {
+                if (newPersonName.trim()) {
+                  onAddPerson(newPersonName.trim(), newPersonRole.trim() || undefined, newPersonEmail.trim() || undefined);
+                  setNewPersonName(""); setNewPersonRole(""); setNewPersonEmail("");
+                }
+              }} style={{
+                padding: "6px 14px", borderRadius: 4, background: C.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer",
+              }}>+ Add Person</button>
+            </div>
+
+            {/* Person Roster */}
+            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                Team Roster — {deal.people.length} Members
+              </div>
+              {deal.people.length === 0 ? (
+                <div style={{ fontSize: 11, color: C.muted, padding: 8 }}>No team members added yet. Add people above.</div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                      <th style={{ textAlign: "left", padding: 6, color: C.textMuted, fontSize: 9 }}>NAME</th>
+                      <th style={{ textAlign: "left", padding: 6, color: C.textMuted, fontSize: 9 }}>ROLE</th>
+                      <th style={{ textAlign: "left", padding: 6, color: C.textMuted, fontSize: 9 }}>EMAIL</th>
+                      <th style={{ textAlign: "center", padding: 6, color: C.textMuted, fontSize: 9 }}>ASSIGNED</th>
+                      <th style={{ textAlign: "center", padding: 6, color: C.textMuted, fontSize: 9 }}>COMPLETE</th>
+                      <th style={{ textAlign: "center", padding: 6, color: C.textMuted, fontSize: 9 }}>BLOCKED</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deal.people.map((p) => {
+                      const items = checklistItems.filter(i => i.ownerId === p.id);
+                      return (
+                        <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                          <td style={{ padding: 6, fontWeight: 600 }}>{p.name}</td>
+                          <td style={{ padding: 6, color: C.textMuted }}>{p.role || "—"}</td>
+                          <td style={{ padding: 6, color: C.accentLight }}>{p.email || "—"}</td>
+                          <td style={{ padding: 6, textAlign: "center" }}>{items.length}</td>
+                          <td style={{ padding: 6, textAlign: "center", color: C.success }}>{items.filter(i => i.status === "complete").length}</td>
+                          <td style={{ padding: 6, textAlign: "center", color: items.filter(i => i.status === "blocked").length > 0 ? C.danger : C.muted }}>
+                            {items.filter(i => i.status === "blocked").length}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Bulk Assignment */}
+            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                Bulk Assignment
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Workstream</div>
+                  <select value={bulkAssignWs} onChange={(e) => setBulkAssignWs(e.target.value)} style={{
+                    padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11,
+                  }}>
+                    <option value="">Select workstream...</option>
+                    {Array.from(wsStats.keys()).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Assign to</div>
+                  <select value={bulkAssignPerson} onChange={(e) => setBulkAssignPerson(e.target.value)} style={{
+                    padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11,
+                  }}>
+                    <option value="">Select person...</option>
+                    {deal.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <button onClick={() => {
+                  if (bulkAssignWs && bulkAssignPerson) {
+                    const wsItems = checklistItems.filter(i => i.workstream === bulkAssignWs && !i.ownerId);
+                    wsItems.forEach(item => onAssignOwner(item.itemId, bulkAssignPerson));
+                    setBulkAssignWs(""); setBulkAssignPerson("");
+                  }
+                }} style={{
+                  padding: "6px 14px", borderRadius: 4, background: C.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  opacity: bulkAssignWs && bulkAssignPerson ? 1 : 0.4,
+                }} disabled={!bulkAssignWs || !bulkAssignPerson}>
+                  Assign Unassigned Items
+                </button>
+              </div>
+              {bulkAssignWs && (
+                <div style={{ marginTop: 8, fontSize: 10, color: C.textMuted }}>
+                  {checklistItems.filter(i => i.workstream === bulkAssignWs && !i.ownerId).length} unassigned items in {bulkAssignWs}
                 </div>
               )}
             </div>
@@ -1009,12 +1282,213 @@ export default function Dashboard({
           </div>
         )}
 
+        {/* ─── STEERCO TAB ─── */}
+        {activeTab === "steerco" && (
+          <div>
+            {/* SteerCo Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>SteerCo Report Dashboard</h2>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                  {intake.dealName} — Week ending {getCurrentPeriodEnd()}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => {
+                  const snapshot = generateSnapshot(deal, getCurrentPeriodEnd());
+                  onSaveSnapshot(snapshot);
+                }} style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  background: C.success, color: "#fff", border: "none", cursor: "pointer",
+                }}>📸 Capture Snapshot</button>
+                <button onClick={() => window.print()} style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  background: C.accent, color: "#fff", border: "none", cursor: "pointer",
+                }}>🖨 Print / Export</button>
+              </div>
+            </div>
+
+            {/* Program Health Summary */}
+            {(() => {
+              const currentSnapshot = deal.progressSnapshots.length > 0
+                ? deal.progressSnapshots[deal.progressSnapshots.length - 1]
+                : generateSnapshot(deal, getCurrentPeriodEnd());
+              const programRAG = computeProgramRAG(currentSnapshot.workstreams);
+              const ragColor = programRAG === "red" ? C.danger : programRAG === "amber" ? C.warning : C.success;
+
+              return (
+                <>
+                  {/* Summary KPIs */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
+                    <div style={{ padding: 12, borderRadius: 6, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: ragColor, margin: "0 auto 6px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>
+                        {programRAG === "green" ? "✓" : programRAG === "amber" ? "!" : "✕"}
+                      </div>
+                      <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase" }}>Program Health</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: ragColor, textTransform: "uppercase" }}>{programRAG}</div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 6, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 800, color: C.accent }}>{currentSnapshot.summary.totalActive}</div>
+                      <div style={{ fontSize: 9, color: C.textMuted }}>Active Items</div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 6, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 800, color: C.success }}>{currentSnapshot.summary.completed}</div>
+                      <div style={{ fontSize: 9, color: C.textMuted }}>Completed</div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 6, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 800, color: C.danger }}>{currentSnapshot.summary.newlyBlocked}</div>
+                      <div style={{ fontSize: 9, color: C.textMuted }}>Blocked</div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 6, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
+                      <div style={{ fontSize: 24, fontWeight: 800, color: C.warning }}>{currentSnapshot.summary.pastDue}</div>
+                      <div style={{ fontSize: 9, color: C.textMuted }}>Past Due</div>
+                    </div>
+                  </div>
+
+                  {/* Workstream RAG Table with Narrative Editor */}
+                  <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                      Workstream Status — {currentSnapshot.workstreams.length} Workstreams
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                          <th style={{ textAlign: "left", padding: "6px 8px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>WORKSTREAM</th>
+                          <th style={{ textAlign: "center", padding: "6px 4px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>RAG</th>
+                          <th style={{ textAlign: "center", padding: "6px 4px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>% DONE</th>
+                          <th style={{ textAlign: "center", padding: "6px 4px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>COMPLETE</th>
+                          <th style={{ textAlign: "center", padding: "6px 4px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>ACTIVE</th>
+                          <th style={{ textAlign: "center", padding: "6px 4px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>BLOCKED</th>
+                          <th style={{ textAlign: "center", padding: "6px 4px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>PAST DUE</th>
+                          <th style={{ textAlign: "left", padding: "6px 8px", color: C.textMuted, fontWeight: 600, fontSize: 9 }}>NARRATIVE</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {currentSnapshot.workstreams.map((ws) => {
+                          const effectiveRag = ws.ragOverride || ws.ragStatus;
+                          const ragColor2 = effectiveRag === "red" ? C.danger : effectiveRag === "amber" ? C.warning : C.success;
+                          const isEditing = editingNarrative === ws.workstream;
+                          return (
+                            <tr key={ws.workstream} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                              <td style={{ padding: "8px 8px", fontWeight: 600, fontSize: 11 }}>{ws.workstream}</td>
+                              <td style={{ padding: "8px 4px", textAlign: "center" }}>
+                                <select value={ws.ragOverride || ""} onChange={(e) => {
+                                  const val = e.target.value || undefined;
+                                  onUpdateNarrative(currentSnapshot.id, ws.workstream, { ragOverride: val });
+                                }} style={{
+                                  background: "transparent", border: `1px solid ${ragColor2}44`, borderRadius: 4,
+                                  color: ragColor2, fontSize: 10, fontWeight: 700, padding: "2px 4px", cursor: "pointer",
+                                  width: 52, textAlign: "center",
+                                }}>
+                                  <option value="">Auto</option>
+                                  <option value="green">🟢</option>
+                                  <option value="amber">🟡</option>
+                                  <option value="red">🔴</option>
+                                </select>
+                              </td>
+                              <td style={{ padding: "8px 4px", textAlign: "center", fontWeight: 700 }}>{ws.pctComplete}%</td>
+                              <td style={{ padding: "8px 4px", textAlign: "center", color: C.success }}>{ws.completed}</td>
+                              <td style={{ padding: "8px 4px", textAlign: "center", color: C.accent }}>{ws.inProgress}</td>
+                              <td style={{ padding: "8px 4px", textAlign: "center", color: ws.blocked > 0 ? C.danger : C.muted }}>{ws.blocked}</td>
+                              <td style={{ padding: "8px 4px", textAlign: "center", color: ws.pastDue > 0 ? C.warning : C.muted }}>{ws.pastDue}</td>
+                              <td style={{ padding: "8px 8px" }}>
+                                {isEditing ? (
+                                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                    <textarea value={narrativeText} onChange={(e) => setNarrativeText(e.target.value)}
+                                      placeholder="Status narrative — accomplishments, blockers, next steps..."
+                                      style={{ width: "100%", padding: 6, borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10, minHeight: 50, resize: "vertical", fontFamily: "inherit" }} />
+                                    <input value={narrativeRisks} onChange={(e) => setNarrativeRisks(e.target.value)} placeholder="Key risks..."
+                                      style={{ padding: "3px 6px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10 }} />
+                                    <input value={narrativeNext} onChange={(e) => setNarrativeNext(e.target.value)} placeholder="Next steps..."
+                                      style={{ padding: "3px 6px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10 }} />
+                                    <div style={{ display: "flex", gap: 4 }}>
+                                      <button onClick={() => {
+                                        onUpdateNarrative(currentSnapshot.id, ws.workstream, { narrative: narrativeText, keyRisks: narrativeRisks, nextSteps: narrativeNext });
+                                        setEditingNarrative(null);
+                                      }} style={{ padding: "3px 10px", borderRadius: 3, background: C.success, color: "#fff", border: "none", fontSize: 9, cursor: "pointer", fontWeight: 600 }}>Save</button>
+                                      <button onClick={() => setEditingNarrative(null)} style={{ padding: "3px 10px", borderRadius: 3, background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, fontSize: 9, cursor: "pointer" }}>Cancel</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div onClick={() => {
+                                    setEditingNarrative(ws.workstream);
+                                    setNarrativeText(ws.narrative || "");
+                                    setNarrativeRisks(typeof ws.keyRisks === "string" ? ws.keyRisks : (ws.keyRisks || []).join(", "));
+                                    setNarrativeNext(typeof ws.nextSteps === "string" ? ws.nextSteps : (ws.nextSteps || []).join(", "));
+                                  }} style={{ cursor: "pointer", fontSize: 10, color: ws.narrative ? C.text : C.muted, fontStyle: ws.narrative ? "normal" : "italic" }}>
+                                    {ws.narrative ? (ws.narrative.length > 60 ? ws.narrative.substring(0, 60) + "..." : ws.narrative) : "Click to add narrative..."}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Owner Workload */}
+                  <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                      Owner Workload
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                      {currentSnapshot.owners.map((owner) => {
+                        const pct = owner.total ? Math.round((owner.completed / owner.total) * 100) : 0;
+                        return (
+                          <div key={owner.ownerName} style={{ padding: 10, borderRadius: 6, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{owner.ownerName}</div>
+                            <div style={{ display: "flex", gap: 8, fontSize: 9, color: C.textMuted }}>
+                              <span style={{ color: C.success }}>✓{owner.completed}</span>
+                              <span style={{ color: C.accent }}>→{owner.inProgress}</span>
+                              <span style={{ color: C.danger }}>✕{owner.blocked}</span>
+                              <span>Total: {owner.total}</span>
+                            </div>
+                            <div style={{ width: "100%", height: 4, background: C.cardBg, borderRadius: 2, marginTop: 6 }}>
+                              <div style={{ width: `${pct}%`, height: "100%", background: C.success, borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Snapshot History */}
+                  {deal.progressSnapshots.length > 1 && (
+                    <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                        Report History — {deal.progressSnapshots.length} Snapshots
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {deal.progressSnapshots.map((snap, idx) => {
+                          const progRag = computeProgramRAG(snap.workstreams);
+                          const rc = progRag === "red" ? C.danger : progRag === "amber" ? C.warning : C.success;
+                          return (
+                            <div key={snap.id} style={{
+                              padding: "6px 10px", borderRadius: 6, background: C.deepBlue, border: `1px solid ${C.border}`,
+                              fontSize: 10, display: "flex", alignItems: "center", gap: 6,
+                            }}>
+                              <span style={{ width: 8, height: 8, borderRadius: "50%", background: rc, display: "inline-block" }} />
+                              <span>Week {snap.periodEnd}</span>
+                              <span style={{ color: C.muted }}>({snap.summary.completed} done, {snap.summary.newlyBlocked} blocked)</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+
         {/* Footer */}
         <div style={{
           marginTop: 24, padding: "14px 0", borderTop: `1px solid rgba(51, 65, 85, 0.4)`,
           display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted
         }}>
-          <span>DealMapper v0.3.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
+          <span>DealMapper v0.4.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
           <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 24 workstreams</span>
         </div>
       </div>

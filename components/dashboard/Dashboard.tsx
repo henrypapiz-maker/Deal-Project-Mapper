@@ -268,6 +268,8 @@ export default function Dashboard({
   const [showSaveFilter, setShowSaveFilter] = useState(false);
   const [newFilterName, setNewFilterName] = useState("");
   const [searchText, setSearchText] = useState("");
+  const [sortCol, setSortCol] = useState<string>("id");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
     if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
@@ -359,6 +361,40 @@ export default function Dashboard({
     }
     return true;
   });
+
+  // Sort visible items
+  const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+  const statusOrder: Record<string, number> = { blocked: 0, in_progress: 1, not_started: 2, complete: 3, na: 4 };
+  const phaseOrder: Record<string, number> = { pre_close: 0, day_1: 1, day_30: 2, day_60: 3, day_90: 4, year_1: 5 };
+
+  const sortedItems = [...visibleItems].sort((a, b) => {
+    let cmp = 0;
+    switch (sortCol) {
+      case "id": cmp = a.itemId.localeCompare(b.itemId); break;
+      case "workstream": cmp = a.workstream.localeCompare(b.workstream); break;
+      case "task": cmp = a.description.localeCompare(b.description); break;
+      case "phase": cmp = (phaseOrder[a.phase] ?? 9) - (phaseOrder[b.phase] ?? 9); break;
+      case "priority": cmp = (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9); break;
+      case "status": cmp = (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9); break;
+      case "owner": {
+        const aName = deal.people.find(p => p.id === a.ownerId)?.name || "zzz";
+        const bName = deal.people.find(p => p.id === b.ownerId)?.name || "zzz";
+        cmp = aName.localeCompare(bName);
+        break;
+      }
+      default: cmp = 0;
+    }
+    return sortDir === "asc" ? cmp : -cmp;
+  });
+
+  function toggleSort(col: string) {
+    if (sortCol === col) {
+      setSortDir(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+  }
 
   const today = new Date();
   const closeDate = intake.closeDate ? new Date(intake.closeDate) : null;
@@ -1006,13 +1042,35 @@ export default function Dashboard({
                           style={{ cursor: "pointer" }}
                         />
                       </th>
-                      {["ID", "Workstream", "Task", "Phase", "Priority", "Status", "Owner", ""].map((h) => (
-                        <th key={h} style={{ padding: "6px", textAlign: "left", color: C.textMuted, fontSize: 9, textTransform: "uppercase", letterSpacing: 1 }}>{h}</th>
+                      {[
+                        { label: "ID", key: "id" },
+                        { label: "Workstream", key: "workstream" },
+                        { label: "Task", key: "task" },
+                        { label: "Phase", key: "phase" },
+                        { label: "Priority", key: "priority" },
+                        { label: "Status", key: "status" },
+                        { label: "Owner", key: "owner" },
+                        { label: "", key: "" },
+                      ].map((h) => (
+                        <th key={h.label || "ai"} onClick={() => h.key && toggleSort(h.key)} style={{
+                          padding: "6px", textAlign: "left", color: sortCol === h.key ? C.accentLight : C.textMuted,
+                          fontSize: 9, textTransform: "uppercase", letterSpacing: 1,
+                          cursor: h.key ? "pointer" : "default", userSelect: "none",
+                          transition: "color 0.15s",
+                        }}>
+                          {h.label}
+                          {h.key && sortCol === h.key && (
+                            <span style={{ marginLeft: 3, fontSize: 8 }}>{sortDir === "asc" ? "▲" : "▼"}</span>
+                          )}
+                          {h.key && sortCol !== h.key && (
+                            <span style={{ marginLeft: 3, fontSize: 8, opacity: 0.3 }}>⇅</span>
+                          )}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleItems.map((item) => {
+                    {sortedItems.map((item) => {
                       const statusColor = item.status === "complete" ? C.success : item.status === "in_progress" ? C.accent : item.status === "blocked" ? C.danger : C.muted;
                       const isSelected = selectedItem?.id === item.id;
                       return (

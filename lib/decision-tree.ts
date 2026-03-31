@@ -141,6 +141,23 @@ const RISK_RULES: RiskRule[] = [
       "Integration Budget & PMO",
     ],
   },
+  {
+    category: "it_integration_risk",
+    severity: "high",
+    check: (i) =>
+      i.integrationModel === "fully_integrated" ||
+      i.targetErp === "Other" ||
+      i.targetErp === "Unknown",
+    descriptionFn: (i) =>
+      `${i.integrationModel === "fully_integrated" ? "Full integration model requires comprehensive ERP and systems migration. " : ""}${i.targetErp === "Other" || i.targetErp === "Unknown" ? `Target ERP (${i.targetErp}) presents elevated migration risk — unknown complexity and data mapping effort. ` : ""}IT infrastructure, application rationalization, and ITGC alignment are critical path items.`,
+    mitigationFn: () =>
+      "Complete IT systems inventory within Day 1. Develop ERP migration strategy by Day 30. Assign IT integration PMO lead. Budget for dual-run period during system cutover. Prioritize IAM and access control consolidation for SOX compliance.",
+    affectedWorkstreams: [
+      "Enterprise Applications",
+      "Infrastructure & Cloud",
+      "IT General Controls (ITGC)",
+    ],
+  },
 ];
 
 // ============================================================

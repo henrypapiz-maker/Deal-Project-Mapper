@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, Priority } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
 
 type AppState = "landing" | "intake" | "generating" | "dashboard";
@@ -34,6 +34,20 @@ export default function Home() {
     });
   }, []);
 
+  const handleUpdatePriority = useCallback((itemId: string, priority: Priority) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map((item) =>
+          item.id === itemId
+            ? { ...item, priority, priorityOverride: priority }
+            : item
+        ),
+      };
+    });
+  }, []);
+
   function handleReset() {
     setDeal(null);
     setAppState("landing");
@@ -58,7 +72,7 @@ export default function Home() {
             Generating Integration Plan…
           </div>
           <div style={{ fontSize: 11, color: "#94A3B8", maxWidth: 340 }}>
-            Running decision tree · Scanning for risks · Configuring 443-item checklist
+            Running decision tree · Scanning for risks · Configuring 490+ item checklist
           </div>
           <div style={{ marginTop: 24, display: "flex", gap: 6, justifyContent: "center" }}>
             {[0, 1, 2].map((i) => (
@@ -79,7 +93,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onReset={handleReset} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onReset={handleReset} />;
   }
 
   if (appState === "intake") {
@@ -118,19 +132,19 @@ export default function Home() {
           M&A Integration Engine
         </h1>
         <p style={{ fontSize: 13, color: "#94A3B8", lineHeight: 1.7, marginBottom: 36, maxWidth: 480, margin: "0 auto 36px" }}>
-          Enter 12 deal intake fields. Receive a fully configured integration program —
-          risk assessment, dynamic checklist, and AI guidance — in seconds.
+          Enter your deal intake fields. Receive a fully configured integration program —
+          risk assessment, IT + Finance checklists, and AI guidance — in seconds.
         </p>
 
         {/* Feature Pills */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 40 }}>
           {[
-            "443-Item Checklist",
-            "7-Category Risk Engine",
+            "490+ Item Checklist",
+            "8-Category Risk Engine",
             "Claude AI Guidance",
-            "12 Workstreams",
+            "22 Workstreams",
             "5-Phase Timeline",
-            "Decision Tree",
+            "IT Integration Taxonomy",
           ].map((f) => (
             <span key={f} style={{
               padding: "4px 12px", borderRadius: 20, fontSize: 10, fontWeight: 600,

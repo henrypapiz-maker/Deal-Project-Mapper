@@ -34,11 +34,13 @@ export type RiskCategory =
   | "data_privacy_breach"
   | "cultural_integration"
   | "financial_reporting_gap"
-  | "stranded_costs";
+  | "stranded_costs"
+  | "it_integration_risk";
 
 export type Phase = "pre_close" | "day_1" | "day_30" | "day_60" | "day_90" | "year_1";
 
 export type Workstream =
+  // Finance & Operational workstreams
   | "TSA Assessment & Exit"
   | "Consolidation & Reporting"
   | "Operational Accounting"
@@ -50,7 +52,31 @@ export type Workstream =
   | "ESG & Sustainability"
   | "Integration Budget & PMO"
   | "Facilities & Real Estate"
-  | "HR & Workforce Integration";
+  | "HR & Workforce Integration"
+  // IT workstreams (from IT Integration Taxonomy v3)
+  | "IT Governance & Strategy"
+  | "IT Organization & Talent"
+  | "Enterprise Applications"
+  | "Infrastructure & Cloud"
+  | "Data Management & Analytics"
+  | "Cybersecurity & Risk"
+  | "IT General Controls (ITGC)"
+  | "Vendor & Third-Party Mgmt"
+  | "Client-Facing Tech & Product"
+  | "IT Financial Mgmt & Synergies";
+
+export type FunctionalArea =
+  | "finance"
+  | "it"
+  | "hr"
+  | "legal"
+  | "tax"
+  | "treasury"
+  | "cybersecurity"
+  | "esg"
+  | "facilities"
+  | "operations"
+  | "all";
 
 // ============================================================
 // Intake Form — Deal Profile (12-field, 3-tier)
@@ -62,7 +88,8 @@ export interface DealIntake {
   integrationModel: IntegrationModel;
   closeDate: string; // ISO date string
 
-  // Tier 2 — Context (5 fields)
+  // Tier 2 — Context (6 fields)
+  functionalScope: FunctionalArea[];
   crossBorder: boolean;
   jurisdictions: string[]; // ["US", "EU-DE", "EU-NL", "UK", ...]
   tsaRequired: TsaRequired;
@@ -88,6 +115,7 @@ export interface ChecklistItem {
   phase: Phase;
   milestoneDate?: string; // calculated from closeDate
   priority: Priority;
+  priorityOverride?: Priority;
   status: ItemStatus;
   ownerId?: string;
   dependencies: string[]; // item_ids

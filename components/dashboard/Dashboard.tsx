@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus } from "@/lib/types";
+import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, Priority } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 
 const C = {
@@ -42,6 +42,7 @@ const RISK_LABELS: Record<string, string> = {
   cultural_integration: "Cultural Integration",
   financial_reporting_gap: "Financial Reporting Gap",
   stranded_costs: "Stranded Costs",
+  it_integration_risk: "IT Integration Risk",
 };
 
 const PHASE_LABELS: Record<string, string> = {
@@ -56,10 +57,11 @@ const PHASE_LABELS: Record<string, string> = {
 interface Props {
   deal: GeneratedDeal;
   onUpdateStatus: (itemId: string, status: ItemStatus) => void;
+  onUpdatePriority: (itemId: string, priority: Priority) => void;
   onReset: () => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onReset }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -67,6 +69,7 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
   const [guidanceLoading, setGuidanceLoading] = useState(false);
   const [filterPhase, setFilterPhase] = useState<string>("all");
   const [filterWs, setFilterWs] = useState<string>("all");
+  const [filterPriority, setFilterPriority] = useState<string>("all");
 
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
@@ -109,6 +112,7 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
     if (item.status === "na") return false;
     if (filterPhase !== "all" && item.phase !== filterPhase) return false;
     if (filterWs !== "all" && item.workstream !== filterWs) return false;
+    if (filterPriority !== "all" && item.priority !== filterPriority) return false;
     return true;
   });
 
@@ -339,6 +343,20 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
                   ))}
                 </select>
               </div>
+              <div>
+                <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Priority </span>
+                <select
+                  value={filterPriority}
+                  onChange={(e) => setFilterPriority(e.target.value)}
+                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}
+                >
+                  <option value="all">All Priorities</option>
+                  <option value="critical">Critical</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+              </div>
               <div style={{ marginLeft: "auto", fontSize: 10, color: C.textMuted, alignSelf: "center" }}>
                 {visibleItems.length} items shown
               </div>
@@ -378,9 +396,27 @@ export default function Dashboard({ deal, onUpdateStatus, onReset }: Props) {
                             </span>
                           </td>
                           <td style={{ padding: "6px" }}>
-                            <span style={{ color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.textMuted, fontWeight: 600, fontSize: 9, textTransform: "uppercase" }}>
-                              {item.priority}
-                            </span>
+                            <select
+                              value={item.priority}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                onUpdatePriority(item.id, e.target.value as Priority);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                background: "transparent", border: "none",
+                                color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.textMuted,
+                                fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase",
+                              }}
+                            >
+                              <option value="critical">Critical</option>
+                              <option value="high">High</option>
+                              <option value="medium">Medium</option>
+                              <option value="low">Low</option>
+                            </select>
+                            {item.priorityOverride && (
+                              <span style={{ color: C.accent, fontSize: 8, marginLeft: 2 }} title="Priority manually overridden">*</span>
+                            )}
                           </td>
                           <td style={{ padding: "6px" }}>
                             <select

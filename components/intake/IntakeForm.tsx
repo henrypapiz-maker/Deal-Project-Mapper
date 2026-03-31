@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DealIntake, DealStructure, IntegrationModel, TsaRequired } from "@/lib/types";
+import type { DealIntake, DealStructure, IntegrationModel, TsaRequired, FunctionalArea } from "@/lib/types";
 
 const COLORS = {
   navy: "#0F1B2D",
@@ -66,6 +66,19 @@ const BUYER_MATURITY_OPTIONS = [
   { value: "pe", label: "PE / Financial Sponsor", desc: "Private equity or fund buyer" },
 ];
 
+const FUNCTIONAL_AREAS: { value: FunctionalArea; label: string }[] = [
+  { value: "finance", label: "Finance" },
+  { value: "it", label: "IT" },
+  { value: "hr", label: "HR" },
+  { value: "legal", label: "Legal" },
+  { value: "tax", label: "Tax" },
+  { value: "treasury", label: "Treasury" },
+  { value: "cybersecurity", label: "Cybersecurity" },
+  { value: "esg", label: "ESG" },
+  { value: "facilities", label: "Facilities" },
+  { value: "operations", label: "Operations" },
+];
+
 interface Props {
   onSubmit: (intake: DealIntake) => void;
 }
@@ -75,6 +88,7 @@ const EMPTY_INTAKE: DealIntake = {
   dealStructure: "stock_purchase",
   integrationModel: "fully_integrated",
   closeDate: "",
+  functionalScope: ["all"],
   crossBorder: false,
   jurisdictions: [],
   tsaRequired: "tbd",
@@ -130,7 +144,7 @@ export default function IntakeForm({ onSubmit }: Props) {
   const tierLabels = ["Core Deal Info", "Context & Complexity", "Advanced Configuration"];
   const tierDescriptions = [
     "4 required fields — always collected",
-    "5 fields — drives workstream activation",
+    "6 fields — drives workstream activation & scope",
     "3 fields — precision tuning for AI guidance",
   ];
 
@@ -322,6 +336,58 @@ export default function IntakeForm({ onSubmit }: Props) {
             {form.tsaRequired === "no" && (
               <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.success + "18", border: `1px solid ${COLORS.success}33`, fontSize: 10, color: COLORS.success }}>
                 ✓ No TSA — TSA checklist items will be marked N/A
+              </div>
+            )}
+          </Field>
+
+          <Field label="Functional Scope" hint="Select which functions are in scope. Unselected functions will have checklist items marked N/A.">
+            <div style={{ marginBottom: 8 }}>
+              <button
+                onClick={() => {
+                  const isAll = form.functionalScope.includes("all");
+                  set("functionalScope", isAll ? [] : ["all"]);
+                }}
+                style={{
+                  padding: "6px 12px", borderRadius: 4, border: `2px solid`,
+                  borderColor: form.functionalScope.includes("all") ? COLORS.accent : COLORS.border,
+                  background: form.functionalScope.includes("all") ? COLORS.accent + "18" : COLORS.cardBg,
+                  color: form.functionalScope.includes("all") ? COLORS.accent : COLORS.textMuted,
+                  fontSize: 10, fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                All Functions
+              </button>
+            </div>
+            {!form.functionalScope.includes("all") && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                {FUNCTIONAL_AREAS.map((fa) => {
+                  const isSelected = form.functionalScope.includes(fa.value);
+                  return (
+                    <button
+                      key={fa.value}
+                      onClick={() => {
+                        const next = isSelected
+                          ? form.functionalScope.filter((f) => f !== fa.value)
+                          : [...form.functionalScope, fa.value];
+                        set("functionalScope", next as FunctionalArea[]);
+                      }}
+                      style={{
+                        padding: "6px 10px", borderRadius: 4, border: `1px solid`,
+                        borderColor: isSelected ? COLORS.accent : COLORS.border,
+                        background: isSelected ? COLORS.accent + "22" : COLORS.cardBg,
+                        color: isSelected ? COLORS.accent : COLORS.textMuted,
+                        fontSize: 10, fontWeight: 600, cursor: "pointer", textAlign: "left",
+                      }}
+                    >
+                      {fa.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {!form.functionalScope.includes("all") && form.functionalScope.includes("it") && (
+              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}33`, fontSize: 10, color: COLORS.accent }}>
+                IT selected — 10 IT workstreams activated (Governance, Enterprise Apps, Infrastructure, ITGC, etc.)
               </div>
             )}
           </Field>

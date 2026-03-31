@@ -53,6 +53,9 @@ export type Workstream =
   | "Integration Budget & PMO"
   | "Facilities & Real Estate"
   | "HR & Workforce Integration"
+  // Deal mechanics & practitioner workstreams
+  | "Legal & Contract Transition"
+  | "Communications & Change Management"
   // IT workstreams (from IT Integration Taxonomy v3)
   | "IT Governance & Strategy"
   | "IT Organization & Talent"
@@ -76,6 +79,7 @@ export type FunctionalArea =
   | "esg"
   | "facilities"
   | "operations"
+  | "communications"
   | "all";
 
 // ============================================================

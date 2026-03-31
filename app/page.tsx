@@ -57,23 +57,22 @@ export default function Home() {
     return (
       <div style={{
         minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-        background: "linear-gradient(160deg, #0C1222 0%, #162036 40%, #0F1B2D 100%)",
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        background: "linear-gradient(135deg, #0F1B2D 0%, #0F172A 100%)",
+        fontFamily: "'JetBrains Mono', monospace",
       }}>
         <div style={{ textAlign: "center" }}>
           <div style={{
-            width: 60, height: 60, borderRadius: 16, margin: "0 auto 24px",
-            background: "linear-gradient(135deg, #2563EB, #3B82F6, #60A5FA)",
+            width: 56, height: 56, borderRadius: 12, margin: "0 auto 20px",
+            background: "linear-gradient(135deg, #3B82F6, #60A5FA)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 22, fontWeight: 800, color: "#fff", letterSpacing: -1,
+            fontSize: 24, fontWeight: 800, color: "#fff",
             animation: "pulse 1.5s ease-in-out infinite",
-            boxShadow: "0 8px 32px rgba(37, 99, 235, 0.35)",
-          }}>DM</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#F8FAFC", marginBottom: 8, letterSpacing: -0.3 }}>
+          }}>M</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#F1F5F9", marginBottom: 8 }}>
             Generating Integration Plan…
           </div>
-          <div style={{ fontSize: 12, color: "#94A3B8", maxWidth: 380, lineHeight: 1.6 }}>
-            Running decision tree · Scanning for risks · Configuring 119-item checklist across 22 workstreams
+          <div style={{ fontSize: 11, color: "#94A3B8", maxWidth: 340 }}>
+            Running decision tree · Scanning for risks · Configuring 490+ item checklist
           </div>
           <div style={{ marginTop: 24, display: "flex", gap: 6, justifyContent: "center" }}>
             {[0, 1, 2].map((i) => (
@@ -101,7 +100,7 @@ export default function Home() {
     return (
       <div style={{
         minHeight: "100vh",
-        background: "linear-gradient(160deg, #0C1222 0%, #162036 40%, #0F1B2D 100%)",
+        background: "linear-gradient(135deg, #0F1B2D 0%, #0F172A 100%)",
         color: "#F1F5F9",
       }}>
         <IntakeForm onSubmit={handleIntakeSubmit} />
@@ -113,90 +112,77 @@ export default function Home() {
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      background: "linear-gradient(160deg, #0C1222 0%, #162036 40%, #0F1B2D 100%)",
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", padding: 32,
+      background: "linear-gradient(135deg, #0F1B2D 0%, #0F172A 100%)",
+      fontFamily: "'JetBrains Mono', monospace", padding: 24,
     }}>
-      <div style={{ maxWidth: 720, width: "100%", textAlign: "center" }}>
+      <div style={{ maxWidth: 640, width: "100%", textAlign: "center" }}>
         {/* Logo */}
         <div style={{
-          width: 72, height: 72, borderRadius: 18, margin: "0 auto 28px",
-          background: "linear-gradient(135deg, #2563EB, #3B82F6, #60A5FA)",
+          width: 64, height: 64, borderRadius: 16, margin: "0 auto 24px",
+          background: "linear-gradient(135deg, #3B82F6, #60A5FA)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 30, fontWeight: 800, color: "#fff", letterSpacing: -1,
-          boxShadow: "0 8px 32px rgba(37, 99, 235, 0.35), 0 0 0 1px rgba(59, 130, 246, 0.15)",
-        }}>DM</div>
+          fontSize: 28, fontWeight: 800, color: "#fff",
+          boxShadow: "0 0 40px #3B82F644",
+        }}>M</div>
 
-        <div style={{ fontSize: 11, color: "#60A5FA", textTransform: "uppercase", letterSpacing: 4, marginBottom: 16, fontWeight: 600 }}>
-          DealMapper Intelligence
+        <div style={{ fontSize: 11, color: "#3B82F6", textTransform: "uppercase", letterSpacing: 3, marginBottom: 12, fontWeight: 700 }}>
+          Phase 1 MVP · Variant A: Reactive Monitor
         </div>
-        <h1 style={{ fontSize: 38, fontWeight: 800, color: "#F8FAFC", marginBottom: 16, lineHeight: 1.15, letterSpacing: -0.5 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 800, color: "#F1F5F9", marginBottom: 16, lineHeight: 1.2 }}>
           M&A Integration Engine
         </h1>
-        <p style={{ fontSize: 15, color: "#94A3B8", lineHeight: 1.8, marginBottom: 40, maxWidth: 520, margin: "0 auto 40px", fontWeight: 400 }}>
-          Configure your deal profile across 3 tiers. Receive a fully scoped integration program —
-          risk assessment, 22-workstream checklist with priority override, and Claude AI guidance.
+        <p style={{ fontSize: 13, color: "#94A3B8", lineHeight: 1.7, marginBottom: 36, maxWidth: 480, margin: "0 auto 36px" }}>
+          Enter your deal intake fields. Receive a fully configured integration program —
+          risk assessment, IT + Finance checklists, and AI guidance — in seconds.
         </p>
 
         {/* Feature Pills */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginBottom: 44 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 40 }}>
           {[
-            { label: "119-Item Checklist", icon: "☐" },
-            { label: "8-Category Risk Engine", icon: "⚡" },
-            { label: "Claude AI Guidance", icon: "✦" },
-            { label: "22 Workstreams", icon: "◎" },
-            { label: "5-Phase Timeline", icon: "▸" },
-            { label: "10 IT Domains", icon: "⬡" },
+            "490+ Item Checklist",
+            "8-Category Risk Engine",
+            "Claude AI Guidance",
+            "22 Workstreams",
+            "5-Phase Timeline",
+            "IT Integration Taxonomy",
           ].map((f) => (
-            <span key={f.label} style={{
-              padding: "6px 14px", borderRadius: 24, fontSize: 11, fontWeight: 500,
-              background: "rgba(30, 41, 59, 0.7)", color: "#CBD5E1",
-              border: "1px solid rgba(51, 65, 85, 0.6)",
-              backdropFilter: "blur(8px)",
-              display: "flex", alignItems: "center", gap: 6,
-            }}><span style={{ color: "#60A5FA", fontSize: 10 }}>{f.icon}</span> {f.label}</span>
+            <span key={f} style={{
+              padding: "4px 12px", borderRadius: 20, fontSize: 10, fontWeight: 600,
+              background: "#1E293B", color: "#60A5FA", border: "1px solid #334155",
+            }}>{f}</span>
           ))}
         </div>
 
         <button
           onClick={() => setAppState("intake")}
           style={{
-            padding: "16px 44px", borderRadius: 10, border: "none",
-            background: "linear-gradient(135deg, #2563EB, #3B82F6)",
-            color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer",
-            fontFamily: "inherit", letterSpacing: 0.3,
-            boxShadow: "0 4px 20px rgba(37, 99, 235, 0.4), 0 1px 3px rgba(0,0,0,0.2)",
-            transition: "all 0.2s ease",
+            padding: "14px 36px", borderRadius: 8, border: "none",
+            background: "linear-gradient(135deg, #3B82F6, #60A5FA)",
+            color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+            fontFamily: "inherit", letterSpacing: 0.5,
+            boxShadow: "0 4px 24px #3B82F644",
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 6px 28px rgba(37, 99, 235, 0.5), 0 2px 4px rgba(0,0,0,0.3)"; e.currentTarget.style.transform = "translateY(-1px)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 4px 20px rgba(37, 99, 235, 0.4), 0 1px 3px rgba(0,0,0,0.2)"; e.currentTarget.style.transform = "translateY(0)"; }}
         >
           Start New Deal →
         </button>
 
-        <div style={{
-          marginTop: 56, padding: "20px 28px", borderRadius: 12,
-          background: "rgba(30, 41, 59, 0.5)", border: "1px solid rgba(51, 65, 85, 0.5)",
-          textAlign: "left", backdropFilter: "blur(12px)",
-        }}>
-          <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16, fontWeight: 600 }}>How it works</div>
+        <div style={{ marginTop: 48, padding: "16px 24px", borderRadius: 8, background: "#1E293B", border: "1px solid #334155", textAlign: "left" }}>
+          <div style={{ fontSize: 9, color: "#94A3B8", textTransform: "uppercase", letterSpacing: 1, marginBottom: 12 }}>What happens when you submit</div>
           {[
-            ["01", "Decision tree maps 13 intake fields across 3 tiers to 119 checklist items"],
-            ["02", "Risk scanner runs 8 detection rules across 22 workstreams"],
-            ["03", "Functional scope filters IT + Finance items; milestones auto-calculated"],
-            ["04", "Claude AI generates contextual guidance per item with priority override"],
+            ["1", "Decision tree maps your 12 intake fields to relevant checklist items"],
+            ["2", "Risk scanner runs 7 detection rules and surfaces critical flags"],
+            ["3", "Milestone dates calculated from your target close date"],
+            ["4", "Claude API ready to generate contextual guidance per checklist item"],
           ].map(([num, text]) => (
-            <div key={num} style={{ display: "flex", gap: 14, marginBottom: 12, alignItems: "flex-start" }}>
-              <span style={{
-                fontSize: 10, fontWeight: 700, color: "#3B82F6", minWidth: 24,
-                background: "rgba(59, 130, 246, 0.1)", borderRadius: 4, padding: "2px 6px", textAlign: "center",
-              }}>{num}</span>
-              <span style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.5 }}>{text}</span>
+            <div key={num} style={{ display: "flex", gap: 10, marginBottom: 8 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: "#3B82F6", minWidth: 16 }}>{num}</span>
+              <span style={{ fontSize: 10, color: "#64748B" }}>{text}</span>
             </div>
           ))}
         </div>
 
-        <div style={{ marginTop: 24, fontSize: 10, color: "#334155", letterSpacing: 0.5 }}>
-          DealMapper v0.2.0 · M&A Integration Engine · March 2026
+        <div style={{ marginTop: 20, fontSize: 9, color: "#334155" }}>
+          M&A Integration Engine v0.1.0 · Phase 1 MVP · February 2026
         </div>
       </div>
     </div>

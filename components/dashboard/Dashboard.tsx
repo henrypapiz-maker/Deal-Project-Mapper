@@ -121,48 +121,46 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
 
   return (
     <div style={{
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      background: `linear-gradient(160deg, #0C1222 0%, #162036 40%, ${C.navy} 100%)`,
+      fontFamily: "'JetBrains Mono', monospace",
+      background: `linear-gradient(135deg, ${C.navy} 0%, #0F172A 100%)`,
       color: C.text, minHeight: "100vh",
     }}>
       {/* Top Nav */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "14px 28px", borderBottom: `1px solid rgba(51, 65, 85, 0.5)`,
-        background: "rgba(12, 18, 34, 0.85)", backdropFilter: "blur(16px)",
+        padding: "12px 24px", borderBottom: `1px solid ${C.border}`,
+        background: C.navy + "CC", backdropFilter: "blur(12px)",
         position: "sticky", top: 0, zIndex: 10
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: `linear-gradient(135deg, #2563EB, ${C.accent}, ${C.accentLight})`,
+            width: 32, height: 32, borderRadius: 6,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.accentLight})`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 13, fontWeight: 800, color: "#fff", letterSpacing: -0.5,
-            boxShadow: "0 4px 12px rgba(37, 99, 235, 0.3)",
-          }}>DM</div>
+            fontSize: 14, fontWeight: 800, color: "#fff"
+          }}>M</div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: -0.2, color: "#F8FAFC" }}>
-              DealMapper
+            <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase" }}>
+              M&A Integration Engine
             </div>
-            <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 400 }}>
+            <div style={{ fontSize: 10, color: C.textMuted }}>
               {intake.dealName} — {STRUCTURE_LABELS[intake.dealStructure]} · {MODEL_LABELS[intake.integrationModel]}
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 2, alignItems: "center", background: "rgba(30, 41, 59, 0.5)", borderRadius: 8, padding: 3 }}>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {(["overview", "checklist", "risks", "timeline"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} style={{
-              padding: "7px 16px", borderRadius: 6, border: "none", cursor: "pointer",
+              padding: "6px 14px", borderRadius: 4, border: "none", cursor: "pointer",
               background: activeTab === tab ? C.accent : "transparent",
               color: activeTab === tab ? "#fff" : C.textMuted,
-              fontSize: 11, fontWeight: 600, letterSpacing: 0.3, textTransform: "capitalize",
-              transition: "all 0.15s ease",
+              fontSize: 10, fontWeight: 600, letterSpacing: 0.8, textTransform: "uppercase",
             }}>{tab}</button>
           ))}
           <button onClick={onReset} style={{
-            marginLeft: 8, padding: "6px 14px", borderRadius: 6,
-            border: `1px solid rgba(51, 65, 85, 0.5)`, background: "transparent",
-            color: C.textMuted, fontSize: 11, cursor: "pointer", fontWeight: 500,
+            marginLeft: 12, padding: "5px 12px", borderRadius: 4,
+            border: `1px solid ${C.border}`, background: "transparent",
+            color: C.textMuted, fontSize: 10, cursor: "pointer",
           }}>← New Deal</button>
         </div>
       </div>
@@ -184,7 +182,6 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
             ["Sector", intake.industrySector || "—"],
             ["Value", intake.dealValueRange || "—"],
             ["Entities", String(intake.targetEntities)],
-            ["Scope", intake.functionalScope?.includes("all") ? "All Functions" : (intake.functionalScope?.join(", ") || "All Functions")],
           ].map(([label, val]) => (
             <div key={label}>
               <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 2 }}>{label}</div>
@@ -601,11 +598,11 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
 
         {/* Footer */}
         <div style={{
-          marginTop: 24, padding: "14px 0", borderTop: `1px solid rgba(51, 65, 85, 0.4)`,
-          display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted
+          marginTop: 24, padding: "12px 0", borderTop: `1px solid ${C.border}`,
+          display: "flex", justifyContent: "space-between", fontSize: 9, color: C.muted
         }}>
-          <span>DealMapper v0.2.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
-          <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 22 workstreams</span>
+          <span>M&A Integration Engine — Phase 1 MVP · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
+          <span>Powered by Claude API + React · {deal.checklistItems.filter(i => i.status !== "na").length} active items</span>
         </div>
       </div>
     </div>

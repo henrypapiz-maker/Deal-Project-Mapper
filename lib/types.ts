@@ -108,7 +108,7 @@ export interface DealIntake {
 // ============================================================
 export interface ChecklistItem {
   id: string; // UUID (generated at runtime)
-  itemId: string; // FRC-0001 through FRC-0489
+  itemId: string; // FRC-0001 through FRC-0443
   workstream: Workstream;
   section: string;
   description: string;

@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, Priority } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 import { generateSnapshot, getCurrentPeriodEnd, computeProgramRAG } from "@/lib/progress";
+import BowlerTable from "./BowlerTable";
 
 const C = {
   navy: "#0F1B2D",
@@ -1949,6 +1950,19 @@ export default function Dashboard({
                 }}>📋 Copy Summary</button>
               </div>
             </div>
+
+            {/* Bowler Table — Time-Phased RAG Grid */}
+            {deal.id && (
+              <div style={{ marginBottom: 20 }}>
+                <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 10, color: C.text }}>Integration Bowler Table</h3>
+                <BowlerTable dealId={deal.id} closeDate={intake.closeDate} />
+              </div>
+            )}
+            {!deal.id && (
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 20, fontSize: 11, color: C.textMuted }}>
+                Bowler table requires a saved deal. Save this deal to Neon DB first (auto-saves on next change).
+              </div>
+            )}
 
             {/* Program Health Summary */}
             {(() => {

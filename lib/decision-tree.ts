@@ -283,6 +283,7 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
       { id: "preset-2", name: "All Blocked", filters: { phase: "all", workstream: "all", priority: "all", status: "blocked", owner: "all" }, isPreset: true, createdAt: new Date().toISOString() },
       { id: "preset-3", name: "Overdue Items", filters: { phase: "all", workstream: "all", priority: "all", status: "overdue", owner: "all" }, isPreset: true, createdAt: new Date().toISOString() },
     ],
+    changeLog: [],
   };
 }
 

@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person, ChangeEvent } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
 import { saveDeal, loadDeal, clearDeal, hasSavedDeal } from "@/lib/persistence";
 
@@ -36,11 +36,22 @@ export default function Home() {
   const handleUpdateStatus = useCallback((itemId: string, status: ItemStatus) => {
     setDeal((prev) => {
       if (!prev) return prev;
+      const item = prev.checklistItems.find(i => i.id === itemId);
+      const oldValue = item?.status || "unknown";
+      const event: ChangeEvent = {
+        id: `chg-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        itemId: item?.itemId || itemId,
+        field: "status",
+        oldValue,
+        newValue: status,
+      };
       return {
         ...prev,
-        checklistItems: prev.checklistItems.map((item) =>
-          item.id === itemId ? { ...item, status } : item
+        checklistItems: prev.checklistItems.map((i) =>
+          i.id === itemId ? { ...i, status } : i
         ),
+        changeLog: [...(prev.changeLog || []), event],
       };
     });
   }, []);
@@ -48,13 +59,24 @@ export default function Home() {
   const handleUpdatePriority = useCallback((itemId: string, priority: Priority) => {
     setDeal((prev) => {
       if (!prev) return prev;
+      const item = prev.checklistItems.find(i => i.id === itemId);
+      const oldValue = item?.priority || "unknown";
+      const event: ChangeEvent = {
+        id: `chg-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        itemId: item?.itemId || itemId,
+        field: "priority",
+        oldValue,
+        newValue: priority,
+      };
       return {
         ...prev,
-        checklistItems: prev.checklistItems.map((item) =>
-          item.id === itemId
-            ? { ...item, priority, priorityOverride: priority }
-            : item
+        checklistItems: prev.checklistItems.map((i) =>
+          i.id === itemId
+            ? { ...i, priority, priorityOverride: priority }
+            : i
         ),
+        changeLog: [...(prev.changeLog || []), event],
       };
     });
   }, []);
@@ -108,11 +130,23 @@ export default function Home() {
   const handleAssignOwner = useCallback((itemId: string, ownerId: string | undefined) => {
     setDeal((prev) => {
       if (!prev) return prev;
+      const item = prev.checklistItems.find(i => i.id === itemId);
+      const oldPerson = prev.people.find(p => p.id === item?.ownerId);
+      const newPerson = prev.people.find(p => p.id === ownerId);
+      const event: ChangeEvent = {
+        id: `chg-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        itemId: item?.itemId || itemId,
+        field: "owner",
+        oldValue: oldPerson?.name || "Unassigned",
+        newValue: newPerson?.name || "Unassigned",
+      };
       return {
         ...prev,
-        checklistItems: prev.checklistItems.map((item) =>
-          item.id === itemId ? { ...item, ownerId } : item
+        checklistItems: prev.checklistItems.map((i) =>
+          i.id === itemId ? { ...i, ownerId } : i
         ),
+        changeLog: [...(prev.changeLog || []), event],
       };
     });
   }, []);
@@ -224,7 +258,7 @@ export default function Home() {
             Generating Integration Plan…
           </div>
           <div style={{ fontSize: 12, color: "#94A3B8", maxWidth: 380, lineHeight: 1.6 }}>
-            Running decision tree · Scanning for risks · Configuring 530-item checklist across 24 workstreams
+            Running decision tree · Scanning for risks · Configuring 531-item checklist across 24 workstreams
           </div>
           <div style={{ marginTop: 24, display: "flex", gap: 6, justifyContent: "center" }}>
             {[0, 1, 2].map((i) => (
@@ -291,7 +325,7 @@ export default function Home() {
         {/* Feature Pills */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginBottom: 44 }}>
           {[
-            { label: "530-Item Checklist", icon: "\u2610" },
+            { label: "531-Item Checklist", icon: "\u2610" },
             { label: "8-Category Risk Engine", icon: "\u26A1" },
             { label: "Claude AI Guidance", icon: "\u2726" },
             { label: "24 Workstreams", icon: "\u25CE" },
@@ -339,7 +373,7 @@ export default function Home() {
         }}>
           <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16, fontWeight: 600 }}>How it works</div>
           {[
-            ["01", "Decision tree maps 13 intake fields across 3 tiers to 530 checklist items"],
+            ["01", "Decision tree maps 13 intake fields across 3 tiers to 531 checklist items"],
             ["02", "Risk scanner runs 8 detection rules across 24 workstreams"],
             ["03", "Functional scope filters IT + Finance items; milestones auto-calculated"],
             ["04", "Claude AI generates contextual guidance per item with priority override"],

@@ -249,6 +249,19 @@ export interface SavedFilter {
 }
 
 // ============================================================
+// Audit Trail
+// ============================================================
+export interface ChangeEvent {
+  id: string;
+  timestamp: string;
+  itemId: string;
+  field: string;
+  oldValue: string;
+  newValue: string;
+  author?: string;
+}
+
+// ============================================================
 // Generated Deal (result of decision tree)
 // ============================================================
 export interface GeneratedDeal {
@@ -261,6 +274,7 @@ export interface GeneratedDeal {
   people: Person[];
   progressSnapshots: ProgressSnapshot[];
   savedFilters: SavedFilter[];
+  changeLog: ChangeEvent[];
 }
 
 export interface WorkstreamSummary {

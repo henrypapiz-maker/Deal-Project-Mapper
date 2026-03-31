@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "DealMapper — M&A Integration Engine",
-  description: "AI-driven M&A post-close integration platform — 530+ item checklist, 24 workstreams, Claude AI guidance",
+  description: "AI-driven M&A post-close integration platform — 531-item checklist, 24 workstreams, Claude AI guidance",
 };
 
 export default function RootLayout({

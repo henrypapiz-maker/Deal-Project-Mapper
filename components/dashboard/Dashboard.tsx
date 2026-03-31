@@ -142,6 +142,7 @@ export default function Dashboard({
   const [narrativeNext, setNarrativeNext] = useState("");
   const [showSaveFilter, setShowSaveFilter] = useState(false);
   const [newFilterName, setNewFilterName] = useState("");
+  const [searchText, setSearchText] = useState("");
 
   function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
     if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
@@ -226,6 +227,10 @@ export default function Dashboard({
       } else {
         if (item.ownerId !== filterOwner) return false;
       }
+    }
+    if (searchText.trim()) {
+      const q = searchText.toLowerCase();
+      if (!item.description.toLowerCase().includes(q) && !item.itemId.toLowerCase().includes(q) && !item.workstream.toLowerCase().includes(q)) return false;
     }
     return true;
   });
@@ -341,6 +346,29 @@ export default function Dashboard({
                 </div>
               ))}
             </div>
+
+            {/* Recent Activity */}
+            {(deal.changeLog || []).length > 0 && (
+              <div style={{ padding: 12, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 12 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, color: C.textMuted }}>
+                  Recent Activity
+                </div>
+                <div style={{ maxHeight: 120, overflowY: "auto" }}>
+                  {[...(deal.changeLog || [])].reverse().slice(0, 15).map((evt) => (
+                    <div key={evt.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 0", borderBottom: `1px solid ${C.border}11`, fontSize: 10 }}>
+                      <span style={{ color: C.muted, fontSize: 9, minWidth: 55 }}>{new Date(evt.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      <span style={{ color: C.accentLight, fontWeight: 600 }}>{evt.itemId}</span>
+                      <span style={{ color: C.textMuted }}>{evt.field}</span>
+                      <span style={{ color: C.muted }}>→</span>
+                      <span style={{
+                        color: evt.newValue === "complete" ? C.success : evt.newValue === "blocked" ? C.danger : evt.newValue === "in_progress" ? C.accent : C.text,
+                        fontWeight: 600,
+                      }}>{evt.newValue}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
               <button onClick={() => setShowSteerCo(true)} style={{
@@ -587,6 +615,11 @@ export default function Dashboard({
                   <option value="unassigned">Unassigned</option>
                   {deal.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
+              </div>
+              <div>
+                <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Search </span>
+                <input value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder="Search items..."
+                  style={{ padding: "5px 10px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11, width: 180 }} />
               </div>
               <div style={{ marginLeft: "auto", fontSize: 10, color: C.textMuted, alignSelf: "center" }}>
                 {visibleItems.length} items shown{overdueCount > 0 && <span style={{ color: C.danger, marginLeft: 8 }}>{overdueCount} overdue</span>}

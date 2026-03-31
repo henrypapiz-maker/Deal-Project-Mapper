@@ -43,6 +43,8 @@ export function loadDeal(): GeneratedDeal | null {
         { id: "preset-3", name: "Overdue Items", filters: { phase: "all", workstream: "all", priority: "all", status: "overdue", owner: "all" }, isPreset: true, createdAt: new Date().toISOString() },
       ];
     }
+    // Add changeLog if missing
+    if (!deal.changeLog) deal.changeLog = [];
     return deal;
   } catch {
     return null;

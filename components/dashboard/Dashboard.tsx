@@ -90,6 +90,7 @@ interface Props {
   onUpdateNarrative: (snapshotId: string, workstream: string, updates: any) => void;
   onSaveFilter: (name: string, filters: any) => void;
   onDeleteFilter: (filterId: string) => void;
+  onBulkAssign: (itemIds: string[], ownerId: string) => void;
 }
 
 function ProgressChart({ workstreams }: { workstreams: Array<{ workstream: string; completed: number; inProgress: number; blocked: number; total: number; pctComplete: number; ragStatus: string; ragOverride?: string }> }) {
@@ -232,6 +233,7 @@ export default function Dashboard({
   onUpdateNarrative,
   onSaveFilter,
   onDeleteFilter,
+  onBulkAssign,
 }: Props) {
   const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco">("live_status");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
@@ -1410,12 +1412,12 @@ export default function Dashboard({
               )}
             </div>
 
-            {/* Bulk Assignment */}
-            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+            {/* Bulk Assignment by Workstream */}
+            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
-                Bulk Assignment
+                Bulk Assignment by Workstream
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Workstream</div>
                   <select value={bulkAssignWs} onChange={(e) => setBulkAssignWs(e.target.value)} style={{
@@ -1436,20 +1438,95 @@ export default function Dashboard({
                 </div>
                 <button onClick={() => {
                   if (bulkAssignWs && bulkAssignPerson) {
-                    const wsItems = checklistItems.filter(i => i.workstream === bulkAssignWs && !i.ownerId);
-                    wsItems.forEach(item => onAssignOwner(item.itemId, bulkAssignPerson));
+                    const ids = checklistItems.filter(i => i.workstream === bulkAssignWs && !i.ownerId).map(i => i.itemId);
+                    if (ids.length > 0) onBulkAssign(ids, bulkAssignPerson);
                     setBulkAssignWs(""); setBulkAssignPerson("");
                   }
                 }} style={{
                   padding: "6px 14px", borderRadius: 4, background: C.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer",
                   opacity: bulkAssignWs && bulkAssignPerson ? 1 : 0.4,
                 }} disabled={!bulkAssignWs || !bulkAssignPerson}>
-                  Assign Unassigned Items
+                  Assign All Unassigned
                 </button>
+                {bulkAssignWs && bulkAssignPerson && (
+                  <button onClick={() => {
+                    const ids = checklistItems.filter(i => i.workstream === bulkAssignWs).map(i => i.itemId);
+                    if (ids.length > 0 && window.confirm(`Reassign ALL ${ids.length} items in ${bulkAssignWs}?`)) {
+                      onBulkAssign(ids, bulkAssignPerson);
+                      setBulkAssignWs(""); setBulkAssignPerson("");
+                    }
+                  }} style={{
+                    padding: "6px 14px", borderRadius: 4, background: C.warning + "33", color: C.warning, border: `1px solid ${C.warning}44`, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  }}>
+                    Reassign All (incl. assigned)
+                  </button>
+                )}
               </div>
               {bulkAssignWs && (
                 <div style={{ marginTop: 8, fontSize: 10, color: C.textMuted }}>
-                  {checklistItems.filter(i => i.workstream === bulkAssignWs && !i.ownerId).length} unassigned items in {bulkAssignWs}
+                  {checklistItems.filter(i => i.workstream === bulkAssignWs && !i.ownerId).length} unassigned / {checklistItems.filter(i => i.workstream === bulkAssignWs).length} total items in {bulkAssignWs}
+                </div>
+              )}
+            </div>
+
+            {/* Line-Item Assignment */}
+            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                Line-Item Assignment — {checklistItems.filter(i => !i.ownerId && i.status !== "na").length} Unassigned
+              </div>
+              {deal.people.length === 0 ? (
+                <div style={{ fontSize: 11, color: C.muted, padding: 8 }}>Add team members above before assigning items.</div>
+              ) : (
+                <div style={{ maxHeight: 400, overflowY: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, background: C.cardBg }}>
+                        <th style={{ padding: 4, textAlign: "left", color: C.textMuted, fontSize: 8 }}>ID</th>
+                        <th style={{ padding: 4, textAlign: "left", color: C.textMuted, fontSize: 8 }}>WORKSTREAM</th>
+                        <th style={{ padding: 4, textAlign: "left", color: C.textMuted, fontSize: 8 }}>TASK</th>
+                        <th style={{ padding: 4, textAlign: "left", color: C.textMuted, fontSize: 8 }}>PRIORITY</th>
+                        <th style={{ padding: 4, textAlign: "left", color: C.textMuted, fontSize: 8 }}>OWNER</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {checklistItems.filter(i => i.status !== "na").sort((a, b) => {
+                        // Unassigned first, then by workstream
+                        if (!a.ownerId && b.ownerId) return -1;
+                        if (a.ownerId && !b.ownerId) return 1;
+                        return a.workstream.localeCompare(b.workstream) || a.itemId.localeCompare(b.itemId);
+                      }).slice(0, 100).map((item) => (
+                        <tr key={item.itemId} style={{ borderBottom: `1px solid ${C.border}11` }}>
+                          <td style={{ padding: "3px 4px", fontSize: 9, color: C.accentLight, fontWeight: 600 }}>{item.itemId}</td>
+                          <td style={{ padding: "3px 4px", fontSize: 9, color: C.textMuted, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.workstream}</td>
+                          <td style={{ padding: "3px 4px", fontSize: 9, maxWidth: 250, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={item.description}>{item.description}</td>
+                          <td style={{ padding: "3px 4px" }}>
+                            <span style={{
+                              fontSize: 8, padding: "1px 4px", borderRadius: 3, fontWeight: 700,
+                              color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.muted,
+                              background: (item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.muted) + "22",
+                            }}>{item.priority.toUpperCase()}</span>
+                          </td>
+                          <td style={{ padding: "3px 4px" }}>
+                            <select value={item.ownerId || ""} onChange={(e) => onAssignOwner(item.id, e.target.value || undefined)} style={{
+                              padding: "2px 4px", borderRadius: 3, fontSize: 9, fontWeight: 500,
+                              border: `1px solid ${item.ownerId ? C.success + "44" : C.warning + "44"}`,
+                              background: item.ownerId ? C.success + "11" : C.deepBlue,
+                              color: item.ownerId ? C.success : C.warning,
+                              cursor: "pointer", minWidth: 100,
+                            }}>
+                              <option value="">— Unassigned —</option>
+                              {deal.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {checklistItems.filter(i => i.status !== "na").length > 100 && (
+                    <div style={{ padding: 8, fontSize: 10, color: C.textMuted, textAlign: "center" }}>
+                      Showing first 100 items. Use Checklist Maintenance tab for full list.
+                    </div>
+                  )}
                 </div>
               )}
             </div>

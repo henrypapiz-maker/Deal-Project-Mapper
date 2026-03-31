@@ -176,6 +176,32 @@ export default function Home() {
     });
   }, []);
 
+  // Bulk assign multiple items to an owner (by itemId, not id)
+  const handleBulkAssign = useCallback((itemIds: string[], ownerId: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const idSet = new Set(itemIds);
+      const personName = prev.people.find(p => p.id === ownerId)?.name || "Unknown";
+      const events: ChangeEvent[] = prev.checklistItems
+        .filter(i => idSet.has(i.itemId) && i.ownerId !== ownerId)
+        .map(i => ({
+          id: `chg-${Date.now()}-${i.itemId}`,
+          timestamp: new Date().toISOString(),
+          itemId: i.itemId,
+          field: "owner",
+          oldValue: prev.people.find(p => p.id === i.ownerId)?.name || "Unassigned",
+          newValue: personName,
+        }));
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map((i) =>
+          idSet.has(i.itemId) ? { ...i, ownerId } : i
+        ),
+        changeLog: [...(prev.changeLog || []), ...events],
+      };
+    });
+  }, []);
+
   // Add note to checklist item
   const handleAddNote = useCallback((itemId: string, text: string) => {
     setDeal((prev) => {
@@ -304,7 +330,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} />;
   }
 
   if (appState === "intake") {

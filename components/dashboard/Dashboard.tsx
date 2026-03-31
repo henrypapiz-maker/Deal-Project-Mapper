@@ -92,6 +92,131 @@ interface Props {
   onDeleteFilter: (filterId: string) => void;
 }
 
+function ProgressChart({ workstreams }: { workstreams: Array<{ workstream: string; completed: number; inProgress: number; blocked: number; total: number; pctComplete: number; ragStatus: string; ragOverride?: string }> }) {
+  const barHeight = 22;
+  const labelWidth = 140;
+  const chartWidth = 500;
+  const h = workstreams.length * (barHeight + 6) + 30;
+  return (
+    <svg width="100%" viewBox={`0 0 ${labelWidth + chartWidth + 60} ${h}`} style={{ fontFamily: "system-ui, sans-serif" }}>
+      <text x={labelWidth} y={14} fontSize={9} fill="#94A3B8" fontWeight={700}>WORKSTREAM PROGRESS</text>
+      {workstreams.map((ws, i) => {
+        const y = 26 + i * (barHeight + 6);
+        const maxW = chartWidth;
+        const compW = ws.total ? (ws.completed / ws.total) * maxW : 0;
+        const ipW = ws.total ? (ws.inProgress / ws.total) * maxW : 0;
+        const blkW = ws.total ? (ws.blocked / ws.total) * maxW : 0;
+        const rag = ws.ragOverride || ws.ragStatus;
+        const ragColor = rag === "red" ? "#EF4444" : rag === "amber" ? "#F59E0B" : "#10B981";
+        return (
+          <g key={ws.workstream}>
+            <circle cx={10} cy={y + barHeight / 2} r={5} fill={ragColor} />
+            <text x={22} y={y + barHeight / 2 + 4} fontSize={10} fill="#E2E8F0" fontWeight={500}>{ws.workstream.length > 20 ? ws.workstream.substring(0, 20) + "…" : ws.workstream}</text>
+            <rect x={labelWidth} y={y} width={maxW} height={barHeight} rx={3} fill="#1E293B" />
+            <rect x={labelWidth} y={y} width={compW} height={barHeight} rx={3} fill="#10B981" />
+            <rect x={labelWidth + compW} y={y} width={ipW} height={barHeight} fill="#3B82F6" />
+            <rect x={labelWidth + compW + ipW} y={y} width={blkW} height={barHeight} fill="#EF4444" />
+            <text x={labelWidth + maxW + 8} y={y + barHeight / 2 + 4} fontSize={10} fill="#94A3B8" fontWeight={700}>{ws.pctComplete}%</text>
+          </g>
+        );
+      })}
+      {/* Legend */}
+      <g transform={`translate(${labelWidth}, ${h - 14})`}>
+        <rect x={0} y={0} width={10} height={10} rx={2} fill="#10B981" /><text x={14} y={9} fontSize={8} fill="#94A3B8">Complete</text>
+        <rect x={70} y={0} width={10} height={10} rx={2} fill="#3B82F6" /><text x={84} y={9} fontSize={8} fill="#94A3B8">In Progress</text>
+        <rect x={150} y={0} width={10} height={10} rx={2} fill="#EF4444" /><text x={164} y={9} fontSize={8} fill="#94A3B8">Blocked</text>
+      </g>
+    </svg>
+  );
+}
+
+function RAGTrend({ snapshots, workstream }: { snapshots: Array<{ workstreams: Array<{ workstream: string; ragStatus: string; ragOverride?: string }> }>; workstream: string }) {
+  const dots = snapshots.slice(-8).map(snap => {
+    const ws = snap.workstreams.find(w => w.workstream === workstream);
+    return ws?.ragOverride || ws?.ragStatus || "green";
+  });
+  if (dots.length < 2) return null;
+  return (
+    <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+      {dots.map((rag, i) => (
+        <div key={i} style={{
+          width: 8, height: 8, borderRadius: "50%",
+          background: rag === "red" ? "#EF4444" : rag === "amber" ? "#F59E0B" : "#10B981",
+          opacity: 0.4 + (i / dots.length) * 0.6,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+
+function DependencyMatrix({ items }: { items: Array<{ itemId: string; workstream: string; dependencies: string[] }> }) {
+  // Build workstream-to-workstream dependency counts
+  const wsSet = new Set(items.map(i => i.workstream));
+  const wsNames = Array.from(wsSet).sort();
+  const matrix: Record<string, Record<string, number>> = {};
+  wsNames.forEach(ws => { matrix[ws] = {}; wsNames.forEach(ws2 => { matrix[ws][ws2] = 0; }); });
+
+  const itemWsMap = new Map(items.map(i => [i.itemId, i.workstream]));
+  items.forEach(item => {
+    (item.dependencies || []).forEach(depId => {
+      const depWs = itemWsMap.get(depId);
+      if (depWs && depWs !== item.workstream) {
+        matrix[item.workstream][depWs] = (matrix[item.workstream][depWs] || 0) + 1;
+      }
+    });
+  });
+
+  // Only show workstreams with cross-workstream deps
+  const activeWs = wsNames.filter(ws =>
+    wsNames.some(ws2 => ws !== ws2 && (matrix[ws][ws2] > 0 || matrix[ws2][ws] > 0))
+  );
+  if (activeWs.length === 0) return <div style={{ fontSize: 11, color: "#94A3B8", padding: 8 }}>No cross-workstream dependencies detected</div>;
+
+  const cellSize = 32;
+  const labelW = 140;
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ borderCollapse: "collapse", fontSize: 9 }}>
+        <thead>
+          <tr>
+            <th style={{ width: labelW, padding: 4, textAlign: "left", color: "#94A3B8", fontSize: 8 }}>DEPENDS ON →</th>
+            {activeWs.map(ws => (
+              <th key={ws} style={{ width: cellSize, padding: 2, textAlign: "center", color: "#94A3B8", fontSize: 7, writingMode: "vertical-lr", transform: "rotate(180deg)", height: 80 }}>
+                {ws.length > 18 ? ws.substring(0, 18) + "…" : ws}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {activeWs.map(ws => (
+            <tr key={ws}>
+              <td style={{ padding: "2px 4px", fontSize: 9, fontWeight: 600, color: "#E2E8F0", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: labelW }}>
+                {ws}
+              </td>
+              {activeWs.map(ws2 => {
+                const count = matrix[ws][ws2];
+                const bg = ws === ws2 ? "#0F1B2D" : count > 3 ? "#EF444444" : count > 0 ? "#3B82F622" : "transparent";
+                const color = count > 3 ? "#EF4444" : count > 0 ? "#3B82F6" : "#334155";
+                return (
+                  <td key={ws2} style={{
+                    width: cellSize, height: cellSize, textAlign: "center", padding: 0,
+                    background: bg, border: "1px solid #1E293B", fontWeight: count > 0 ? 700 : 400,
+                    color, fontSize: 10,
+                  }}>
+                    {ws === ws2 ? "—" : count > 0 ? count : "·"}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function Dashboard({
   deal,
   onUpdateStatus,
@@ -252,6 +377,15 @@ export default function Dashboard({
       background: `linear-gradient(160deg, #0C1222 0%, #162036 40%, ${C.navy} 100%)`,
       color: C.text, minHeight: "100vh",
     }}>
+      <style>{`
+        @media print {
+          body { background: white !important; color: #1E293B !important; }
+          * { color: #1E293B !important; background: white !important; border-color: #E2E8F0 !important; }
+          nav, button, select, input, [data-no-print] { display: none !important; }
+          svg text { fill: #1E293B !important; }
+          svg rect[fill="#1E293B"] { fill: #F1F5F9 !important; }
+        }
+      `}</style>
       {/* Top Nav */}
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -323,6 +457,61 @@ export default function Dashboard({
         {/* ─── LIVE STATUS TAB ─── */}
         {activeTab === "live_status" && (
           <>
+            {/* Executive Summary */}
+            <div style={{
+              padding: 16, borderRadius: 8, marginBottom: 16,
+              background: `linear-gradient(135deg, ${C.cardBg} 0%, #1B2A4A 100%)`,
+              border: `1px solid ${C.border}`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>PROGRAM STATUS</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    {(() => {
+                      const totalActive = checklistItems.filter(i => i.status !== "na").length;
+                      const complete = checklistItems.filter(i => i.status === "complete").length;
+                      const blocked = checklistItems.filter(i => i.status === "blocked").length;
+                      const pct = totalActive ? Math.round((complete / totalActive) * 100) : 0;
+                      const health = blocked > totalActive * 0.1 ? "At Risk" : pct >= 50 ? "On Track" : pct >= 20 ? "In Progress" : "Getting Started";
+                      const healthColor = health === "At Risk" ? C.danger : health === "On Track" ? C.success : C.warning;
+                      return (
+                        <>
+                          <span style={{
+                            display: "inline-block", padding: "4px 12px", borderRadius: 4,
+                            background: healthColor + "22", color: healthColor, fontSize: 13, fontWeight: 800,
+                            letterSpacing: 0.5,
+                          }}>{health}</span>
+                          <span style={{ fontSize: 22, fontWeight: 800, color: C.text }}>{pct}%</span>
+                          <span style={{ fontSize: 11, color: C.textMuted }}>complete</span>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 16, textAlign: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.success }}>{checklistItems.filter(i => i.status === "complete").length}</div>
+                    <div style={{ fontSize: 9, color: C.textMuted }}>Done</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.accent }}>{checklistItems.filter(i => i.status === "in_progress").length}</div>
+                    <div style={{ fontSize: 9, color: C.textMuted }}>Active</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.danger }}>{checklistItems.filter(i => i.status === "blocked").length}</div>
+                    <div style={{ fontSize: 9, color: C.textMuted }}>Blocked</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.warning }}>{overdueCount}</div>
+                    <div style={{ fontSize: 9, color: C.textMuted }}>Overdue</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.textMuted }}>{checklistItems.filter(i => !i.ownerId && i.status !== "na").length}</div>
+                    <div style={{ fontSize: 9, color: C.textMuted }}>Unassigned</div>
+                  </div>
+                </div>
+              </div>
+            </div>
             {/* KPI Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
@@ -929,7 +1118,14 @@ export default function Dashboard({
                               <option value="in_progress">In Progress</option>
                               <option value="blocked">Blocked</option>
                               <option value="complete">Complete</option>
+                              <option value="na">N/A</option>
                             </select>
+                            {item.status === "na" && item.naJustification && (
+                              <div style={{ fontSize: 8, color: C.muted, fontStyle: "italic", marginTop: 2, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                title={item.naJustification}>
+                                N/A: {item.naJustification}
+                              </div>
+                            )}
                           </td>
                           <td style={{ padding: "6px", minWidth: 90 }}>
                             <select
@@ -1271,6 +1467,7 @@ export default function Dashboard({
 
         {/* ─── TIMELINE TAB ─── */}
         {activeTab === "timeline" && (
+          <>
           <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 20, color: C.textMuted }}>
               Integration Timeline — Day 1 through Year 1
@@ -1313,6 +1510,17 @@ export default function Dashboard({
               ))}
             </div>
           </div>
+          {/* Dependency Matrix */}
+          <div style={{ marginTop: 20, padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+              Cross-Workstream Dependency Matrix
+            </div>
+            <div style={{ fontSize: 10, color: C.muted, marginBottom: 10 }}>
+              Rows depend on columns. Numbers show cross-workstream dependency count. Red = high coupling.
+            </div>
+            <DependencyMatrix items={checklistItems.map(i => ({ itemId: i.itemId, workstream: i.workstream, dependencies: i.dependencies }))} />
+          </div>
+          </>
         )}
 
         {/* ─── STEERCO TAB ─── */}
@@ -1338,6 +1546,19 @@ export default function Dashboard({
                   padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
                   background: C.accent, color: "#fff", border: "none", cursor: "pointer",
                 }}>🖨 Print / Export</button>
+                <button onClick={() => {
+                  const currentSnapshot = deal.progressSnapshots.length > 0
+                    ? deal.progressSnapshots[deal.progressSnapshots.length - 1]
+                    : generateSnapshot(deal, getCurrentPeriodEnd());
+                  const text = currentSnapshot.workstreams.map(ws => {
+                    const rag = (ws.ragOverride || ws.ragStatus).toUpperCase();
+                    return `${ws.workstream} [${rag}] — ${ws.pctComplete}% complete, ${ws.blocked} blocked\n${ws.narrative || "No narrative provided"}`;
+                  }).join("\n\n");
+                  navigator.clipboard.writeText(`Integration Status Report — ${intake.dealName}\nWeek ending ${getCurrentPeriodEnd()}\n\n${text}`);
+                }} style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  background: C.deepBlue, color: C.text, border: `1px solid ${C.border}`, cursor: "pointer",
+                }}>📋 Copy Summary</button>
               </div>
             </div>
 
@@ -1418,6 +1639,9 @@ export default function Dashboard({
                                   <option value="amber">🟡</option>
                                   <option value="red">🔴</option>
                                 </select>
+                                {deal.progressSnapshots.length > 1 && (
+                                  <RAGTrend snapshots={deal.progressSnapshots} workstream={ws.workstream} />
+                                )}
                               </td>
                               <td style={{ padding: "8px 4px", textAlign: "center", fontWeight: 700 }}>{ws.pctComplete}%</td>
                               <td style={{ padding: "8px 4px", textAlign: "center", color: C.success }}>{ws.completed}</td>
@@ -1486,6 +1710,11 @@ export default function Dashboard({
                     </div>
                   </div>
 
+                  {/* Progress Chart */}
+                  <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+                    <ProgressChart workstreams={currentSnapshot.workstreams} />
+                  </div>
+
                   {/* Snapshot History */}
                   {deal.progressSnapshots.length > 1 && (
                     <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
@@ -1544,8 +1773,31 @@ function RiskCard({ risk }: { risk: RiskAlert }) {
         <SeverityBadge severity={risk.severity} />
       </div>
       {expanded && (
-        <div style={{ marginTop: 8, fontSize: 10, color: "#94A3B8", lineHeight: 1.5 }}>
-          {risk.description}
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: "#94A3B8", lineHeight: 1.5, marginBottom: 6 }}>
+            {risk.description}
+          </div>
+          {risk.mitigation && (
+            <div style={{ fontSize: 10, color: "#10B981", lineHeight: 1.5, padding: "4px 8px", borderRadius: 4, background: "#10B98111", marginBottom: 6 }}>
+              💡 {risk.mitigation}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+            {(risk.affectedWorkstreams || []).map((ind: string, idx: number) => (
+              <span key={idx} style={{
+                padding: "1px 6px", borderRadius: 3, fontSize: 8,
+                background: "#3B82F622", color: "#60A5FA", fontWeight: 500,
+              }}>{ind.replace(/_/g, " ")}</span>
+            ))}
+          </div>
+          <div style={{ marginTop: 6, display: "flex", gap: 6, alignItems: "center" }}>
+            <span style={{ fontSize: 8, color: "#64748B", textTransform: "uppercase" }}>Status:</span>
+            <span style={{
+              fontSize: 9, padding: "1px 6px", borderRadius: 3, fontWeight: 600,
+              background: risk.status === "open" ? "#EF444422" : risk.status === "mitigated" ? "#10B98122" : "#F59E0B22",
+              color: risk.status === "open" ? "#EF4444" : risk.status === "mitigated" ? "#10B981" : "#F59E0B",
+            }}>{(risk.status || "open").toUpperCase()}</span>
+          </div>
         </div>
       )}
     </div>

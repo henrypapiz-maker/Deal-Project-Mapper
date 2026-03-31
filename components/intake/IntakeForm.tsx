@@ -164,7 +164,7 @@ export default function IntakeForm({ onSubmit }: Props) {
             <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: COLORS.text }}>
               M&A Integration Engine
             </div>
-            <div style={{ fontSize: 11, color: COLORS.textMuted }}>Deal Intake — Phase 1 MVP</div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted }}>Deal Intake Configuration</div>
           </div>
         </div>
         <p style={{ fontSize: 12, color: COLORS.textMuted, lineHeight: 1.6, marginTop: 12 }}>

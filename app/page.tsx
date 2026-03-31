@@ -317,14 +317,21 @@ export default function Home() {
   }, []);
 
   // Add ad-hoc dependency between items
-  const handleAddDependency = useCallback((itemId: string, dependsOnId: string) => {
+  const handleAddDependency = useCallback((itemId: string, dependsOnId: string, depType?: string, detail?: string) => {
     setDeal((prev) => {
       if (!prev) return prev;
+      const dep = {
+        targetItemId: dependsOnId,
+        dependencyType: (depType || "predecessor") as any,
+        detail: detail || undefined,
+        createdAt: new Date().toISOString(),
+        escalate: false,
+      };
       return {
         ...prev,
         checklistItems: prev.checklistItems.map(item =>
           item.itemId === itemId
-            ? { ...item, customDependencies: [...(item.customDependencies || []), dependsOnId] }
+            ? { ...item, customDependencies: [...(item.customDependencies || []), dep] }
             : item
         ),
       };
@@ -339,7 +346,7 @@ export default function Home() {
         ...prev,
         checklistItems: prev.checklistItems.map(item =>
           item.itemId === itemId
-            ? { ...item, customDependencies: (item.customDependencies || []).filter(d => d !== dependsOnId) }
+            ? { ...item, customDependencies: (item.customDependencies || []).filter(d => (typeof d === 'string' ? d : d.targetItemId) !== dependsOnId) }
             : item
         ),
       };

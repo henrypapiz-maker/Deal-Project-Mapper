@@ -130,6 +130,33 @@ export interface DealIntake {
 // ============================================================
 // Checklist Item
 // ============================================================
+export type DependencyType =
+  | "predecessor"           // Unable to be started until preceding task is completed
+  | "internal_analysis"     // Internal Analysis to be performed
+  | "external_sme"          // External Analysis to be performed by SME
+  | "data_aggregation"      // Data Aggregation / Normalization to be performed
+  | "validation_required"   // Validation required
+  | "key_decision"          // Key Decision needed
+  | "other";
+
+export const DEPENDENCY_TYPE_LABELS: Record<DependencyType, string> = {
+  predecessor: "Predecessor (must complete first)",
+  internal_analysis: "Internal Analysis Required",
+  external_sme: "External SME Analysis Required",
+  data_aggregation: "Data Aggregation / Normalization",
+  validation_required: "Validation Required",
+  key_decision: "Key Decision Needed",
+  other: "Other",
+};
+
+export interface ClassifiedDependency {
+  targetItemId: string;         // The item this depends on
+  dependencyType: DependencyType;
+  detail?: string;              // Free-form text describing specifics
+  createdAt?: string;
+  escalate?: boolean;           // Flag for SteerCo escalation
+}
+
 export interface ChecklistItem {
   id: string; // UUID (generated at runtime)
   itemId: string; // FRC-0001 through FRC-0489
@@ -145,7 +172,7 @@ export interface ChecklistItem {
   status: ItemStatus;
   ownerId?: string;
   dependencies: string[]; // item_ids
-  customDependencies?: string[];  // Ad-hoc dependencies added by user (in addition to master dependencies)
+  customDependencies?: ClassifiedDependency[];  // Ad-hoc dependencies with type classification
   tsaRelevant: boolean;
   crossBorderFlag: boolean;
   riskIndicators: RiskCategory[];

@@ -32,6 +32,14 @@ export function loadDeal(): GeneratedDeal | null {
       }
       // Add attachments if missing
       if (!item.attachments) item.attachments = [];
+      // Migrate customDependencies from string[] to ClassifiedDependency[]
+      if (item.customDependencies && item.customDependencies.length > 0 && typeof item.customDependencies[0] === "string") {
+        item.customDependencies = (item.customDependencies as unknown as string[]).map(depId => ({
+          targetItemId: depId,
+          dependencyType: "predecessor" as any,
+          createdAt: deal.generatedAt,
+        }));
+      }
     });
     // Add progressSnapshots if missing
     if (!deal.progressSnapshots) deal.progressSnapshots = [];

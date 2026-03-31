@@ -94,7 +94,7 @@ interface Props {
   onBulkAssign: (itemIds: string[], ownerId: string) => void;
   onAddRisk: (risk: { category: string; severity: string; description: string; mitigation?: string; linkedItemIds?: string[]; source?: string }) => void;
   onUpdateRisk: (riskId: string, updates: { status?: string; notes?: string; linkedItemIds?: string[] }) => void;
-  onAddDependency: (itemId: string, dependsOnId: string) => void;
+  onAddDependency: (itemId: string, dependsOnId: string, depType?: string, detail?: string) => void;
   onRemoveDependency: (itemId: string, dependsOnId: string) => void;
 }
 
@@ -354,6 +354,8 @@ export default function Dashboard({
   const [newRiskMitigation, setNewRiskMitigation] = useState("");
   const [showAddDep, setShowAddDep] = useState<string | null>(null);
   const [newDepTarget, setNewDepTarget] = useState("");
+  const [newDepType, setNewDepType] = useState("predecessor");
+  const [newDepDetail, setNewDepDetail] = useState("");
 
   function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
     if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
@@ -1769,16 +1771,17 @@ export default function Dashboard({
                 Ad-Hoc Dependency Linking
               </div>
               <div style={{ fontSize: 10, color: C.muted, marginBottom: 12 }}>
-                Link any checklist item to another to create custom dependencies beyond the master template.
+                Link any checklist item to another with dependency classification. Flagged items surface on SteerCo for escalation review.
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 12 }}>
+              {/* Row 1: Item selectors */}
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Item (depends on...)</div>
                   <select value={showAddDep || ""} onChange={(e) => setShowAddDep(e.target.value || null)} style={{
                     width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10,
                   }}>
                     <option value="">Select item...</option>
-                    {checklistItems.filter(i => i.status !== "na").slice(0, 100).map(i => (
+                    {checklistItems.filter(i => i.status !== "na").slice(0, 200).map(i => (
                       <option key={i.itemId} value={i.itemId}>{i.itemId} — {i.description.substring(0, 50)}</option>
                     ))}
                   </select>
@@ -1789,35 +1792,74 @@ export default function Dashboard({
                     width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10,
                   }}>
                     <option value="">Select dependency target...</option>
-                    {checklistItems.filter(i => i.status !== "na" && i.itemId !== showAddDep).slice(0, 100).map(i => (
+                    {checklistItems.filter(i => i.status !== "na" && i.itemId !== showAddDep).slice(0, 200).map(i => (
                       <option key={i.itemId} value={i.itemId}>{i.itemId} — {i.description.substring(0, 50)}</option>
                     ))}
                   </select>
                 </div>
+              </div>
+              {/* Row 2: Dependency Type + Detail */}
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Dependency Type</div>
+                  <select value={newDepType} onChange={(e) => setNewDepType(e.target.value)} style={{
+                    width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10,
+                  }}>
+                    <option value="predecessor">Predecessor (must complete first)</option>
+                    <option value="internal_analysis">Internal Analysis Required</option>
+                    <option value="external_sme">External SME Analysis Required</option>
+                    <option value="data_aggregation">Data Aggregation / Normalization</option>
+                    <option value="validation_required">Validation Required</option>
+                    <option value="key_decision">Key Decision Needed</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div style={{ flex: 2 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Details (free text)</div>
+                  <input value={newDepDetail} onChange={(e) => setNewDepDetail(e.target.value)} placeholder="Describe the specific dependency, who is involved, timeline..."
+                    style={{ width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10 }} />
+                </div>
                 <button onClick={() => {
                   if (showAddDep && newDepTarget) {
-                    onAddDependency(showAddDep, newDepTarget);
-                    setNewDepTarget("");
+                    onAddDependency(showAddDep, newDepTarget, newDepType, newDepDetail);
+                    setNewDepTarget(""); setNewDepDetail(""); setNewDepType("predecessor");
                   }
                 }} style={{
                   padding: "6px 14px", borderRadius: 4, background: C.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer",
-                  opacity: showAddDep && newDepTarget ? 1 : 0.4,
+                  opacity: showAddDep && newDepTarget ? 1 : 0.4, whiteSpace: "nowrap",
                 }} disabled={!showAddDep || !newDepTarget}>Link</button>
               </div>
-              {/* Show existing custom dependencies */}
+              {/* Show existing classified dependencies */}
               {checklistItems.filter(i => (i.customDependencies || []).length > 0).length > 0 && (
                 <div>
-                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 6 }}>Custom Dependencies</div>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 6 }}>Classified Dependencies ({checklistItems.reduce((a, i) => a + (i.customDependencies || []).length, 0)} total)</div>
                   {checklistItems.filter(i => (i.customDependencies || []).length > 0).map(item => (
-                    <div key={item.itemId} style={{ marginBottom: 6 }}>
-                      <span style={{ fontSize: 10, fontWeight: 600, color: C.accentLight }}>{item.itemId}</span>
-                      <span style={{ fontSize: 10, color: C.muted }}> depends on: </span>
-                      {(item.customDependencies || []).map(depId => (
-                        <span key={depId} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.deepBlue, border: `1px solid ${C.border}`, marginRight: 4, display: "inline-flex", alignItems: "center", gap: 3 }}>
-                          {depId}
-                          <span onClick={() => onRemoveDependency(item.itemId, depId)} style={{ cursor: "pointer", color: C.danger, fontSize: 8 }}>×</span>
-                        </span>
-                      ))}
+                    <div key={item.itemId} style={{ marginBottom: 8, padding: 8, borderRadius: 6, background: C.navy, border: `1px solid ${C.border}` }}>
+                      <div style={{ marginBottom: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 600, color: C.accentLight }}>{item.itemId}</span>
+                        <span style={{ fontSize: 10, color: C.muted }}> — {item.description.substring(0, 60)}</span>
+                      </div>
+                      {(item.customDependencies || []).map((dep, idx) => {
+                        const d = typeof dep === "string" ? { targetItemId: dep, dependencyType: "predecessor" as const, detail: undefined } : dep;
+                        const TYPE_COLORS: Record<string, string> = {
+                          predecessor: C.accent, internal_analysis: "#8B5CF6", external_sme: "#EC4899",
+                          data_aggregation: "#06B6D4", validation_required: C.warning, key_decision: C.danger, other: C.muted,
+                        };
+                        const TYPE_SHORT: Record<string, string> = {
+                          predecessor: "PRED", internal_analysis: "INT ANALYSIS", external_sme: "EXT SME",
+                          data_aggregation: "DATA AGG", validation_required: "VALIDATION", key_decision: "KEY DECISION", other: "OTHER",
+                        };
+                        return (
+                          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, paddingLeft: 12 }}>
+                            <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: (TYPE_COLORS[d.dependencyType] || C.muted) + "22", color: TYPE_COLORS[d.dependencyType] || C.muted, fontWeight: 700, whiteSpace: "nowrap" }}>
+                              {TYPE_SHORT[d.dependencyType] || d.dependencyType}
+                            </span>
+                            <span style={{ fontSize: 9, color: C.accent, fontWeight: 600 }}>{d.targetItemId}</span>
+                            {d.detail && <span style={{ fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>— {d.detail.substring(0, 80)}</span>}
+                            <span onClick={() => onRemoveDependency(item.itemId, d.targetItemId)} style={{ cursor: "pointer", color: C.danger, fontSize: 8, marginLeft: "auto" }}>×</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>

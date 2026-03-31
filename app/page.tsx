@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person, ChangeEvent } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person, ChangeEvent, RiskAlert } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
 import { saveDeal, loadDeal, clearDeal, hasSavedDeal } from "@/lib/persistence";
 
@@ -283,6 +283,69 @@ export default function Home() {
     });
   }, []);
 
+  // Add a custom risk
+  const handleAddRisk = useCallback((risk: { category: string; severity: string; description: string; mitigation?: string; linkedItemIds?: string[]; source?: string }) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const newRisk: RiskAlert = {
+        id: `risk-${Date.now()}`,
+        category: risk.category as any,
+        severity: risk.severity as any,
+        description: risk.description,
+        mitigation: risk.mitigation || "",
+        affectedWorkstreams: [],
+        status: "open",
+        linkedItemIds: risk.linkedItemIds || [],
+        source: (risk.source as any) || "manual",
+        createdAt: new Date().toISOString(),
+      };
+      return { ...prev, riskAlerts: [...prev.riskAlerts, newRisk] };
+    });
+  }, []);
+
+  // Update risk status
+  const handleUpdateRisk = useCallback((riskId: string, updates: { status?: string; notes?: string; linkedItemIds?: string[] }) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        riskAlerts: prev.riskAlerts.map(r =>
+          r.id === riskId ? { ...r, ...updates as any } : r
+        ),
+      };
+    });
+  }, []);
+
+  // Add ad-hoc dependency between items
+  const handleAddDependency = useCallback((itemId: string, dependsOnId: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map(item =>
+          item.itemId === itemId
+            ? { ...item, customDependencies: [...(item.customDependencies || []), dependsOnId] }
+            : item
+        ),
+      };
+    });
+  }, []);
+
+  // Remove ad-hoc dependency
+  const handleRemoveDependency = useCallback((itemId: string, dependsOnId: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map(item =>
+          item.itemId === itemId
+            ? { ...item, customDependencies: (item.customDependencies || []).filter(d => d !== dependsOnId) }
+            : item
+        ),
+      };
+    });
+  }, []);
+
   function handleReset() {
     clearDeal();
     setDeal(null);
@@ -330,7 +393,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} />;
   }
 
   if (appState === "intake") {

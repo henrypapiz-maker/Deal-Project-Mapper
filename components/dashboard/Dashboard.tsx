@@ -91,6 +91,10 @@ interface Props {
   onSaveFilter: (name: string, filters: any) => void;
   onDeleteFilter: (filterId: string) => void;
   onBulkAssign: (itemIds: string[], ownerId: string) => void;
+  onAddRisk: (risk: { category: string; severity: string; description: string; mitigation?: string; linkedItemIds?: string[]; source?: string }) => void;
+  onUpdateRisk: (riskId: string, updates: { status?: string; notes?: string; linkedItemIds?: string[] }) => void;
+  onAddDependency: (itemId: string, dependsOnId: string) => void;
+  onRemoveDependency: (itemId: string, dependsOnId: string) => void;
 }
 
 function ProgressChart({ workstreams }: { workstreams: Array<{ workstream: string; completed: number; inProgress: number; blocked: number; total: number; pctComplete: number; ragStatus: string; ragOverride?: string }> }) {
@@ -234,6 +238,10 @@ export default function Dashboard({
   onSaveFilter,
   onDeleteFilter,
   onBulkAssign,
+  onAddRisk,
+  onUpdateRisk,
+  onAddDependency,
+  onRemoveDependency,
 }: Props) {
   const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco">("live_status");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
@@ -249,7 +257,7 @@ export default function Dashboard({
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskPhase, setNewTaskPhase] = useState<string>("day_30");
   const [newTaskPriority, setNewTaskPriority] = useState<string>("medium");
-  const [showSteerCo, setShowSteerCo] = useState(false);
+  // showSteerCo removed — SteerCo is now a full tab
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showNaItems, setShowNaItems] = useState(false);
   const [newPersonName, setNewPersonName] = useState("");
@@ -272,6 +280,13 @@ export default function Dashboard({
   const [searchText, setSearchText] = useState("");
   const [sortCol, setSortCol] = useState<string>("id");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [showAddRisk, setShowAddRisk] = useState(false);
+  const [newRiskCategory, setNewRiskCategory] = useState("regulatory_delay");
+  const [newRiskSeverity, setNewRiskSeverity] = useState("medium");
+  const [newRiskDesc, setNewRiskDesc] = useState("");
+  const [newRiskMitigation, setNewRiskMitigation] = useState("");
+  const [showAddDep, setShowAddDep] = useState<string | null>(null);
+  const [newDepTarget, setNewDepTarget] = useState("");
 
   function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
     if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
@@ -405,7 +420,7 @@ export default function Dashboard({
     { id: "live_status", label: "Live Status" },
     { id: "checklist", label: "Checklist Maintenance" },
     { id: "team", label: "Team Assignments" },
-    { id: "risks", label: "Risks" },
+    { id: "risks", label: "Risk & Dependencies" },
     { id: "timeline", label: "Timeline" },
     { id: "steerco", label: "SteerCo" },
   ] as const;
@@ -593,73 +608,6 @@ export default function Dashboard({
                       }}>{evt.newValue}</span>
                     </div>
                   ))}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-              <button onClick={() => setShowSteerCo(true)} style={{
-                padding: "4px 12px", borderRadius: 4, fontSize: 10, fontWeight: 600,
-                background: C.accent + "22", color: C.accent, border: `1px solid ${C.accent}44`,
-                cursor: "pointer", fontFamily: "inherit",
-              }}>
-                SteerCo Summary
-              </button>
-            </div>
-
-            {showSteerCo && (
-              <div id="steerco-print" style={{
-                position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.8)",
-                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-              }} onClick={() => setShowSteerCo(false)}>
-                <div onClick={(e) => e.stopPropagation()} style={{
-                  background: "#fff", color: "#1E293B", borderRadius: 12, padding: 32, maxWidth: 700, width: "90%",
-                  maxHeight: "80vh", overflowY: "auto",
-                }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Integration Status — SteerCo Summary</h2>
-                    <button onClick={() => window.print()} style={{
-                      padding: "6px 16px", borderRadius: 4, fontSize: 11, fontWeight: 600,
-                      background: "#3B82F6", color: "#fff", border: "none", cursor: "pointer",
-                    }}>Print / Export PDF</button>
-                  </div>
-                  <div style={{ fontSize: 10, color: "#64748B", marginBottom: 16 }}>
-                    Deal: {intake.dealName} · Generated: {new Date(deal.generatedAt).toLocaleDateString()} · Close: {intake.closeDate}
-                  </div>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                    <thead>
-                      <tr style={{ borderBottom: "2px solid #E2E8F0" }}>
-                        <th style={{ textAlign: "left", padding: 8 }}>Workstream</th>
-                        <th style={{ textAlign: "center", padding: 8 }}>RAG</th>
-                        <th style={{ textAlign: "center", padding: 8 }}>Complete</th>
-                        <th style={{ textAlign: "center", padding: 8 }}>In Progress</th>
-                        <th style={{ textAlign: "center", padding: 8 }}>Blocked</th>
-                        <th style={{ textAlign: "center", padding: 8 }}>% Done</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Array.from(wsStats.entries()).map(([ws, stats]) => {
-                        const rag = computeRAG(stats);
-                        const pct = stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
-                        const ragColor = rag === "red" ? "#EF4444" : rag === "amber" ? "#F59E0B" : "#22C55E";
-                        return (
-                          <tr key={ws} style={{ borderBottom: "1px solid #F1F5F9" }}>
-                            <td style={{ padding: 8, fontWeight: 500 }}>{ws}</td>
-                            <td style={{ padding: 8, textAlign: "center" }}>
-                              <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", background: ragColor }} />
-                            </td>
-                            <td style={{ padding: 8, textAlign: "center", color: "#22C55E" }}>{stats.complete}</td>
-                            <td style={{ padding: 8, textAlign: "center", color: "#3B82F6" }}>{stats.inProgress}</td>
-                            <td style={{ padding: 8, textAlign: "center", color: stats.blocked > 0 ? "#EF4444" : "#94A3B8" }}>{stats.blocked}</td>
-                            <td style={{ padding: 8, textAlign: "center", fontWeight: 700 }}>{pct}%</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  <div style={{ marginTop: 16, fontSize: 9, color: "#94A3B8", textAlign: "center" }}>
-                    DealMapper v0.4.0 · {checklistItems.filter(i => i.status !== "na").length} active items · Exported {new Date().toLocaleDateString()}
-                  </div>
                 </div>
               </div>
             )}
@@ -1536,11 +1484,105 @@ export default function Dashboard({
         {/* ─── RISKS TAB ─── */}
         {activeTab === "risks" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Risk & Dependency Management</h2>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                  {riskAlerts.filter(r => r.status === "open").length} open risks · {riskAlerts.filter(r => r.status === "mitigated").length} mitigated
+                </div>
+              </div>
+              <button onClick={() => setShowAddRisk(!showAddRisk)} style={{
+                padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                background: showAddRisk ? C.danger + "22" : C.accent, color: showAddRisk ? C.danger : "#fff",
+                border: showAddRisk ? `1px solid ${C.danger}44` : "none", cursor: "pointer",
+              }}>{showAddRisk ? "Cancel" : "+ Add Risk"}</button>
+            </div>
+
+            {/* Add Risk Form */}
+            {showAddRisk && (
+              <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.accent}44` }}>
+                <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 10, color: C.accentLight }}>New Risk Entry</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Category</div>
+                    <select value={newRiskCategory} onChange={(e) => setNewRiskCategory(e.target.value)} style={{
+                      width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11,
+                    }}>
+                      {Object.entries(RISK_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Severity</div>
+                    <select value={newRiskSeverity} onChange={(e) => setNewRiskSeverity(e.target.value)} style={{
+                      width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11,
+                    }}>
+                      <option value="critical">Critical</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Description</div>
+                  <textarea value={newRiskDesc} onChange={(e) => setNewRiskDesc(e.target.value)} placeholder="Describe the risk..."
+                    style={{ width: "100%", padding: 8, borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11, minHeight: 50, resize: "vertical", fontFamily: "inherit" }} />
+                </div>
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Mitigation Strategy</div>
+                  <textarea value={newRiskMitigation} onChange={(e) => setNewRiskMitigation(e.target.value)} placeholder="Suggested mitigation..."
+                    style={{ width: "100%", padding: 8, borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 11, minHeight: 40, resize: "vertical", fontFamily: "inherit" }} />
+                </div>
+                <button onClick={() => {
+                  if (newRiskDesc.trim()) {
+                    onAddRisk({ category: newRiskCategory, severity: newRiskSeverity, description: newRiskDesc.trim(), mitigation: newRiskMitigation.trim(), source: "manual" });
+                    setNewRiskDesc(""); setNewRiskMitigation(""); setShowAddRisk(false);
+                  }
+                }} style={{
+                  padding: "6px 16px", borderRadius: 4, background: C.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                }}>Add Risk</button>
+              </div>
+            )}
+
+            {/* Narrative-Extracted Risks */}
+            {(() => {
+              const narrativeRisks = (deal.progressSnapshots || []).flatMap(snap =>
+                snap.workstreams.filter(ws => (ws.keyRisks || []).length > 0)
+                  .map(ws => ({ workstream: ws.workstream, risk: (ws.keyRisks || []).join(", "), period: snap.periodEnd }))
+              );
+              const unresolvedNarrative = narrativeRisks.filter(nr =>
+                !riskAlerts.some(r => r.description.includes(nr.risk.substring(0, 30)))
+              );
+              if (unresolvedNarrative.length === 0) return null;
+              return (
+                <div style={{ padding: 12, borderRadius: 8, background: C.warning + "11", border: `1px solid ${C.warning}33` }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.warning, marginBottom: 8 }}>
+                    ⚠ Risks Captured in Narratives — Not Yet in Register
+                  </div>
+                  {unresolvedNarrative.slice(0, 5).map((nr, idx) => (
+                    <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: `1px solid ${C.border}22` }}>
+                      <div>
+                        <span style={{ fontSize: 10, color: C.text }}>{nr.risk.length > 80 ? nr.risk.substring(0, 80) + "…" : nr.risk}</span>
+                        <span style={{ fontSize: 9, color: C.muted, marginLeft: 8 }}>({nr.workstream}, {nr.period})</span>
+                      </div>
+                      <button onClick={() => {
+                        onAddRisk({ category: "regulatory_delay", severity: "medium", description: nr.risk, source: "narrative" });
+                      }} style={{
+                        padding: "2px 8px", borderRadius: 3, fontSize: 9, background: C.warning + "22", color: C.warning, border: `1px solid ${C.warning}44`, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap",
+                      }}>+ Add to Register</button>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Active Risk Cards */}
             {riskAlerts.length === 0 ? (
               <div style={{ padding: 24, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
-                <div style={{ fontSize: 14, color: C.success }}>No material risks detected</div>
-                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Based on your deal profile, the decision tree found no risk triggers.</div>
+                <div style={{ fontSize: 14, color: C.success }}>No risks in register</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Add risks manually or they will be auto-detected from your deal profile.</div>
               </div>
             ) : (
               riskAlerts.map((r) => (
@@ -1548,26 +1590,143 @@ export default function Dashboard({
                   padding: 16, borderRadius: 8, background: C.cardBg,
                   border: `1px solid ${r.severity === "critical" ? "#EF444444" : r.severity === "high" ? "#F59E0B44" : C.border}`,
                   borderLeft: `4px solid ${r.severity === "critical" ? C.danger : r.severity === "high" ? C.warning : C.accent}`,
+                  opacity: r.status === "closed" || r.status === "mitigated" ? 0.6 : 1,
                 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{RISK_LABELS[r.category]}</div>
-                      <SeverityBadge severity={r.severity} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700 }}>{RISK_LABELS[r.category] || r.category}</span>
+                        <SeverityBadge severity={r.severity} />
+                        {r.source && r.source !== "auto" && (
+                          <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: r.source === "narrative" ? C.warning + "22" : C.accent + "22", color: r.source === "narrative" ? C.warning : C.accent }}>{r.source.toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {(r.affectedWorkstreams || []).map((ws) => (
+                          <span key={ws} style={{ fontSize: 8, padding: "1px 5px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{ws}</span>
+                        ))}
+                      </div>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {r.affectedWorkstreams.map((ws) => (
-                        <span key={ws} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{ws.split(" ")[0]}</span>
-                      ))}
-                    </div>
+                    <select value={r.status} onChange={(e) => onUpdateRisk(r.id, { status: e.target.value })} style={{
+                      padding: "3px 6px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                      background: r.status === "open" ? C.danger + "22" : r.status === "mitigated" ? C.success + "22" : C.warning + "22",
+                      color: r.status === "open" ? C.danger : r.status === "mitigated" ? C.success : C.warning,
+                      border: "none", cursor: "pointer",
+                    }}>
+                      <option value="open">Open</option>
+                      <option value="acknowledged">Acknowledged</option>
+                      <option value="mitigated">Mitigated</option>
+                      <option value="closed">Closed</option>
+                    </select>
                   </div>
-                  <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>{r.description}</div>
-                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
-                    <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 1, color: C.success, fontWeight: 700, marginBottom: 6 }}>Suggested Mitigation</div>
-                    <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>{r.mitigation}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6, marginBottom: 8 }}>{r.description}</div>
+                  {r.mitigation && (
+                    <div style={{ fontSize: 10, color: C.success, lineHeight: 1.5, padding: "4px 8px", borderRadius: 4, background: C.success + "11", marginBottom: 8 }}>
+                      💡 {r.mitigation}
+                    </div>
+                  )}
+                  {/* Linked Items */}
+                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
+                      Linked Items ({(r.linkedItemIds || []).length})
+                    </div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
+                      {(r.linkedItemIds || []).map(itemId => {
+                        const item = checklistItems.find(i => i.itemId === itemId);
+                        return item ? (
+                          <span key={itemId} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.deepBlue, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 3 }}>
+                            <span style={{ color: C.accentLight, fontWeight: 600 }}>{itemId}</span>
+                            <span style={{ color: C.muted }}>{item.description.substring(0, 30)}…</span>
+                            <span onClick={() => onUpdateRisk(r.id, { linkedItemIds: (r.linkedItemIds || []).filter(id => id !== itemId) })} style={{ cursor: "pointer", color: C.danger, marginLeft: 2 }}>×</span>
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                    <select onChange={(e) => {
+                      if (e.target.value) {
+                        onUpdateRisk(r.id, { linkedItemIds: [...(r.linkedItemIds || []), e.target.value] });
+                        e.target.value = "";
+                      }
+                    }} style={{ padding: "2px 6px", borderRadius: 3, fontSize: 9, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, cursor: "pointer" }}>
+                      <option value="">+ Link checklist item...</option>
+                      {checklistItems.filter(i => i.status !== "na" && !(r.linkedItemIds || []).includes(i.itemId)).slice(0, 50).map(i => (
+                        <option key={i.itemId} value={i.itemId}>{i.itemId} — {i.description.substring(0, 40)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Notes */}
+                  <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 6, marginTop: 6 }}>
+                    <input
+                      defaultValue={r.notes || ""}
+                      onBlur={(e) => onUpdateRisk(r.id, { notes: e.target.value })}
+                      placeholder="Add management notes..."
+                      style={{ width: "100%", padding: "4px 6px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10, fontFamily: "inherit" }}
+                    />
                   </div>
                 </div>
               ))
             )}
+
+            {/* Ad-Hoc Dependency Linking */}
+            <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, color: C.textMuted }}>
+                Ad-Hoc Dependency Linking
+              </div>
+              <div style={{ fontSize: 10, color: C.muted, marginBottom: 12 }}>
+                Link any checklist item to another to create custom dependencies beyond the master template.
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Item (depends on...)</div>
+                  <select value={showAddDep || ""} onChange={(e) => setShowAddDep(e.target.value || null)} style={{
+                    width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10,
+                  }}>
+                    <option value="">Select item...</option>
+                    {checklistItems.filter(i => i.status !== "na").slice(0, 100).map(i => (
+                      <option key={i.itemId} value={i.itemId}>{i.itemId} — {i.description.substring(0, 50)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, marginBottom: 2 }}>Depends on...</div>
+                  <select value={newDepTarget} onChange={(e) => setNewDepTarget(e.target.value)} style={{
+                    width: "100%", padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10,
+                  }}>
+                    <option value="">Select dependency target...</option>
+                    {checklistItems.filter(i => i.status !== "na" && i.itemId !== showAddDep).slice(0, 100).map(i => (
+                      <option key={i.itemId} value={i.itemId}>{i.itemId} — {i.description.substring(0, 50)}</option>
+                    ))}
+                  </select>
+                </div>
+                <button onClick={() => {
+                  if (showAddDep && newDepTarget) {
+                    onAddDependency(showAddDep, newDepTarget);
+                    setNewDepTarget("");
+                  }
+                }} style={{
+                  padding: "6px 14px", borderRadius: 4, background: C.accent, color: "#fff", border: "none", fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  opacity: showAddDep && newDepTarget ? 1 : 0.4,
+                }} disabled={!showAddDep || !newDepTarget}>Link</button>
+              </div>
+              {/* Show existing custom dependencies */}
+              {checklistItems.filter(i => (i.customDependencies || []).length > 0).length > 0 && (
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 6 }}>Custom Dependencies</div>
+                  {checklistItems.filter(i => (i.customDependencies || []).length > 0).map(item => (
+                    <div key={item.itemId} style={{ marginBottom: 6 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: C.accentLight }}>{item.itemId}</span>
+                      <span style={{ fontSize: 10, color: C.muted }}> depends on: </span>
+                      {(item.customDependencies || []).map(depId => (
+                        <span key={depId} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.deepBlue, border: `1px solid ${C.border}`, marginRight: 4, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                          {depId}
+                          <span onClick={() => onRemoveDependency(item.itemId, depId)} style={{ cursor: "pointer", color: C.danger, fontSize: 8 }}>×</span>
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Risk Heat Map */}
             <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
@@ -1575,7 +1734,7 @@ export default function Dashboard({
                 Risk Heat Map — Section 6 Taxonomy
               </div>
               {Object.entries(RISK_LABELS).map(([key, label]) => {
-                const alert = riskAlerts.find(r => r.category === key);
+                const alert = riskAlerts.find(r => r.category === key && r.status === "open");
                 const level = alert ? (alert.severity === "critical" ? 3 : alert.severity === "high" ? 2 : 1) : 0;
                 const levelColors = ["#1E293B", C.accent, C.warning, C.danger];
                 return (

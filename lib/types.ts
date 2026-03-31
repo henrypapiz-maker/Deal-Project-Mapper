@@ -145,6 +145,7 @@ export interface ChecklistItem {
   status: ItemStatus;
   ownerId?: string;
   dependencies: string[]; // item_ids
+  customDependencies?: string[];  // Ad-hoc dependencies added by user (in addition to master dependencies)
   tsaRelevant: boolean;
   crossBorderFlag: boolean;
   riskIndicators: RiskCategory[];
@@ -166,6 +167,11 @@ export interface RiskAlert {
   mitigation: string;
   affectedWorkstreams: Workstream[];
   status: "open" | "acknowledged" | "mitigated" | "closed";
+  // New fields for risk management:
+  linkedItemIds?: string[];     // Checklist items linked to this risk
+  source?: "auto" | "manual" | "narrative";  // Where this risk came from
+  notes?: string;               // Management commentary
+  createdAt?: string;
 }
 
 // ============================================================

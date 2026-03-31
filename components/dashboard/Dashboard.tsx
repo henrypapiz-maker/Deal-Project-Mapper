@@ -84,6 +84,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
   const [filterPhase, setFilterPhase] = useState<string>("all");
   const [filterWs, setFilterWs] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
 
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
@@ -122,11 +123,26 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
     setGuidanceLoading(false);
   }
 
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  // Compute overdue status for each item
+  const isItemOverdue = (item: ChecklistItem) =>
+    item.milestoneDate && item.milestoneDate < todayStr && item.status !== "complete" && item.status !== "na";
+
+  const overdueCount = checklistItems.filter(i => i.status !== "na" && isItemOverdue(i)).length;
+
   const visibleItems = checklistItems.filter((item) => {
     if (item.status === "na") return false;
     if (filterPhase !== "all" && item.phase !== filterPhase) return false;
     if (filterWs !== "all" && item.workstream !== filterWs) return false;
     if (filterPriority !== "all" && item.priority !== filterPriority) return false;
+    if (filterStatus !== "all") {
+      if (filterStatus === "overdue") {
+        if (!isItemOverdue(item)) return false;
+      } else {
+        if (item.status !== filterStatus) return false;
+      }
+    }
     return true;
   });
 
@@ -210,17 +226,22 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
         {activeTab === "overview" && (
           <>
             {/* KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
-                { label: "Overall Progress", value: `${kpis.pctComplete}%`, sub: `${kpis.complete} of ${kpis.total} items`, color: C.accent },
-                { label: "In Progress", value: kpis.inProgress, sub: "items actively being worked", color: C.accentLight },
-                { label: "Blocked Items", value: kpis.blocked, sub: "require escalation", color: kpis.blocked > 3 ? C.danger : C.warning },
-                { label: "Active Risks", value: riskAlerts.filter(r => r.status === "open").length, sub: `${riskAlerts.filter(r => r.severity === "critical").length} critical`, color: C.danger },
+                { label: "Overall Progress", value: `${kpis.pctComplete}%`, sub: `${kpis.complete} of ${kpis.total} items`, color: C.accent, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("all"); } },
+                { label: "In Progress", value: kpis.inProgress, sub: "items actively being worked", color: C.accentLight, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("in_progress"); } },
+                { label: "Blocked Items", value: kpis.blocked, sub: "require escalation", color: kpis.blocked > 3 ? C.danger : C.warning, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("blocked"); } },
+                { label: "Overdue", value: overdueCount, sub: "past milestone date", color: overdueCount > 0 ? C.danger : C.success, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("overdue"); } },
+                { label: "Active Risks", value: riskAlerts.filter(r => r.status === "open").length, sub: `${riskAlerts.filter(r => r.severity === "critical").length} critical`, color: C.danger, click: () => { setActiveTab("risks"); } },
               ].map((kpi, i) => (
-                <div key={i} style={{
+                <div key={i} onClick={kpi.click} style={{
                   padding: 16, borderRadius: 8, background: C.cardBg,
-                  border: `1px solid ${C.border}`, borderLeft: `3px solid ${kpi.color}`
-                }}>
+                  border: `1px solid ${C.border}`, borderLeft: `3px solid ${kpi.color}`,
+                  cursor: "pointer", transition: "background 0.15s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = C.deepBlue)}
+                onMouseLeave={(e) => (e.currentTarget.style.background = C.cardBg)}
+                >
                   <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>{kpi.label}</div>
                   <div style={{ fontSize: 28, fontWeight: 800, color: kpi.color, lineHeight: 1 }}>{kpi.value}</div>
                   <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{kpi.sub}</div>
@@ -341,7 +362,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
                   style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}
                 >
                   <option value="all">All Phases</option>
-                  {["day_1", "day_30", "day_60", "day_90", "year_1"].map(p => (
+                  {["pre_close", "day_1", "day_30", "day_60", "day_90", "year_1"].map(p => (
                     <option key={p} value={p}>{PHASE_LABELS[p]}</option>
                   ))}
                 </select>
@@ -373,8 +394,23 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
                   <option value="low">Low</option>
                 </select>
               </div>
+              <div>
+                <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Status </span>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="not_started">Not Started</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="complete">Complete</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </div>
               <div style={{ marginLeft: "auto", fontSize: 10, color: C.textMuted, alignSelf: "center" }}>
-                {visibleItems.length} items shown
+                {visibleItems.length} items shown{overdueCount > 0 && <span style={{ color: C.danger, marginLeft: 8 }}>{overdueCount} overdue</span>}
               </div>
             </div>
 
@@ -410,6 +446,11 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
                             <span style={{ padding: "1px 6px", borderRadius: 3, background: item.phase === "day_1" ? C.warning + "22" : C.cardBg, color: item.phase === "day_1" ? C.warning : C.textMuted, fontSize: 9 }}>
                               {PHASE_LABELS[item.phase]}
                             </span>
+                            {isItemOverdue(item) && (
+                              <span style={{ marginLeft: 4, padding: "1px 4px", borderRadius: 3, background: C.danger + "22", color: C.danger, fontSize: 8, fontWeight: 700 }} title={`Due: ${item.milestoneDate}`}>
+                                OVERDUE
+                              </span>
+                            )}
                           </td>
                           <td style={{ padding: "6px" }}>
                             <select

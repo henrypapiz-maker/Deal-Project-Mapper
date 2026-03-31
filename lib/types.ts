@@ -265,6 +265,7 @@ export interface ChangeEvent {
 // Generated Deal (result of decision tree)
 // ============================================================
 export interface GeneratedDeal {
+  id?: string; // DB-assigned UUID (populated after first successful save)
   intake: DealIntake;
   checklistItems: ChecklistItem[];
   riskAlerts: RiskAlert[];

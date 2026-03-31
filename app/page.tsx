@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
 import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person, ChangeEvent } from "@/lib/types";
@@ -14,9 +14,34 @@ export default function Home() {
   const [deal, setDeal] = useState<GeneratedDeal | null>(null);
   const [hasSaved, setHasSaved] = useState(false);
 
-  // Auto-save whenever deal changes
+  // Auto-save to localStorage (immediate) + DB (debounced 2 s after last change)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
-    if (deal) saveDeal(deal);
+    if (!deal) return;
+    // Always write to localStorage immediately so offline / fast-reload works
+    saveDeal(deal);
+    // Debounce the DB write — cancel any pending timer first
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      fetch("/api/deals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(deal),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.dealId && !deal.id) {
+            // Back-fill the DB-assigned UUID into state so future saves hit ON CONFLICT
+            setDeal((prev) =>
+              prev ? { ...prev, id: data.dealId } : prev
+            );
+          }
+        })
+        .catch((err) =>
+          console.warn("DB save failed, localStorage preserved:", err.message)
+        );
+    }, 2000);
   }, [deal]);
 
   // Check for saved deal on mount

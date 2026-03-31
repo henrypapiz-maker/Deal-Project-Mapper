@@ -50,7 +50,10 @@
       "Bash(grep -c '\"\"FP\"\"FP' lib/checklist-master.ts)",
       "Bash(grep -o 'workstream: \"\"\"\"[^\"\"\"\"]*\"\"\"\"' lib/checklist-master.ts)",
       "Bash(node scripts/remap-ids.js)",
-      "Bash(grep -c 'itemId: \"\"FRC-' \"C:/Users/henry/Deal-Project-Mapper/lib/checklist-master.ts\")"
+      "Bash(grep -c 'itemId: \"\"FRC-' \"C:/Users/henry/Deal-Project-Mapper/lib/checklist-master.ts\")",
+      "Bash(npm ls:*)",
+      "Bash(npm install:*)",
+      "Bash(node scripts/migrate.mjs)"
     ]
   }
 }

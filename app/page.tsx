@@ -132,7 +132,7 @@ export default function Home() {
         </h1>
         <p style={{ fontSize: 15, color: "#94A3B8", lineHeight: 1.8, marginBottom: 40, maxWidth: 520, margin: "0 auto 40px", fontWeight: 400 }}>
           Configure your deal profile across 3 tiers. Receive a fully scoped integration program —
-          risk assessment, 22-workstream checklist with priority override, and Claude AI guidance.
+          risk assessment, 24-workstream checklist with priority override, and Claude AI guidance.
         </p>
 
         {/* Feature Pills */}
@@ -175,7 +175,7 @@ export default function Home() {
           <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16, fontWeight: 600 }}>How it works</div>
           {[
             ["01", "Decision tree maps 13 intake fields across 3 tiers to 530 checklist items"],
-            ["02", "Risk scanner runs 8 detection rules across 22 workstreams"],
+            ["02", "Risk scanner runs 8 detection rules across 24 workstreams"],
             ["03", "Functional scope filters IT + Finance items; milestones auto-calculated"],
             ["04", "Claude AI generates contextual guidance per item with priority override"],
           ].map(([num, text]) => (

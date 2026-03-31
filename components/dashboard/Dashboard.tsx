@@ -172,7 +172,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
               transition: "all 0.15s ease",
             }}>{tab}</button>
           ))}
-          <button onClick={onReset} style={{
+          <button onClick={() => { if (window.confirm("Starting a new deal will discard all current progress. Continue?")) onReset(); }} style={{
             marginLeft: 8, padding: "6px 14px", borderRadius: 6,
             border: `1px solid rgba(51, 65, 85, 0.5)`, background: "transparent",
             color: C.textMuted, fontSize: 11, cursor: "pointer", fontWeight: 500,
@@ -618,7 +618,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onRe
           display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted
         }}>
           <span>DealMapper v0.2.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
-          <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 22 workstreams</span>
+          <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 24 workstreams</span>
         </div>
       </div>
     </div>

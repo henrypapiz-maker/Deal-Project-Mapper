@@ -640,6 +640,7 @@ export default function Dashboard({
                 { label: "Blocked Items", value: kpis.blocked, sub: "require escalation", color: kpis.blocked > 3 ? C.danger : C.warning, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("blocked"); } },
                 { label: "Overdue", value: overdueCount, sub: "past milestone date", color: overdueCount > 0 ? C.danger : C.success, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("overdue"); } },
                 { label: "Active Risks", value: riskAlerts.filter(r => r.status === "open").length, sub: `${riskAlerts.filter(r => r.severity === "critical").length} critical`, color: C.danger, click: () => { setActiveTab("risks"); } },
+                { label: "Unassigned", value: checklistItems.filter(i => i.status !== "na" && !i.ownerId).length, sub: "items need an owner", color: checklistItems.filter(i => i.status !== "na" && !i.ownerId).length > 20 ? C.warning : C.muted, click: () => { setActiveTab("checklist"); setFilterOwner("unassigned"); } },
               ].map((kpi, i) => (
                 <div key={i} onClick={kpi.click} style={{
                   padding: 16, borderRadius: 8, background: C.cardBg,

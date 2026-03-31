@@ -167,6 +167,28 @@ export default function BowlerTable({ dealId, closeDate, onCellClick }: BowlerTa
               fontSize: 10, fontWeight: 600, opacity: snapshotting ? 0.6 : 1,
             }}>{snapshotting ? "Snapshotting..." : hasCells ? "Refresh Snapshot" : "Take Snapshot"}</button>
           )}
+          {hasCells && (
+            <button onClick={() => {
+              const headers = ["Level", "Row", ...periods.map((p: any) => p.period_label)];
+              const csvRows = rows.map(row => {
+                const cols = periods.map((p: any) => {
+                  const cell = getCell(row.level, row.rowKey, p.id);
+                  if (!cell) return "";
+                  const rag = cell.override_rag || cell.computed_rag || "";
+                  const m = typeof cell.metrics === "string" ? JSON.parse(cell.metrics) : (cell.metrics || {});
+                  return `${rag.toUpperCase()}${m.pctComplete !== undefined ? ` (${m.pctComplete}%)` : ""}`;
+                });
+                return [row.level, row.label, ...cols];
+              });
+              const csv = [headers.join(","), ...csvRows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(","))].join("\n");
+              const blob = new Blob([csv], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a"); a.href = url; a.download = `bowler_export_${new Date().toISOString().split("T")[0]}.csv`; a.click(); URL.revokeObjectURL(url);
+            }} style={{
+              padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.border}`, cursor: "pointer",
+              background: "transparent", color: C.textMuted, fontSize: 10, fontWeight: 500,
+            }}>Export CSV</button>
+          )}
           <span style={{ fontSize: 10, color: C.textMuted }}>{periods.length} periods · {cells.length} cells</span>
         </div>
       </div>

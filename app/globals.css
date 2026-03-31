@@ -45,3 +45,42 @@ body {
   background: var(--mid-blue);
   border-radius: 3px;
 }
+
+/* Print stylesheet */
+@media print {
+  body {
+    background: white !important;
+    color: #111 !important;
+    font-size: 10pt;
+  }
+  /* Hide nav, filters, buttons */
+  button, select, input[type="checkbox"], label[style*="cursor"],
+  [style*="sticky"][style*="top: 0"] {
+    display: none !important;
+  }
+  /* Light backgrounds for cards */
+  div[style*="1E293B"], div[style*="#1E293B"] {
+    background: #f8f9fa !important;
+    border-color: #dee2e6 !important;
+  }
+  /* Text colors */
+  div, span, td, th, h2, h3 {
+    color: #111 !important;
+  }
+  /* RAG dots keep color */
+  div[style*="border-radius: 50%"] {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  /* Tables */
+  table {
+    width: 100% !important;
+    border-collapse: collapse;
+  }
+  td, th {
+    border: 1px solid #ccc !important;
+    padding: 4px 6px !important;
+  }
+  /* Page breaks */
+  .page-break { page-break-before: always; }
+}

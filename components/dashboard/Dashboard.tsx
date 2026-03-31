@@ -74,9 +74,10 @@ interface Props {
   onUpdatePriority: (itemId: string, priority: Priority) => void;
   onUpdateBlockedReason: (itemId: string, reason: string) => void;
   onReset: () => void;
+  onAddTask: (task: { workstream: string; description: string; phase: string; priority: string; section: string }) => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUpdateBlockedReason, onReset }: Props) {
+export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUpdateBlockedReason, onReset, onAddTask }: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -86,6 +87,11 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
   const [filterWs, setFilterWs] = useState<string>("all");
   const [filterPriority, setFilterPriority] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskWs, setNewTaskWs] = useState<string>("");
+  const [newTaskDesc, setNewTaskDesc] = useState("");
+  const [newTaskPhase, setNewTaskPhase] = useState<string>("day_30");
+  const [newTaskPriority, setNewTaskPriority] = useState<string>("medium");
 
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
@@ -381,15 +387,25 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
               </div>
               <div>
                 <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Workstream </span>
-                <select
-                  value={filterWs}
-                  onChange={(e) => setFilterWs(e.target.value)}
-                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}
-                >
+                <select value={filterWs} onChange={(e) => setFilterWs(e.target.value)}
+                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}>
                   <option value="all">All Workstreams</option>
-                  {Array.from(wsStats.keys()).map(ws => (
-                    <option key={ws} value={ws}>{ws}</option>
-                  ))}
+                  <optgroup label="Finance">
+                    {["TSA", "Technical Accounting", "Financial Reporting & Consolidation", "FP&A", "Operational Finance", "Income Tax", "Treasury"]
+                      .filter(ws => wsStats.has(ws)).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                  </optgroup>
+                  <optgroup label="Controls & Governance">
+                    {["Controls", "Governance & Compliance"]
+                      .filter(ws => wsStats.has(ws)).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                  </optgroup>
+                  <optgroup label="IT">
+                    {["IT Strategy & Governance", "IT > Enterprise Systems", "IT > Infrastructure", "IT > Data & Analytics", "IT > IT Vendor Management", "IT > Client-Facing & Digital"]
+                      .filter(ws => wsStats.has(ws)).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                  </optgroup>
+                  <optgroup label="Other">
+                    {["ESG", "Integration Management", "Facilities", "Human Resources", "Legal", "Communications"]
+                      .filter(ws => wsStats.has(ws)).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                  </optgroup>
                 </select>
               </div>
               <div>
@@ -424,7 +440,75 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
               <div style={{ marginLeft: "auto", fontSize: 10, color: C.textMuted, alignSelf: "center" }}>
                 {visibleItems.length} items shown{overdueCount > 0 && <span style={{ color: C.danger, marginLeft: 8 }}>{overdueCount} overdue</span>}
               </div>
+              <button
+                onClick={() => setShowAddTask(!showAddTask)}
+                style={{
+                  padding: "4px 12px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                  background: showAddTask ? C.danger + "22" : C.accent + "22",
+                  color: showAddTask ? C.danger : C.accent,
+                  border: `1px solid ${showAddTask ? C.danger + "44" : C.accent + "44"}`,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {showAddTask ? "Cancel" : "+ New Task"}
+              </button>
             </div>
+
+            {showAddTask && (
+              <div style={{
+                padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.accent}44`,
+                marginBottom: 12, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap",
+              }}>
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Workstream</div>
+                  <select value={newTaskWs} onChange={(e) => setNewTaskWs(e.target.value)}
+                    style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit", minWidth: 160 }}>
+                    <option value="">Select...</option>
+                    {Array.from(wsStats.keys()).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Description</div>
+                  <input type="text" value={newTaskDesc} onChange={(e) => setNewTaskDesc(e.target.value)}
+                    placeholder="Describe the task..."
+                    style={{ width: "100%", padding: "4px 8px", borderRadius: 4, fontSize: 10, background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, fontFamily: "inherit" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Phase</div>
+                  <select value={newTaskPhase} onChange={(e) => setNewTaskPhase(e.target.value)}
+                    style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}>
+                    {["pre_close", "day_1", "day_30", "day_60", "day_90", "year_1"].map(p => <option key={p} value={p}>{PHASE_LABELS[p]}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Priority</div>
+                  <select value={newTaskPriority} onChange={(e) => setNewTaskPriority(e.target.value)}
+                    style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}>
+                    <option value="critical">Critical</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!newTaskWs || !newTaskDesc.trim()) return;
+                    onAddTask({ workstream: newTaskWs, description: newTaskDesc.trim(), phase: newTaskPhase, priority: newTaskPriority, section: "Custom" });
+                    setNewTaskDesc("");
+                    setShowAddTask(false);
+                  }}
+                  disabled={!newTaskWs || !newTaskDesc.trim()}
+                  style={{
+                    padding: "6px 16px", borderRadius: 4, fontSize: 10, fontWeight: 700,
+                    background: (!newTaskWs || !newTaskDesc.trim()) ? C.muted : C.accent,
+                    color: "#fff", border: "none", cursor: (!newTaskWs || !newTaskDesc.trim()) ? "not-allowed" : "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Add Task
+                </button>
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: selectedItem ? "1fr 340px" : "1fr", gap: 16 }}>
               {/* Table */}

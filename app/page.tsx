@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus, Priority } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
 
 type AppState = "landing" | "intake" | "generating" | "dashboard";
@@ -59,6 +59,32 @@ export default function Home() {
     });
   }, []);
 
+  const handleAddTask = useCallback((task: { workstream: string; description: string; phase: string; priority: string; section: string }) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const itemCount = prev.checklistItems.length;
+      const newItem: ChecklistItem = {
+        id: `custom-${Date.now()}`,
+        itemId: `CUST-${String(itemCount + 1).padStart(4, "0")}`,
+        workstream: task.workstream as any,
+        section: task.section,
+        description: task.description,
+        phase: task.phase as any,
+        priority: task.priority as any,
+        status: "not_started",
+        dependencies: [],
+        tsaRelevant: false,
+        crossBorderFlag: false,
+        riskIndicators: [],
+        notes: [],
+      };
+      return {
+        ...prev,
+        checklistItems: [...prev.checklistItems, newItem],
+      };
+    });
+  }, []);
+
   function handleReset() {
     setDeal(null);
     setAppState("landing");
@@ -104,7 +130,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} />;
   }
 
   if (appState === "intake") {

@@ -222,6 +222,72 @@ function DependencyMatrix({ items }: { items: Array<{ itemId: string; workstream
   );
 }
 
+
+function BurndownChart({ snapshots, totalItems }: { snapshots: Array<{ periodEnd: string; summary: { completed: number; totalActive: number } }>; totalItems: number }) {
+  if (snapshots.length < 2) return (
+    <div style={{ fontSize: 10, color: '#94A3B8', padding: 12, textAlign: 'center' }}>
+      Capture 2+ snapshots to see burndown trend. Each snapshot records progress at a point in time.
+    </div>
+  );
+
+  const w = 600;
+  const h = 180;
+  const padL = 50;
+  const padR = 20;
+  const padT = 20;
+  const padB = 40;
+  const chartW = w - padL - padR;
+  const chartH = h - padT - padB;
+
+  const maxItems = Math.max(totalItems, ...snapshots.map(s => s.summary.totalActive));
+  const points = snapshots.map((s, i) => ({
+    x: padL + (i / (snapshots.length - 1)) * chartW,
+    yComplete: padT + chartH - (s.summary.completed / maxItems) * chartH,
+    yRemaining: padT + chartH - ((s.summary.totalActive - s.summary.completed) / maxItems) * chartH,
+    label: s.periodEnd.slice(5),
+    completed: s.summary.completed,
+    remaining: s.summary.totalActive - s.summary.completed,
+  }));
+
+  const completeLine = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.yComplete}`).join(" ");
+  const remainingLine = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.yRemaining}`).join(" ");
+
+  const idealStart = padT + chartH - (maxItems / maxItems) * chartH;
+  const idealEnd = padT + chartH;
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ fontFamily: "system-ui, sans-serif" }}>
+      {[0, 0.25, 0.5, 0.75, 1].map(pct => {
+        const y = padT + chartH * (1 - pct);
+        return (
+          <g key={pct}>
+            <line x1={padL} y1={y} x2={padL + chartW} y2={y} stroke='#334155' strokeDasharray='4,4' />
+            <text x={padL - 8} y={y + 3} textAnchor='end' fontSize={8} fill='#64748B'>{Math.round(maxItems * pct)}</text>
+          </g>
+        );
+      })}
+      <line x1={points[0].x} y1={idealStart} x2={points[points.length - 1].x} y2={idealEnd} stroke='#64748B' strokeDasharray='6,4' strokeWidth={1} />
+      <path d={remainingLine} fill='none' stroke='#F59E0B' strokeWidth={2} />
+      <path d={completeLine} fill='none' stroke='#10B981' strokeWidth={2} />
+      {points.map((p, i) => (
+        <g key={i}>
+          <circle cx={p.x} cy={p.yComplete} r={3} fill='#10B981' />
+          <circle cx={p.x} cy={p.yRemaining} r={3} fill='#F59E0B' />
+          <text x={p.x} y={h - 8} textAnchor='middle' fontSize={8} fill='#64748B'>{p.label}</text>
+        </g>
+      ))}
+      <g transform={`translate(${padL + 10}, ${padT})`}>
+        <line x1={0} y1={0} x2={16} y2={0} stroke='#10B981' strokeWidth={2} />
+        <text x={20} y={3} fontSize={8} fill='#94A3B8'>Completed</text>
+        <line x1={80} y1={0} x2={96} y2={0} stroke='#F59E0B' strokeWidth={2} />
+        <text x={100} y={3} fontSize={8} fill='#94A3B8'>Remaining</text>
+        <line x1={170} y1={0} x2={186} y2={0} stroke='#64748B' strokeWidth={1} strokeDasharray='4,4' />
+        <text x={190} y={3} fontSize={8} fill='#64748B'>Ideal</text>
+      </g>
+    </svg>
+  );
+}
+
 export default function Dashboard({
   deal,
   onUpdateStatus,
@@ -799,6 +865,31 @@ export default function Dashboard({
               <div style={{ marginLeft: "auto", fontSize: 10, color: C.textMuted, alignSelf: "center" }}>
                 {visibleItems.length} items shown{overdueCount > 0 && <span style={{ color: C.danger, marginLeft: 8 }}>{overdueCount} overdue</span>}
               </div>
+              <button onClick={() => {
+                const headers = ["ID", "Workstream", "Section", "Description", "Phase", "Priority", "Status", "Owner", "Dependencies", "Milestone Date"];
+                const rows = sortedItems.map(item => [
+                  item.itemId,
+                  item.workstream,
+                  item.section || "",
+                  `"${item.description.replace(/"/g, '""')}"`,
+                  item.phase,
+                  item.priority,
+                  item.status,
+                  deal.people.find(p => p.id === item.ownerId)?.name || "Unassigned",
+                  item.dependencies.join("; "),
+                  item.milestoneDate || "",
+                ]);
+                const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+                const blob = new Blob([csv], { type: "text/csv" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = `${intake.dealName.replace(/\s+/g, "_")}_checklist_${new Date().toISOString().split("T")[0]}.csv`;
+                a.click(); URL.revokeObjectURL(url);
+              }} style={{
+                padding: "5px 12px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                background: C.deepBlue, color: C.textMuted, border: `1px solid ${C.border}`,
+                cursor: "pointer",
+              }}>📥 Export CSV</button>
               <button
                 onClick={() => setShowAddTask(!showAddTask)}
                 style={{
@@ -949,30 +1040,31 @@ export default function Dashboard({
 
             {selectedIds.size > 0 && (
               <div style={{
-                padding: "8px 12px", borderRadius: 6, background: C.accent + "22", border: `1px solid ${C.accent}44`,
-                marginBottom: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 10,
+                display: "flex", gap: 8, alignItems: "center", padding: "8px 12px", marginBottom: 12,
+                borderRadius: 6, background: C.accent + "11", border: `1px solid ${C.accent}44`,
               }}>
-                <span style={{ fontWeight: 700, color: C.accent }}>{selectedIds.size} selected</span>
-                <select
-                  onChange={(e) => {
-                    const status = e.target.value;
-                    if (!status) return;
-                    selectedIds.forEach(id => onUpdateStatus(id, status as any));
+                <span style={{ fontSize: 11, fontWeight: 600, color: C.accentLight }}>{selectedIds.size} items selected</span>
+                <span style={{ color: C.border }}>|</span>
+                {(["in_progress", "blocked", "complete", "not_started"] as const).map(status => (
+                  <button key={status} onClick={() => {
+                    selectedIds.forEach(id => {
+                      const item = checklistItems.find(i => i.id === id);
+                      if (item) onUpdateStatus(item.id, status);
+                    });
                     setSelectedIds(new Set());
-                    e.target.value = "";
-                  }}
-                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "3px 6px", fontSize: 10, fontFamily: "inherit" }}
-                >
-                  <option value="">Set Status...</option>
-                  <option value="not_started">Not Started</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="blocked">Blocked</option>
-                  <option value="complete">Complete</option>
-                </select>
+                  }} style={{
+                    padding: "3px 10px", borderRadius: 4, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                    background: status === "complete" ? C.success + "22" : status === "blocked" ? C.danger + "22" : status === "in_progress" ? C.accent + "22" : C.deepBlue,
+                    color: status === "complete" ? C.success : status === "blocked" ? C.danger : status === "in_progress" ? C.accent : C.textMuted,
+                    border: `1px solid ${status === "complete" ? C.success : status === "blocked" ? C.danger : status === "in_progress" ? C.accent : C.border}44`,
+                  }}>
+                    {status === "in_progress" ? "→ In Progress" : status === "blocked" ? "✕ Blocked" : status === "complete" ? "✓ Complete" : "○ Not Started"}
+                  </button>
+                ))}
                 <button onClick={() => setSelectedIds(new Set())} style={{
-                  padding: "3px 8px", borderRadius: 3, fontSize: 9, background: "transparent",
-                  color: C.textMuted, border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: "inherit",
-                }}>Clear</button>
+                  marginLeft: "auto", padding: "3px 8px", borderRadius: 4, fontSize: 10,
+                  background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, cursor: "pointer",
+                }}>Clear Selection</button>
               </div>
             )}
 
@@ -1209,11 +1301,11 @@ export default function Dashboard({
                       <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
                         Notes ({selectedItem.notes.length})
                       </div>
-                      <div style={{ maxHeight: 120, overflowY: "auto", marginBottom: 8 }}>
+                      <div style={{ maxHeight: 200, overflowY: "auto", marginBottom: 8 }}>
                         {selectedItem.notes.length === 0 ? (
                           <div style={{ fontSize: 10, color: C.muted, fontStyle: "italic" }}>No notes yet</div>
                         ) : (
-                          selectedItem.notes.map((note: any) => (
+                          [...selectedItem.notes].reverse().map((note: any) => (
                             <div key={note.id || note} style={{ padding: "4px 0", borderBottom: `1px solid ${C.border}22`, fontSize: 10, color: C.text }}>
                               <div>{typeof note === "string" ? note : note.text}</div>
                               {note.timestamp && <div style={{ fontSize: 8, color: C.muted, marginTop: 2 }}>{new Date(note.timestamp).toLocaleString()}</div>}
@@ -1222,10 +1314,12 @@ export default function Dashboard({
                         )}
                       </div>
                       <div style={{ display: "flex", gap: 4 }}>
-                        <input value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder="Add a note..."
-                          style={{ flex: 1, padding: "4px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10 }}
+                        <textarea value={newNoteText} onChange={(e) => setNewNoteText(e.target.value)} placeholder="Add a note — describe status, blockers, or context..."
+                          rows={3}
+                          style={{ flex: 1, padding: "6px 8px", borderRadius: 4, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10, resize: "vertical", fontFamily: "inherit", minHeight: 50 }}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" && newNoteText.trim()) {
+                            if (e.key === "Enter" && !e.shiftKey && newNoteText.trim()) {
+                              e.preventDefault();
                               onAddNote(selectedItem.itemId, newNoteText.trim());
                               setNewNoteText("");
                             }
@@ -2007,6 +2101,14 @@ export default function Dashboard({
                   {/* Progress Chart */}
                   <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
                     <ProgressChart workstreams={currentSnapshot.workstreams} />
+                  </div>
+
+                  {/* Burndown Chart */}
+                  <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8, color: C.textMuted }}>
+                      Progress Burndown
+                    </div>
+                    <BurndownChart snapshots={deal.progressSnapshots} totalItems={checklistItems.filter(i => i.status !== "na").length} />
                   </div>
 
                   {/* Snapshot History */}

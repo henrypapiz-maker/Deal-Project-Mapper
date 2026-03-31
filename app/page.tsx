@@ -1,16 +1,28 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem } from "@/lib/types";
+import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
+import { saveDeal, loadDeal, clearDeal, hasSavedDeal } from "@/lib/persistence";
 
 type AppState = "landing" | "intake" | "generating" | "dashboard";
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>("landing");
   const [deal, setDeal] = useState<GeneratedDeal | null>(null);
+  const [hasSaved, setHasSaved] = useState(false);
+
+  // Auto-save whenever deal changes
+  useEffect(() => {
+    if (deal) saveDeal(deal);
+  }, [deal]);
+
+  // Check for saved deal on mount
+  useEffect(() => {
+    setHasSaved(typeof window !== "undefined" && hasSavedDeal());
+  }, []);
 
   function handleIntakeSubmit(intake: DealIntake) {
     setAppState("generating");
@@ -85,9 +97,31 @@ export default function Home() {
     });
   }, []);
 
+  const handleAddPerson = useCallback((name: string, role?: string) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const person: Person = { id: `person-${Date.now()}`, name, role };
+      return { ...prev, people: [...prev.people, person] };
+    });
+  }, []);
+
+  const handleAssignOwner = useCallback((itemId: string, ownerId: string | undefined) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map((item) =>
+          item.id === itemId ? { ...item, ownerId } : item
+        ),
+      };
+    });
+  }, []);
+
   function handleReset() {
+    clearDeal();
     setDeal(null);
     setAppState("landing");
+    setHasSaved(false);
   }
 
   if (appState === "generating") {
@@ -130,7 +164,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} />;
   }
 
   if (appState === "intake") {
@@ -204,6 +238,18 @@ export default function Home() {
         >
           Start New Deal →
         </button>
+        {hasSaved && (
+          <button onClick={() => {
+            const saved = loadDeal();
+            if (saved) { setDeal(saved); setAppState("dashboard"); }
+          }} style={{
+            display: "block", margin: "12px auto 0", padding: "12px 28px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+            background: "transparent", color: "#3B82F6",
+            border: "1px solid rgba(59, 130, 246, 0.4)", cursor: "pointer", fontFamily: "inherit",
+          }}>
+            Resume Previous Deal
+          </button>
+        )}
 
         <div style={{
           marginTop: 56, padding: "20px 28px", borderRadius: 12,

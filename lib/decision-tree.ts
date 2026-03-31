@@ -276,6 +276,7 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
     workstreamSummary,
     milestones,
     generatedAt: new Date().toISOString(),
+    people: [],
   };
 }
 

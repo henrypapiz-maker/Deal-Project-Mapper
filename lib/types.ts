@@ -168,6 +168,15 @@ export interface RiskAlert {
 }
 
 // ============================================================
+// Person (team roster for owner assignment)
+// ============================================================
+export interface Person {
+  id: string;
+  name: string;
+  role?: string;
+}
+
+// ============================================================
 // Generated Deal (result of decision tree)
 // ============================================================
 export interface GeneratedDeal {
@@ -177,6 +186,7 @@ export interface GeneratedDeal {
   workstreamSummary: WorkstreamSummary[];
   milestones: Milestone[];
   generatedAt: string;
+  people: Person[];
 }
 
 export interface WorkstreamSummary {

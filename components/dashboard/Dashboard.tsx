@@ -74,10 +74,27 @@ interface Props {
   onUpdatePriority: (itemId: string, priority: Priority) => void;
   onUpdateBlockedReason: (itemId: string, reason: string) => void;
   onReset: () => void;
-  onAddTask: (task: { workstream: string; description: string; phase: string; priority: string; section: string }) => void;
+  onAddTask: (task: {
+    workstream: string;
+    description: string;
+    phase: string;
+    priority: string;
+    section: string;
+  }) => void;
+  onAddPerson: (name: string, role?: string) => void;
+  onAssignOwner: (itemId: string, ownerId: string | undefined) => void;
 }
 
-export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUpdateBlockedReason, onReset, onAddTask }: Props) {
+export default function Dashboard({
+  deal,
+  onUpdateStatus,
+  onUpdatePriority,
+  onUpdateBlockedReason,
+  onReset,
+  onAddTask,
+  onAddPerson,
+  onAssignOwner,
+}: Props) {
   const [activeTab, setActiveTab] = useState<"overview" | "checklist" | "risks" | "timeline">("overview");
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -92,6 +109,21 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskPhase, setNewTaskPhase] = useState<string>("day_30");
   const [newTaskPriority, setNewTaskPriority] = useState<string>("medium");
+  const [showSteerCo, setShowSteerCo] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showNaItems, setShowNaItems] = useState(false);
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonRole, setNewPersonRole] = useState("");
+  const [filterOwner, setFilterOwner] = useState<string>("all");
+
+  function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
+    if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
+    if (stats.blocked > 0) return "amber";
+    const pct = stats.total ? stats.complete / stats.total : 0;
+    if (pct >= 0.7) return "green";
+    if (pct >= 0.3) return "amber";
+    return "red";
+  }
 
   const { intake, checklistItems, riskAlerts, milestones } = deal;
   const kpis = getKpis(checklistItems);
@@ -125,7 +157,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
       const data = await res.json();
       setGuidanceText(data.guidance || "No guidance available.");
     } catch {
-      setGuidanceText("Unable to load AI guidance. Check your ANTHROPIC_API_KEY.");
+      setGuidanceText("AI guidance temporarily unavailable. Please try again.");
     }
     setGuidanceLoading(false);
   }
@@ -150,7 +182,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
   });
 
   const visibleItems = checklistItems.filter((item) => {
-    if (item.status === "na") return false;
+    if (item.status === "na" && !showNaItems) return false;
     if (filterPhase !== "all" && item.phase !== filterPhase) return false;
     if (filterWs !== "all" && item.workstream !== filterWs) return false;
     if (filterPriority !== "all" && item.priority !== filterPriority) return false;
@@ -159,6 +191,13 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
         if (!isItemOverdue(item)) return false;
       } else {
         if (item.status !== filterStatus) return false;
+      }
+    }
+    if (filterOwner !== "all") {
+      if (filterOwner === "unassigned") {
+        if (item.ownerId) return false;
+      } else {
+        if (item.ownerId !== filterOwner) return false;
       }
     }
     return true;
@@ -266,6 +305,73 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
                 </div>
               ))}
             </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+              <button onClick={() => setShowSteerCo(true)} style={{
+                padding: "4px 12px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                background: C.accent + "22", color: C.accent, border: `1px solid ${C.accent}44`,
+                cursor: "pointer", fontFamily: "inherit",
+              }}>
+                SteerCo Summary
+              </button>
+            </div>
+
+            {showSteerCo && (
+              <div id="steerco-print" style={{
+                position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.8)",
+                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+              }} onClick={() => setShowSteerCo(false)}>
+                <div onClick={(e) => e.stopPropagation()} style={{
+                  background: "#fff", color: "#1E293B", borderRadius: 12, padding: 32, maxWidth: 700, width: "90%",
+                  maxHeight: "80vh", overflowY: "auto",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Integration Status — SteerCo Summary</h2>
+                    <button onClick={() => window.print()} style={{
+                      padding: "6px 16px", borderRadius: 4, fontSize: 11, fontWeight: 600,
+                      background: "#3B82F6", color: "#fff", border: "none", cursor: "pointer",
+                    }}>Print / Export PDF</button>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#64748B", marginBottom: 16 }}>
+                    Deal: {intake.dealName} · Generated: {new Date(deal.generatedAt).toLocaleDateString()} · Close: {intake.closeDate}
+                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "2px solid #E2E8F0" }}>
+                        <th style={{ textAlign: "left", padding: 8 }}>Workstream</th>
+                        <th style={{ textAlign: "center", padding: 8 }}>RAG</th>
+                        <th style={{ textAlign: "center", padding: 8 }}>Complete</th>
+                        <th style={{ textAlign: "center", padding: 8 }}>In Progress</th>
+                        <th style={{ textAlign: "center", padding: 8 }}>Blocked</th>
+                        <th style={{ textAlign: "center", padding: 8 }}>% Done</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from(wsStats.entries()).map(([ws, stats]) => {
+                        const rag = computeRAG(stats);
+                        const pct = stats.total ? Math.round((stats.complete / stats.total) * 100) : 0;
+                        const ragColor = rag === "red" ? "#EF4444" : rag === "amber" ? "#F59E0B" : "#22C55E";
+                        return (
+                          <tr key={ws} style={{ borderBottom: "1px solid #F1F5F9" }}>
+                            <td style={{ padding: 8, fontWeight: 500 }}>{ws}</td>
+                            <td style={{ padding: 8, textAlign: "center" }}>
+                              <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", background: ragColor }} />
+                            </td>
+                            <td style={{ padding: 8, textAlign: "center", color: "#22C55E" }}>{stats.complete}</td>
+                            <td style={{ padding: 8, textAlign: "center", color: "#3B82F6" }}>{stats.inProgress}</td>
+                            <td style={{ padding: 8, textAlign: "center", color: stats.blocked > 0 ? "#EF4444" : "#94A3B8" }}>{stats.blocked}</td>
+                            <td style={{ padding: 8, textAlign: "center", fontWeight: 700 }}>{pct}%</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <div style={{ marginTop: 16, fontSize: 9, color: "#94A3B8", textAlign: "center" }}>
+                    DealMapper v0.3.0 · {checklistItems.filter(i => i.status !== "na").length} active items · Exported {new Date().toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 16 }}>
               {/* Workstream Progress */}
@@ -437,6 +543,15 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
                   <option value="overdue">Overdue</option>
                 </select>
               </div>
+              <div>
+                <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Owner </span>
+                <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)}
+                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}>
+                  <option value="all">All Owners</option>
+                  <option value="unassigned">Unassigned</option>
+                  {deal.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
               <div style={{ marginLeft: "auto", fontSize: 10, color: C.textMuted, alignSelf: "center" }}>
                 {visibleItems.length} items shown{overdueCount > 0 && <span style={{ color: C.danger, marginLeft: 8 }}>{overdueCount} overdue</span>}
               </div>
@@ -452,6 +567,10 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
               >
                 {showAddTask ? "Cancel" : "+ New Task"}
               </button>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: C.textMuted, cursor: "pointer" }}>
+                <input type="checkbox" checked={showNaItems} onChange={(e) => setShowNaItems(e.target.checked)} />
+                Show N/A
+              </label>
             </div>
 
             {showAddTask && (
@@ -510,13 +629,83 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
               </div>
             )}
 
+            {/* Team Roster — empty state prompt */}
+            {deal.people.length === 0 && activeTab === "checklist" && !showAddTask && (
+              <div style={{ padding: 8, borderRadius: 6, background: C.accent + "11", border: `1px dashed ${C.accent}44`, marginBottom: 12, fontSize: 10, color: C.textMuted, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>No team members yet.</span>
+                <input type="text" placeholder="Name" value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)}
+                  style={{ padding: "3px 6px", borderRadius: 3, fontSize: 10, background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, fontFamily: "inherit", width: 120 }} />
+                <input type="text" placeholder="Role (optional)" value={newPersonRole} onChange={(e) => setNewPersonRole(e.target.value)}
+                  style={{ padding: "3px 6px", borderRadius: 3, fontSize: 10, background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, fontFamily: "inherit", width: 100 }} />
+                <button onClick={() => { if (newPersonName.trim()) { onAddPerson(newPersonName.trim(), newPersonRole.trim() || undefined); setNewPersonName(""); setNewPersonRole(""); } }}
+                  disabled={!newPersonName.trim()}
+                  style={{ padding: "3px 10px", borderRadius: 3, fontSize: 10, fontWeight: 600, background: C.accent, color: "#fff", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+                  + Add
+                </button>
+              </div>
+            )}
+
+            {/* Team Roster — existing members */}
+            {deal.people.length > 0 && activeTab === "checklist" && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>Team: </span>
+                {deal.people.map(p => (
+                  <span key={p.id} style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, background: C.accent + "22", color: C.accent }}>
+                    {p.name}{p.role ? ` (${p.role})` : ""}
+                  </span>
+                ))}
+                <input type="text" placeholder="+ Add person" value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter" && newPersonName.trim()) { onAddPerson(newPersonName.trim()); setNewPersonName(""); } }}
+                  style={{ padding: "2px 6px", borderRadius: 3, fontSize: 9, background: "transparent", color: C.text, border: `1px solid ${C.border}44`, fontFamily: "inherit", width: 100 }} />
+              </div>
+            )}
+
+            {selectedIds.size > 0 && (
+              <div style={{
+                padding: "8px 12px", borderRadius: 6, background: C.accent + "22", border: `1px solid ${C.accent}44`,
+                marginBottom: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 10,
+              }}>
+                <span style={{ fontWeight: 700, color: C.accent }}>{selectedIds.size} selected</span>
+                <select
+                  onChange={(e) => {
+                    const status = e.target.value;
+                    if (!status) return;
+                    selectedIds.forEach(id => onUpdateStatus(id, status as any));
+                    setSelectedIds(new Set());
+                    e.target.value = "";
+                  }}
+                  style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "3px 6px", fontSize: 10, fontFamily: "inherit" }}
+                >
+                  <option value="">Set Status...</option>
+                  <option value="not_started">Not Started</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="complete">Complete</option>
+                </select>
+                <button onClick={() => setSelectedIds(new Set())} style={{
+                  padding: "3px 8px", borderRadius: 3, fontSize: 9, background: "transparent",
+                  color: C.textMuted, border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: "inherit",
+                }}>Clear</button>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: selectedItem ? "1fr 340px" : "1fr", gap: 16 }}>
               {/* Table */}
               <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
                   <thead>
                     <tr style={{ borderBottom: `2px solid ${C.border}` }}>
-                      {["ID", "Workstream", "Task", "Phase", "Priority", "Status", ""].map((h) => (
+                      <th style={{ padding: "6px", width: 24 }}>
+                        <input type="checkbox"
+                          checked={visibleItems.length > 0 && visibleItems.every(i => selectedIds.has(i.id))}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedIds(new Set(visibleItems.map(i => i.id)));
+                            else setSelectedIds(new Set());
+                          }}
+                          style={{ cursor: "pointer" }}
+                        />
+                      </th>
+                      {["ID", "Workstream", "Task", "Phase", "Priority", "Status", "Owner", ""].map((h) => (
                         <th key={h} style={{ padding: "6px", textAlign: "left", color: C.textMuted, fontSize: 9, textTransform: "uppercase", letterSpacing: 1 }}>{h}</th>
                       ))}
                     </tr>
@@ -533,10 +722,21 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
                             borderBottom: `1px solid ${C.border}22`,
                             background: isSelected ? C.deepBlue : "transparent",
                             cursor: "pointer",
+                            opacity: item.status === "na" ? 0.4 : 1,
                           }}
                         >
+                          <td style={{ padding: "6px", width: 24 }} onClick={(e) => e.stopPropagation()}>
+                            <input type="checkbox" checked={selectedIds.has(item.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedIds);
+                                if (e.target.checked) next.add(item.id); else next.delete(item.id);
+                                setSelectedIds(next);
+                              }}
+                              style={{ cursor: "pointer" }}
+                            />
+                          </td>
                           <td style={{ padding: "6px", fontWeight: 700, color: C.accent, whiteSpace: "nowrap" }}>{item.itemId}</td>
-                          <td style={{ padding: "6px", color: C.textMuted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
+                          <td title={item.workstream} style={{ padding: "6px", color: C.textMuted, whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>{item.workstream.split(" ")[0]}</td>
                           <td style={{ padding: "6px", maxWidth: 320 }}>
                             <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.description}</div>
                             {item.dependencies.length > 0 && (
@@ -585,7 +785,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
                               }}
                               onClick={(e) => e.stopPropagation()}
                               style={{
-                                background: "transparent", border: "none",
+                                background: "transparent", border: "none", borderBottom: "1px dashed currentColor",
                                 color: item.priority === "critical" ? C.danger : item.priority === "high" ? C.warning : C.textMuted,
                                 fontSize: 9, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase",
                               }}
@@ -608,7 +808,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
                               }}
                               onClick={(e) => e.stopPropagation()}
                               style={{
-                                background: "transparent", border: "none",
+                                background: "transparent", border: "none", borderBottom: "1px dashed currentColor",
                                 color: statusColor, fontSize: 9, fontWeight: 700,
                                 cursor: "pointer", fontFamily: "inherit", textTransform: "uppercase",
                               }}
@@ -617,6 +817,17 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
                               <option value="in_progress">In Progress</option>
                               <option value="blocked">Blocked</option>
                               <option value="complete">Complete</option>
+                            </select>
+                          </td>
+                          <td style={{ padding: "6px", minWidth: 90 }}>
+                            <select
+                              value={item.ownerId || ""}
+                              onChange={(e) => { e.stopPropagation(); onAssignOwner(item.id, e.target.value || undefined); }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ background: "transparent", border: "none", color: item.ownerId ? C.accent : C.muted, fontSize: 9, cursor: "pointer", fontFamily: "inherit", maxWidth: 85 }}
+                            >
+                              <option value="">—</option>
+                              {deal.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                           </td>
                           <td style={{ padding: "6px" }}>
@@ -632,6 +843,11 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
                     })}
                   </tbody>
                 </table>
+                {visibleItems.length === 0 && (
+                  <div style={{ padding: 24, textAlign: "center", color: C.textMuted, fontSize: 11 }}>
+                    No items match the current filters. Try adjusting Phase, Workstream, Priority, or Status.
+                  </div>
+                )}
               </div>
 
               {/* AI Guidance Panel */}
@@ -798,7 +1014,7 @@ export default function Dashboard({ deal, onUpdateStatus, onUpdatePriority, onUp
           marginTop: 24, padding: "14px 0", borderTop: `1px solid rgba(51, 65, 85, 0.4)`,
           display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted
         }}>
-          <span>DealMapper v0.2.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
+          <span>DealMapper v0.3.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
           <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 24 workstreams</span>
         </div>
       </div>

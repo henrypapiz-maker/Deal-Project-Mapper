@@ -1073,27 +1073,50 @@ Example format:
 "1. ERP vendor license transfer delay — compresses parallel-run window by 3 weeks
    The legacy license transfer from [vendor] requires counterparty signature that has been pending since [date]. Without resolution, the Day 90 ERP cutover date is at risk, affecting [N] downstream items across IT and Finance workstreams.
    → Recommended: Approve interim cloud bridge workaround ($380K) to protect the cutover date. Decision owner: CIO. Deadline: [date]."
+CRITICAL RULES:
+- Each issue MUST be on its own — never combine two issues into one item
+- Each issue MUST have a prescriptive resolution (what to do, who, by when)
+- If a blocked item lacks context on WHY it's blocked, state "Root cause: to be determined by [owner] — escalation recommended"
+- Only include items that are material to the board. A simple scope change is NOT board-level. Filter ruthlessly.
+- If an item doesn't have enough data to explain WHY, flag it: "⚠ Insufficient detail — IMO to investigate and report back by [date]"
 PRODUCE 3-6 items following this exact pattern.`;
       break;
 
     case "keyDelays":
       sectionSpecific = `
-SECTION FOCUS: Identify and explain timeline slippage risks.
+SECTION FOCUS: Each delay is a SEPARATE numbered item with root cause, schedule impact, and recovery plan. Format like a risk register — NOT prose paragraphs.
 DATA TO DRAW ON:
 OVERDUE ITEMS (${context.overdueItems.length} total):
 ${context.overdueItems.slice(0, 8).map((o) => `- [${o.itemId}] ${o.workstream}: ${o.description} (due ${o.milestoneDate})`).join("\n")}
-AMBER/RED WORKSTREAMS: ${context.workstreamBreakdown.filter((w) => w.effectiveRag !== "green").map((w) => w.name).join(", ")}
-INCLUDE: Root causes of delay, schedule impact, recovery options.`;
+BLOCKED ITEMS CAUSING DELAY:
+${context.blockedItems.slice(0, 8).map((b) => `- [${b.itemId}] ${b.workstream}: ${b.description} — ${b.blockedReason || "reason not specified"}`).join("\n")}
+AMBER/RED WORKSTREAMS: ${context.workstreamBreakdown.filter((w) => w.effectiveRag !== "green").map((w) => `${w.name} (${w.effectiveRag}, ${w.pctComplete}%)`).join(", ")}
+FORMATTING: Each delay as a separate card:
+"1. [Delay headline] — [X weeks/days impact]
+   ROOT CAUSE: [Specific explanation]
+   SCHEDULE IMPACT: [What milestones are affected, quantify the slip]
+   RECOVERY PLAN: [Action, owner, revised target date]
+   STATUS: [Red/Amber — is recovery on track?]"
+DO NOT combine multiple delays into one paragraph. Each delay gets its own numbered item with full context.`;
       break;
 
     case "keyFindings":
       sectionSpecific = `
-SECTION FOCUS: Highlight key discoveries, decisions made, and insights from the integration period.
+SECTION FOCUS: Material discoveries that change the integration picture. Each finding should be something the board didn't know before. Separate positive findings from concerns.
 DATA TO DRAW ON:
-- Item notes: ${context.itemNotes.slice(0, 8).map((n) => `[${n.itemId}] ${n.workstream}: ${n.noteText.slice(0, 100)}`).join("; ")}
-- Completed workstream progress
-- Existing narratives
-INCLUDE: Material findings from diligence or integration execution, positive progress, and any surprises.`;
+- Item notes (intelligence from the field): ${context.itemNotes.slice(0, 12).map((n) => `[${n.itemId}] ${n.workstream}: ${n.noteText.slice(0, 120)}`).join("; ")}
+- Completed items revealing new information
+- Risk register discoveries: ${context.riskRegister.filter((r) => r.status === "open").map((r) => `${r.category}: ${r.description.slice(0, 80)}`).join("; ")}
+FORMATTING: Separate into two groups:
+"POSITIVE FINDINGS:"
+"1. [Finding headline]
+   [What was discovered, quantified impact, implication for integration plan]"
+
+"CONCERNS / SURPRISES:"
+"1. [Finding headline]
+   [What was discovered, why it matters, what action is needed]"
+
+Each finding MUST explain the SO WHAT — why does the board care about this specific finding? What changes as a result?`;
       break;
 
     case "materialImpacts":
@@ -1152,6 +1175,10 @@ Example:
    CONSEQUENCE OF INACTION: ERP cutover delay cascades into Year 1 consolidation timeline. Estimated additional cost of $1.2M for extended parallel operations.
    RECOMMENDED ACTION: Approve the $380K cloud bridge to decouple from vendor timeline. ROI is positive even in worst case.
    OWNER: PE Sponsor + CIO. DEADLINE: This week."
+CRITICAL: Each decision MUST include BOTH a PREFERRED recommendation AND a SECONDARY alternative:
+"PREFERRED: [Primary recommendation with rationale]"
+"ALTERNATIVE: [Secondary option if preferred is rejected, with trade-offs]"
+This gives the board options rather than a binary yes/no.
 PRODUCE 2-5 decision items. Only include items that genuinely require SteerCo authority — do not include operational decisions the IMO can make.`;
       break;
 
@@ -1165,21 +1192,36 @@ DATA TO DRAW ON:
 - Tax workstream: ${context.workstreamBreakdown.find((w) => w.name === "Income Tax") ? `${context.workstreamBreakdown.find((w) => w.name === "Income Tax")?.pctComplete}% complete` : "not active"}
 - Deal value: ${context.dealProfile.dealValue}, Deal size class: ${context.materiality.sizeClass}
 - Budget-related notes: ${context.itemNotes.filter((n) => /budget|cost|spend|forecast|\$/i.test(n.noteText)).slice(0, 5).map((n) => `[${n.itemId}] ${n.noteText.slice(0, 100)}`).join("; ")}
-FORMATTING: Each financial item follows:
-"1. [Category] — [$ amount or range]
-   [What drives this cost/risk]. [Current status and exposure]. [Mitigation or action to contain].
-   → Budget impact: [Favorable/Unfavorable] [amount]. Confidence: [High/Medium/Low]."
-Include items for: integration budget variance, synergy capture, stranded costs, regulatory/compliance costs, GAAP conversion costs, TSA costs. Quantify every item — even if approximate.`;
+STRUCTURE YOUR RESPONSE IN THREE DISTINCT SECTIONS (not bundled together):
+
+SECTION A — BUDGET STATUS (3-5 sentences):
+State the overall budget envelope, spend-to-date, burn rate, and forecast. Is spend pacing ahead of or behind progress? Example: "Budget: $18.5M approved. Spent: $4.2M (23%). Program completion: 19%. Burn rate is running 4 points ahead of progress, suggesting scope creep or front-loaded costs. Forecast to complete: $21.8M (+$3.3M / +18% overrun)."
+
+SECTION B — VARIANCE DECOMPOSITION (numbered items):
+Each variance driver as a separate numbered item:
+"1. [Category] — [$ amount]
+   [Root cause]. [Current status]. [Action to contain].
+   Impact: [Favorable/Unfavorable]. Confidence: [High/Medium/Low]."
+
+SECTION C — FORWARD OUTLOOK (2-3 sentences):
+Are we on track financially? What's the projected total cost? Where are the remaining financial risks? What would change the forecast?
+
+DO NOT bundle budget and financial impacts into one paragraph. Separate them clearly. Include burn rate vs. progress pacing analysis.`;
       break;
 
     case "overallBudget":
       sectionSpecific = `
-SECTION FOCUS: Summarise integration budget status, spend-to-date, and forecast.
+SECTION FOCUS: Forward-looking summary that ties budget to timeline and milestones. This section should NOT repeat the financial details from financialImpacts — instead focus on: Are we pacing correctly? What milestones are approaching? What is the trajectory?
 DATA TO DRAW ON:
-- Integration Management workstream: ${context.workstreamBreakdown.find((w) => w.name === "Integration Management") ? `${context.workstreamBreakdown.find((w) => w.name === "Integration Management")?.pctComplete}% complete` : "not active"}
+- Program completion: ${context.snapshotStats.pctComplete}% (${context.snapshotStats.completed} of ${context.snapshotStats.totalActive})
 - Deal size class: ${context.materiality.sizeClass} (${context.dealProfile.dealValue})
-- Budget-related notes: ${context.itemNotes.filter((n) => /budget|cost|spend|forecast/i.test(n.noteText)).slice(0, 5).map((n) => n.noteText.slice(0, 80)).join("; ")}
-INCLUDE: Overall budget envelope, spend to date, forecast to complete, variances, and risk provisions.`;
+- Close date: ${context.dealProfile.closeDate}
+- Workstreams in progress: ${context.workstreamBreakdown.filter((w) => w.inProgress > 0).length} of ${context.workstreamBreakdown.length}
+- Upcoming milestones that need attention
+FORMATTING: Write 2 paragraphs:
+Paragraph 1: Overall pacing assessment — are we on track to hit Day 30/60/90/Year 1 gates? What's the projected completion trajectory?
+Paragraph 2: Next reporting period focus areas — what workstreams need acceleration? What decisions are approaching?
+DO NOT repeat budget numbers if already covered in financialImpacts. Focus on trajectory and forward-looking guidance.`;
       break;
   }
 
@@ -1224,6 +1266,16 @@ CRITICAL FORMATTING REQUIREMENTS — FOLLOW EXACTLY:
 7. DEPENDENCY ITEMS (for materialDependencies): Format as:
    "[Source] gates [Target] — [Impact statement]"
    Then: explain the linkage, downstream cascade, and mitigation timeline
+
+SELF-EVALUATION (apply before finalizing):
+After drafting, review your output through the lens of a skeptical board member:
+- Would they ask "so what?" after any item? If yes, add the implication.
+- Would they ask "what are we doing about it?" If yes, add the resolution.
+- Would they say "this is too vague"? If yes, add specific numbers, dates, owners.
+- Are there zero-value metrics shown? Remove them — they add no insight.
+- Are two topics bundled into one item? Separate them.
+- Is there a forward-looking statement? Every section needs one.
+- Would a PE sponsor reading this know exactly what decisions to make? If not, sharpen.
 
 Write the ${label} section now:`;
 }

@@ -55,7 +55,9 @@
       "Bash(npm install:*)",
       "Bash(node scripts/migrate.mjs)",
       "Bash(python3 _patch_dashboard.py)",
-      "Bash(node _patch_dashboard.js)"
+      "Bash(node _patch_dashboard.js)",
+      "Bash(find C:/Users/henry/Deal-Project-Mapper/app -type f -name *.ts -o -name *.tsx)",
+      "Bash(find C:/Users/henry/Deal-Project-Mapper/components -type f -name *.ts*)"
     ]
   }
 }

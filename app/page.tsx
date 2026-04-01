@@ -7,12 +7,38 @@ import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Pe
 import { generateDeal } from "@/lib/decision-tree";
 import { saveDeal, loadDeal, clearDeal, hasSavedDeal } from "@/lib/persistence";
 
-type AppState = "landing" | "intake" | "generating" | "dashboard";
+type AppState = "landing" | "deals" | "intake" | "generating" | "dashboard";
 
 export default function Home() {
   const [appState, setAppState] = useState<AppState>("landing");
   const [deal, setDeal] = useState<GeneratedDeal | null>(null);
   const [hasSaved, setHasSaved] = useState(false);
+  const [dealsList, setDealsList] = useState<any[]>([]);
+  const [loadingDeals, setLoadingDeals] = useState(false);
+
+  // Fetch all deals from DB for multi-deal support
+  async function fetchDeals() {
+    setLoadingDeals(true);
+    try {
+      const res = await fetch("/api/deals");
+      const data = await res.json();
+      setDealsList(data.deals || []);
+    } catch { setDealsList([]); }
+    finally { setLoadingDeals(false); }
+  }
+
+  // Load a specific deal from DB by ID
+  async function loadDealFromDb(dealId: string) {
+    try {
+      const res = await fetch(`/api/deals?id=${dealId}`);
+      const data = await res.json();
+      if (data.deal) {
+        setDeal(data.deal);
+        saveDeal(data.deal); // also cache in localStorage
+        setAppState("dashboard");
+      }
+    } catch (e) { console.warn("Failed to load deal from DB:", e); }
+  }
 
   // Auto-save to localStorage (immediate) + DB (debounced 2 s after last change)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,10 +75,26 @@ export default function Home() {
     setHasSaved(typeof window !== "undefined" && hasSavedDeal());
   }, []);
 
+  // Immediate DB save (used on deal creation to get deal.id right away)
+  async function saveToDbImmediate(dealData: GeneratedDeal): Promise<string | null> {
+    try {
+      const res = await fetch("/api/deals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dealData),
+      });
+      const data = await res.json();
+      return data.dealId || null;
+    } catch { return null; }
+  }
+
   function handleIntakeSubmit(intake: DealIntake) {
     setAppState("generating");
-    setTimeout(() => {
+    setTimeout(async () => {
       const generated = generateDeal(intake);
+      // Save to DB immediately to get a deal.id for bowler table
+      const dbId = await saveToDbImmediate(generated);
+      if (dbId) generated.id = dbId;
       setDeal(generated);
       setAppState("dashboard");
     }, 1200);
@@ -400,7 +442,87 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={handleReset} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} />;
+  }
+
+  // Multi-deal list view
+  if (appState === "deals") {
+    return (
+      <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #0C1222 0%, #162036 40%, #0F1B2D 100%)", color: "#F1F5F9", padding: 32 }}>
+        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
+            <div>
+              <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>Deal Portfolio</h1>
+              <p style={{ fontSize: 12, color: "#94A3B8" }}>{dealsList.length} deals in database</p>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setAppState("intake")} style={{
+                padding: "10px 24px", borderRadius: 8, border: "none",
+                background: "linear-gradient(135deg, #2563EB, #3B82F6)",
+                color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+              }}>+ New Deal</button>
+              {hasSaved && (
+                <button onClick={() => { const saved = loadDeal(); if (saved) { setDeal(saved); setAppState("dashboard"); } }} style={{
+                  padding: "10px 24px", borderRadius: 8, border: "1px solid rgba(59, 130, 246, 0.4)",
+                  background: "transparent", color: "#3B82F6", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                }}>Resume Local Deal</button>
+              )}
+            </div>
+          </div>
+
+          {loadingDeals && <div style={{ textAlign: "center", color: "#64748B", padding: 40 }}>Loading deals...</div>}
+
+          {!loadingDeals && dealsList.length === 0 && (
+            <div style={{ textAlign: "center", padding: 60, borderRadius: 12, background: "rgba(30, 41, 59, 0.5)", border: "1px solid rgba(51, 65, 85, 0.5)" }}>
+              <div style={{ fontSize: 14, color: "#94A3B8", marginBottom: 12 }}>No deals in database yet</div>
+              <div style={{ fontSize: 11, color: "#64748B" }}>Create a new deal to get started, or resume your local draft.</div>
+            </div>
+          )}
+
+          {dealsList.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {dealsList.map((d: any) => {
+                const statusColors: Record<string, string> = { active: "#10B981", pre_close: "#F59E0B", complete: "#3B82F6", archived: "#64748B" };
+                return (
+                  <div key={d.id} onClick={() => loadDealFromDb(d.id)} style={{
+                    padding: "16px 20px", borderRadius: 10,
+                    background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
+                    cursor: "pointer", transition: "all 0.15s",
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.borderColor = "#3B82F6")}
+                    onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(51, 65, 85, 0.5)")}
+                  >
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "#F8FAFC", marginBottom: 4 }}>{d.name}</div>
+                      <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#94A3B8" }}>
+                        <span>{d.deal_structure?.replace(/_/g, " ")}</span>
+                        <span>{d.integration_model?.replace(/_/g, " ")}</span>
+                        <span>Close: {d.close_date ? new Date(d.close_date).toLocaleDateString() : "—"}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{
+                        fontSize: 9, fontWeight: 600, padding: "3px 10px", borderRadius: 4,
+                        background: (statusColors[d.status] || "#64748B") + "22",
+                        color: statusColors[d.status] || "#64748B",
+                        textTransform: "uppercase",
+                      }}>{d.status || "active"}</span>
+                      <span style={{ fontSize: 10, color: "#64748B" }}>→</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <button onClick={() => setAppState("landing")} style={{
+            display: "block", margin: "24px auto 0", fontSize: 11, color: "#64748B",
+            background: "transparent", border: "none", cursor: "pointer",
+          }}>← Back to Home</button>
+        </div>
+      </div>
+    );
   }
 
   if (appState === "intake") {
@@ -486,6 +608,13 @@ export default function Home() {
             Resume Previous Deal
           </button>
         )}
+        <button onClick={() => { fetchDeals(); setAppState("deals"); }} style={{
+          display: "block", margin: "8px auto 0", padding: "10px 28px", borderRadius: 8, fontSize: 12, fontWeight: 500,
+          background: "transparent", color: "#64748B",
+          border: "1px solid rgba(51, 65, 85, 0.4)", cursor: "pointer", fontFamily: "inherit",
+        }}>
+          View All Deals →
+        </button>
 
         <div style={{
           marginTop: 56, padding: "20px 28px", borderRadius: 12,
@@ -510,7 +639,7 @@ export default function Home() {
         </div>
 
         <div style={{ marginTop: 24, fontSize: 10, color: "#334155", letterSpacing: 0.5 }}>
-          DealMapper v0.4.0 · M&A Integration Engine · March 2026
+          DealMapper v0.5.0 · M&A Integration Engine · March 2026
         </div>
       </div>
     </div>

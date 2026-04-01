@@ -357,6 +357,60 @@ export default function Dashboard({
   const [newDepType, setNewDepType] = useState("predecessor");
   const [newDepDetail, setNewDepDetail] = useState("");
 
+  // SteerCo narrative sections
+  const [scNarrative, setScNarrative] = useState<Record<string, string>>({
+    overallStatus: "", keyIssues: "", keyDelays: "", keyFindings: "",
+    materialImpacts: "", materialDependencies: "", materialOperationalImpacts: "",
+    keyDecisionsEscalations: "", financialImpacts: "", overallBudget: "",
+  });
+  const [scSaving, setScSaving] = useState(false);
+  const [scSaved, setScSaved] = useState(false);
+
+  const saveSteerCoNarrative = async () => {
+    if (!deal.id) return;
+    setScSaving(true);
+    try {
+      await fetch("/api/steerco", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dealId: deal.id,
+          periodLabel: getCurrentPeriodEnd(),
+          ...scNarrative,
+          pctComplete: kpis.pctComplete,
+          status: "draft",
+        }),
+      });
+      setScSaved(true);
+      setTimeout(() => setScSaved(false), 3000);
+    } catch (e) { console.warn("Failed to save narrative:", e); }
+    finally { setScSaving(false); }
+  };
+
+  // Load existing narrative on SteerCo tab mount
+  const loadSteerCoNarrative = async () => {
+    if (!deal.id) return;
+    try {
+      const res = await fetch(`/api/steerco?dealId=${deal.id}`);
+      const data = await res.json();
+      if (data.narratives && data.narratives.length > 0) {
+        const n = data.narratives[0];
+        setScNarrative({
+          overallStatus: n.overall_status || "",
+          keyIssues: n.key_issues || "",
+          keyDelays: n.key_delays || "",
+          keyFindings: n.key_findings || "",
+          materialImpacts: n.material_impacts || "",
+          materialDependencies: n.material_dependencies || "",
+          materialOperationalImpacts: n.material_operational_impacts || "",
+          keyDecisionsEscalations: n.key_decisions_escalations || "",
+          financialImpacts: n.financial_impacts || "",
+          overallBudget: n.overall_budget || "",
+        });
+      }
+    } catch {}
+  };
+
   function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
     if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
     if (stats.blocked > 0) return "amber";
@@ -2195,6 +2249,77 @@ export default function Dashboard({
                 </>
               );
             })()}
+
+            {/* ─── STEERCO NARRATIVE SECTIONS ─── */}
+            <div style={{ marginTop: 20, padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>SteerCo Executive Narrative</h3>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2 }}>
+                    Structured report sections for IMO leadership review and SteerCo presentation
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  {scSaved && <span style={{ fontSize: 10, color: C.success, fontWeight: 600 }}>Saved</span>}
+                  <button onClick={loadSteerCoNarrative} style={{
+                    padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.border}`, cursor: "pointer",
+                    background: "transparent", color: C.textMuted, fontSize: 10, fontWeight: 500,
+                  }}>Load Previous</button>
+                  <button onClick={saveSteerCoNarrative} disabled={scSaving || !deal.id} style={{
+                    padding: "5px 16px", borderRadius: 5, border: "none", cursor: "pointer",
+                    background: C.accent, color: "#fff", fontSize: 10, fontWeight: 600,
+                    opacity: scSaving || !deal.id ? 0.5 : 1,
+                  }}>{scSaving ? "Saving..." : "Save to DB"}</button>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                {[
+                  { key: "overallStatus", label: "Overall Status", placeholder: "Summarize overall integration program status, key themes, and trajectory..." },
+                  { key: "keyIssues", label: "Key Issues", placeholder: "List critical issues requiring attention or resolution..." },
+                  { key: "keyDelays", label: "Key Delays", placeholder: "Identify timeline delays, root causes, and mitigation plans..." },
+                  { key: "keyFindings", label: "Key Findings", placeholder: "Highlight important discoveries from workstream activities..." },
+                  { key: "materialImpacts", label: "Material Impacts", placeholder: "Describe significant impacts to deal thesis, synergies, or operations..." },
+                  { key: "materialDependencies", label: "Material Dependencies", placeholder: "List critical dependencies that could affect integration timeline..." },
+                  { key: "materialOperationalImpacts", label: "Material Operational Impacts", placeholder: "Detail operational impacts to day-to-day business continuity..." },
+                  { key: "keyDecisionsEscalations", label: "Key Decisions & Escalations", placeholder: "Document decisions needed from leadership and escalation items..." },
+                  { key: "financialImpacts", label: "Financial Impacts", placeholder: "Quantify financial impacts: synergy tracking, cost overruns, one-time costs..." },
+                  { key: "overallBudget", label: "Overall Budget & % Complete", placeholder: "Budget status, spend-to-date, forecast, and completion percentage..." },
+                ].map(field => (
+                  <div key={field.key}>
+                    <label style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      {field.label}
+                    </label>
+                    <textarea
+                      value={scNarrative[field.key] || ""}
+                      onChange={e => setScNarrative(prev => ({ ...prev, [field.key]: e.target.value }))}
+                      placeholder={field.placeholder}
+                      style={{
+                        width: "100%", minHeight: 80, padding: 10, borderRadius: 6,
+                        background: C.navy, border: `1px solid ${C.border}`, color: C.text,
+                        fontSize: 11, resize: "vertical", fontFamily: "inherit", lineHeight: 1.6,
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Auto-computed completion */}
+              <div style={{ marginTop: 12, display: "flex", gap: 20, padding: "10px 12px", borderRadius: 6, background: C.navy, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.textMuted }}>
+                  Auto-computed: <b style={{ color: C.accent }}>{kpis.pctComplete}%</b> items complete ({kpis.complete}/{kpis.total})
+                </div>
+                <div style={{ fontSize: 10, color: C.textMuted }}>
+                  Blocked: <b style={{ color: kpis.blocked > 0 ? C.danger : C.success }}>{kpis.blocked}</b>
+                </div>
+                <div style={{ fontSize: 10, color: C.textMuted }}>
+                  Active Risks: <b style={{ color: C.warning }}>{riskAlerts.filter(r => r.status === "open").length}</b>
+                </div>
+                <div style={{ fontSize: 10, color: C.textMuted }}>
+                  Unassigned: <b style={{ color: C.warning }}>{checklistItems.filter(i => i.status !== "na" && !i.ownerId).length}</b>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2203,7 +2328,7 @@ export default function Dashboard({
           marginTop: 24, padding: "14px 0", borderTop: `1px solid rgba(51, 65, 85, 0.4)`,
           display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted
         }}>
-          <span>DealMapper v0.4.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
+          <span>DealMapper v0.5.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
           <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 24 workstreams</span>
         </div>
       </div>

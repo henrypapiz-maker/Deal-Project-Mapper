@@ -602,7 +602,7 @@ export default function Dashboard({
             marginLeft: 8, padding: "6px 14px", borderRadius: 6,
             border: `1px solid rgba(51, 65, 85, 0.5)`, background: "transparent",
             color: C.textMuted, fontSize: 11, cursor: "pointer", fontWeight: 500,
-          }}>\u2190 New Deal</button>
+          }}>{"← Deal Portfolio"}</button>
           <button onClick={() => setShowHelp(!showHelp)} style={{
             width: 30, height: 30, borderRadius: "50%",
             border: `1px solid ${showHelp ? C.accent : "rgba(51, 65, 85, 0.5)"}`,

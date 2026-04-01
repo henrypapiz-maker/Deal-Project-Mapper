@@ -91,8 +91,24 @@ export async function POST(request: Request) {
     await sql`DELETE FROM milestones       WHERE deal_id = ${dealId}`;
     await sql`DELETE FROM saved_filters    WHERE deal_id = ${dealId}`;
 
-    // Insert checklist items
+    // Insert team members FIRST (checklist_items.owner_id FK references team_members)
+    for (const p of (people || []) as any[]) {
+      await sql`
+        INSERT INTO team_members (id, deal_id, name, email, role)
+        VALUES (
+          ${p.id},
+          ${dealId},
+          ${p.name},
+          ${p.email || null},
+          ${p.role || null}
+        )
+      `;
+    }
+
+    // Insert checklist items (after team_members for FK integrity)
     for (const item of checklistItems as any[]) {
+      // Validate owner_id is a valid UUID or null
+      const ownerId = item.ownerId && /^[0-9a-f]{8}-/.test(item.ownerId) ? item.ownerId : null;
       await sql`
         INSERT INTO checklist_items (
           deal_id, item_id, workstream, section, description,
@@ -111,7 +127,7 @@ export async function POST(request: Request) {
           ${item.milestoneDate || null},
           ${item.priority},
           ${item.status},
-          ${item.ownerId || null},
+          ${ownerId},
           ${JSON.stringify(item.dependencies || [])},
           ${item.tsaRelevant || false},
           ${item.crossBorderFlag || false},
@@ -121,20 +137,6 @@ export async function POST(request: Request) {
           ${JSON.stringify(item.attachments || [])},
           ${item.blockedReason || null},
           ${item.naJustification || null}
-        )
-      `;
-    }
-
-    // Insert team members
-    for (const p of (people || []) as any[]) {
-      await sql`
-        INSERT INTO team_members (id, deal_id, name, email, role)
-        VALUES (
-          ${p.id},
-          ${dealId},
-          ${p.name},
-          ${p.email || null},
-          ${p.role || null}
         )
       `;
     }

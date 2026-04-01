@@ -441,6 +441,11 @@ export default function Dashboard({
     } catch {}
   };
 
+  // Auto-load SteerCo narratives when deal loads from DB
+  useEffect(() => {
+    if (deal.id) loadSteerCoNarrative();
+  }, [deal.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function computeRAG(stats: { complete: number; blocked: number; total: number }): "red" | "amber" | "green" {
     if (stats.blocked > 0 && stats.blocked >= stats.total * 0.1) return "red";
     if (stats.blocked > 0) return "amber";

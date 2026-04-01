@@ -100,6 +100,11 @@ interface Props {
   onAddDependency: (itemId: string, dependsOnId: string, depType?: string, detail?: string) => void;
   onRemoveDependency: (itemId: string, dependsOnId: string) => void;
   onUpdateRagOverride: (workstream: string, rag: "red" | "amber" | "green" | undefined) => void;
+  onUpdateDeal?: (updates: Partial<import("@/lib/types").GeneratedDeal>) => void;
+  onUpdatePerson?: (personId: string, updates: Partial<import("@/lib/types").Person>) => void;
+  onForceSave?: () => Promise<void>;
+  lastSavedAt?: string;
+  saveStatus?: "idle" | "saving" | "saved" | "error";
 }
 
 function ProgressChart({ workstreams }: { workstreams: Array<{ workstream: string; completed: number; inProgress: number; blocked: number; total: number; pctComplete: number; ragStatus: string; ragOverride?: string }> }) {
@@ -314,8 +319,13 @@ export default function Dashboard({
   onAddDependency,
   onRemoveDependency,
   onUpdateRagOverride,
+  onUpdateDeal,
+  onUpdatePerson,
+  onForceSave,
+  lastSavedAt,
+  saveStatus = "idle",
 }: Props) {
-  const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco">("live_status");
+  const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco" | "admin">("live_status");
   const [showHelp, setShowHelp] = useState(false);
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -566,7 +576,70 @@ export default function Dashboard({
     { id: "risks", label: "Risk & Dependencies" },
     { id: "timeline", label: "Timeline" },
     { id: "steerco", label: "SteerCo" },
+    { id: "admin", label: "Admin" },
   ] as const;
+
+  // Admin tab local state
+  const [adminDealName, setAdminDealName] = useState(deal.intake.dealName);
+  const [adminDealStatus, setAdminDealStatus] = useState<string>("active");
+  const [adminCloseDate, setAdminCloseDate] = useState(deal.intake.closeDate || "");
+  const [adminSettingsSaved, setAdminSettingsSaved] = useState(false);
+  const [adminApiStatus, setAdminApiStatus] = useState<"unknown" | "ok" | "error">("unknown");
+  const [adminApiChecking, setAdminApiChecking] = useState(false);
+  const [adminImportError, setAdminImportError] = useState<string | null>(null);
+
+  async function checkApiStatus() {
+    setAdminApiChecking(true);
+    try {
+      const res = await fetch("/api/ai-guidance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: "PING",
+          description: "ping",
+          workstream: "Integration Management",
+          status: "not_started",
+          dealContext: {
+            dealStructure: deal.intake.dealStructure,
+            integrationModel: deal.intake.integrationModel,
+            crossBorder: false,
+            jurisdictions: [],
+            tsaRequired: "no",
+            industrySector: "test",
+            targetGaap: "US GAAP",
+          },
+        }),
+      });
+      setAdminApiStatus(res.ok ? "ok" : "error");
+    } catch {
+      setAdminApiStatus("error");
+    }
+    setAdminApiChecking(false);
+  }
+
+  function exportDealAsJson() {
+    const blob = new Blob([JSON.stringify(deal, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${deal.intake.dealName.replace(/\s+/g, "_")}_${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function getLocalStorageSize(): string {
+    try {
+      let total = 0;
+      for (const key of Object.keys(localStorage)) {
+        total += (localStorage.getItem(key) || "").length * 2;
+      }
+      return (total / 1024).toFixed(1) + " KB";
+    } catch {
+      return "N/A";
+    }
+  }
 
   return (
     <div style={{
@@ -581,6 +654,7 @@ export default function Dashboard({
           svg text { fill: #1E293B !important; }
           svg rect[fill="#1E293B"] { fill: #F1F5F9 !important; }
         }
+        @keyframes savePulse { 0%,100%{opacity:1} 50%{opacity:0.45} }
       `}</style>
       {/* Top Nav */}
       <div style={{
@@ -616,6 +690,20 @@ export default function Dashboard({
               transition: "all 0.15s ease",
             }}>{tab.label}</button>
           ))}
+          {/* Autosave Status Indicator */}
+          {saveStatus !== "idle" && (
+            <span style={{
+              marginLeft: 8, fontSize: 10, fontWeight: 600,
+              color: saveStatus === "saved" ? C.success : saveStatus === "saving" ? C.accent : C.warning,
+              display: "flex", alignItems: "center", gap: 4,
+              animation: saveStatus === "saving" ? "savePulse 1.2s ease-in-out infinite" : "none",
+              whiteSpace: "nowrap",
+            }}>
+              {saveStatus === "saved" && "✓ Saved"}
+              {saveStatus === "saving" && "Saving..."}
+              {saveStatus === "error" && "⚠ Save failed"}
+            </span>
+          )}
           <button onClick={() => { if (window.confirm("Starting a new deal will discard all current progress. Continue?")) onReset(); }} style={{
             marginLeft: 8, padding: "6px 14px", borderRadius: 6,
             border: `1px solid rgba(51, 65, 85, 0.5)`, background: "transparent",
@@ -2488,12 +2576,309 @@ export default function Dashboard({
           </div>
         )}
 
+        {/* ─── ADMIN TAB ─── */}
+        {activeTab === "admin" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Admin</h2>
+              <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Deal settings, permissions, database management, and audit log</div>
+            </div>
+
+            {/* ─ Section A: Deal Settings ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, color: C.textMuted }}>
+                A. Deal Settings
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 4 }}>Deal Name</label>
+                  <input
+                    value={adminDealName}
+                    onChange={e => setAdminDealName(e.target.value)}
+                    style={{
+                      width: "100%", padding: "7px 10px", borderRadius: 6,
+                      border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 12,
+                      fontFamily: "inherit", boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 4 }}>Deal Status</label>
+                  <select
+                    value={adminDealStatus}
+                    onChange={e => setAdminDealStatus(e.target.value)}
+                    style={{
+                      width: "100%", padding: "7px 10px", borderRadius: 6,
+                      border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 12,
+                      fontFamily: "inherit", cursor: "pointer",
+                    }}
+                  >
+                    <option value="active">Active</option>
+                    <option value="pre_close">Pre-Close</option>
+                    <option value="complete">Complete</option>
+                    <option value="archived">Archived</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, fontWeight: 600, display: "block", marginBottom: 4 }}>Close Date</label>
+                  <input
+                    type="date"
+                    value={adminCloseDate}
+                    onChange={e => setAdminCloseDate(e.target.value)}
+                    style={{
+                      width: "100%", padding: "7px 10px", borderRadius: 6,
+                      border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 12,
+                      fontFamily: "inherit", boxSizing: "border-box", colorScheme: "dark",
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <button onClick={() => {
+                  if (onUpdateDeal) {
+                    onUpdateDeal({ intake: { ...deal.intake, dealName: adminDealName, closeDate: adminCloseDate } });
+                  }
+                  setAdminSettingsSaved(true);
+                  setTimeout(() => setAdminSettingsSaved(false), 2500);
+                }} style={{
+                  padding: "7px 20px", borderRadius: 6, border: "none", cursor: "pointer",
+                  background: adminSettingsSaved ? C.success : C.accent, color: "#fff",
+                  fontSize: 11, fontWeight: 600, transition: "background 0.2s",
+                }}>
+                  {adminSettingsSaved ? "✓ Saved" : "Save Deal Settings"}
+                </button>
+                {!onUpdateDeal && (
+                  <span style={{ fontSize: 10, color: C.warning }}>⚠ onUpdateDeal prop not connected — settings won&apos;t persist</span>
+                )}
+              </div>
+            </div>
+
+            {/* ─ Section B: Users & Permissions ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, color: C.textMuted }}>
+                B. Users &amp; Permissions
+              </div>
+              {deal.people.length === 0 ? (
+                <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>
+                  No team members yet. Add people in the Team Assignments tab.
+                </div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                      {["Name", "Email", "Role", "Permission Level", "Actions"].map(h => (
+                        <th key={h} style={{ textAlign: "left", padding: "6px 8px", color: C.textMuted, fontWeight: 600, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.8 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {deal.people.map(person => (
+                      <tr key={person.id} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                        <td style={{ padding: "8px 8px", fontWeight: 600, color: C.text }}>{person.name}</td>
+                        <td style={{ padding: "8px 8px", color: C.textMuted }}>{person.email || "—"}</td>
+                        <td style={{ padding: "8px 8px", color: C.textMuted }}>{person.role || "—"}</td>
+                        <td style={{ padding: "6px 8px" }}>
+                          <select
+                            value={person.permissionLevel || "viewer"}
+                            onChange={e => {
+                              if (onUpdatePerson) onUpdatePerson(person.id, { permissionLevel: e.target.value as any });
+                            }}
+                            style={{
+                              padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.border}`,
+                              background: C.deepBlue, color: C.text, fontSize: 10, cursor: "pointer",
+                            }}
+                          >
+                            <option value="admin">Admin — Full access incl. Admin settings</option>
+                            <option value="imo_lead">IMO Lead — Full access except Admin</option>
+                            <option value="workstream_lead">Workstream Lead — Own WS + Team (view) + SteerCo (view)</option>
+                            <option value="viewer">Viewer — Read-only all tabs</option>
+                            <option value="external">External — Read-only SteerCo only</option>
+                          </select>
+                        </td>
+                        <td style={{ padding: "8px 8px" }}>
+                          <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10,
+                            background: (person.permissionLevel === "admin" ? C.accent : person.permissionLevel === "imo_lead" ? C.success : C.muted) + "22",
+                            color: person.permissionLevel === "admin" ? C.accentLight : person.permissionLevel === "imo_lead" ? C.success : C.textMuted,
+                            fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            {person.permissionLevel || "viewer"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div style={{ marginTop: 10, fontSize: 10, color: C.muted }}>
+                Note: Permission levels are stored as metadata only — no auth enforcement is active in this version.
+              </div>
+            </div>
+
+            {/* ─ Section C: Database Management ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, color: C.textMuted }}>
+                C. Database Management
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                <button onClick={async () => { if (onForceSave) await onForceSave(); }} disabled={!onForceSave} style={{
+                  padding: "7px 16px", borderRadius: 6, border: "none", cursor: onForceSave ? "pointer" : "not-allowed",
+                  background: C.accent, color: "#fff", fontSize: 11, fontWeight: 600,
+                  opacity: onForceSave ? 1 : 0.5,
+                }}>Force Save to DB</button>
+                <button onClick={exportDealAsJson} style={{
+                  padding: "7px 16px", borderRadius: 6, border: `1px solid ${C.border}`,
+                  background: "transparent", color: C.text, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                }}>Export Deal as JSON</button>
+                <label style={{
+                  padding: "7px 16px", borderRadius: 6, border: `1px solid ${C.border}`,
+                  background: "transparent", color: C.text, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  display: "inline-block",
+                }}>
+                  Import Deal from JSON
+                  <input type="file" accept=".json" style={{ display: "none" }} onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = ev => {
+                      try {
+                        const parsed = JSON.parse(ev.target?.result as string);
+                        if (!parsed.intake || !parsed.checklistItems) {
+                          setAdminImportError("Invalid deal JSON — missing intake or checklistItems fields.");
+                          return;
+                        }
+                        if (onUpdateDeal) onUpdateDeal(parsed);
+                        setAdminImportError(null);
+                      } catch {
+                        setAdminImportError("Failed to parse JSON file. Please check the file format.");
+                      }
+                    };
+                    reader.readAsText(file);
+                    e.target.value = "";
+                  }} />
+                </label>
+              </div>
+              {adminImportError && (
+                <div style={{ fontSize: 10, color: C.danger, marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.danger + "11", border: `1px solid ${C.danger}33` }}>
+                  ⚠ {adminImportError}
+                </div>
+              )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10 }}>
+                <div style={{ padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Last DB Save</div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{lastSavedAt ? new Date(lastSavedAt).toLocaleString() : "Unknown"}</div>
+                </div>
+                <div style={{ padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Deal DB ID</div>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: C.accentLight, fontFamily: "monospace", wordBreak: "break-all" }}>{deal.id || "Not saved to DB yet"}</div>
+                </div>
+                <div style={{ padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Checklist Items</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.accent }}>{deal.checklistItems.length}</div>
+                  <div style={{ fontSize: 9, color: C.muted }}>{deal.checklistItems.filter(i => i.status !== "na").length} active</div>
+                </div>
+                <div style={{ padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Team Members</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: C.accent }}>{deal.people.length}</div>
+                </div>
+                <div style={{ padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>Risk Alerts</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: deal.riskAlerts.filter(r => r.status === "open").length > 0 ? C.danger : C.success }}>
+                    {deal.riskAlerts.filter(r => r.status === "open").length}
+                  </div>
+                  <div style={{ fontSize: 9, color: C.muted }}>open of {deal.riskAlerts.length} total</div>
+                </div>
+              </div>
+            </div>
+
+            {/* ─ Section D: Audit Log ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, color: C.textMuted }}>
+                D. Audit Log
+              </div>
+              {(deal.changeLog || []).length === 0 ? (
+                <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>No changes recorded yet.</div>
+              ) : (
+                <div style={{ maxHeight: 340, overflowY: "auto", borderRadius: 6, border: `1px solid ${C.border}` }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                    <thead style={{ position: "sticky", top: 0, background: C.deepBlue, zIndex: 1 }}>
+                      <tr>
+                        {["Timestamp", "Item", "Field", "Old Value", "New Value"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "7px 10px", color: C.textMuted, fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.8, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...(deal.changeLog || [])].reverse().slice(0, 50).map(evt => (
+                        <tr key={evt.id} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                          <td style={{ padding: "6px 10px", color: C.textMuted, whiteSpace: "nowrap" }}>
+                            {new Date(evt.timestamp).toLocaleString()}
+                          </td>
+                          <td style={{ padding: "6px 10px", fontWeight: 600, color: C.accent, whiteSpace: "nowrap" }}>{evt.itemId}</td>
+                          <td style={{ padding: "6px 10px", color: C.text, textTransform: "capitalize" }}>{evt.field}</td>
+                          <td style={{ padding: "6px 10px", color: C.danger, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{evt.oldValue}</td>
+                          <td style={{ padding: "6px 10px", color: C.success, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{evt.newValue}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div style={{ marginTop: 8, fontSize: 10, color: C.muted }}>
+                Showing last {Math.min((deal.changeLog || []).length, 50)} of {(deal.changeLog || []).length} entries.
+              </div>
+            </div>
+
+            {/* ─ Section E: System Info ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, color: C.textMuted }}>
+                E. System Info
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+                <div style={{ padding: 14, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>App Version</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>v0.7.0</div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>API Status</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: adminApiStatus === "ok" ? C.success : adminApiStatus === "error" ? C.danger : C.muted,
+                      display: "inline-block",
+                    }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: adminApiStatus === "ok" ? C.success : adminApiStatus === "error" ? C.danger : C.textMuted }}>
+                      {adminApiStatus === "ok" ? "Configured" : adminApiStatus === "error" ? "Not configured / Error" : "Not checked"}
+                    </span>
+                    <button onClick={checkApiStatus} disabled={adminApiChecking} style={{
+                      padding: "2px 8px", borderRadius: 4, border: `1px solid ${C.border}`,
+                      background: "transparent", color: C.textMuted, fontSize: 9, cursor: adminApiChecking ? "not-allowed" : "pointer",
+                      opacity: adminApiChecking ? 0.5 : 1,
+                    }}>{adminApiChecking ? "Checking..." : "Test"}</button>
+                  </div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>Database</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: deal.id ? C.success : C.warning, display: "inline-block" }} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: deal.id ? C.success : C.warning }}>
+                      {deal.id ? "Connected" : "Disconnected"}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ padding: 14, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>localStorage Usage</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{getLocalStorageSize()}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <div style={{
           marginTop: 24, padding: "14px 0", borderTop: `1px solid rgba(51, 65, 85, 0.4)`,
           display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted
         }}>
-          <span>DealMapper v0.6.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
+          <span>DealMapper v0.7.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
           <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 24 workstreams</span>
         </div>
       </div>

@@ -18,6 +18,8 @@ export default function Home() {
   const [portfolioSearch, setPortfolioSearch] = useState("");
   const [portfolioSort, setPortfolioSort] = useState("newest");
   const [portfolioPage, setPortfolioPage] = useState(1);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<string | undefined>(undefined);
 
   // Fetch all deals from DB for multi-deal support
   async function fetchDeals() {
@@ -84,6 +86,7 @@ export default function Home() {
     saveTimerRef.current = setTimeout(async () => {
       if (savingRef.current) return; // Prevent concurrent saves
       savingRef.current = true;
+      setSaveStatus("saving");
       try {
         const res = await fetch("/api/deals", {
           method: "POST",
@@ -97,8 +100,12 @@ export default function Home() {
             prev ? { ...prev, id: data.dealId } : prev
           );
         }
+        setLastSavedAt(new Date().toISOString());
+        setSaveStatus("saved");
+        setTimeout(() => setSaveStatus("idle"), 3000);
       } catch (err: any) {
         console.warn("DB save failed, localStorage preserved:", err.message);
+        setSaveStatus("error");
       } finally {
         savingRef.current = false;
       }
@@ -445,6 +452,48 @@ export default function Home() {
     });
   }, []);
 
+  // Update deal-level fields (used by Admin tab)
+  const handleUpdateDeal = useCallback((updates: Partial<GeneratedDeal>) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return { ...prev, ...updates };
+    });
+  }, []);
+
+  // Update a person's fields (used by Admin tab for permission levels)
+  const handleUpdatePerson = useCallback((personId: string, updates: Partial<Person>) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        people: prev.people.map(p => p.id === personId ? { ...p, ...updates } : p),
+      };
+    });
+  }, []);
+
+  // Force immediate DB save (bypasses debounce)
+  const handleForceSave = useCallback(async () => {
+    if (!deal) return;
+    setSaveStatus("saving");
+    try {
+      const res = await fetch("/api/deals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(deal),
+      });
+      const data = await res.json();
+      if (data.dealId && !deal.id) {
+        setDeal((prev) => prev ? { ...prev, id: data.dealId } : prev);
+      }
+      setLastSavedAt(new Date().toISOString());
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 3000);
+    } catch (err: any) {
+      console.warn("Force save failed:", err.message);
+      setSaveStatus("error");
+    }
+  }, [deal]);
+
   function handleReset() {
     clearDeal();
     setDeal(null);
@@ -492,7 +541,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} onUpdateRagOverride={handleUpdateRagOverride} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} onUpdateRagOverride={handleUpdateRagOverride} onUpdateDeal={handleUpdateDeal} onUpdatePerson={handleUpdatePerson} onForceSave={handleForceSave} lastSavedAt={lastSavedAt} saveStatus={saveStatus} />;
   }
 
   // Multi-deal list view

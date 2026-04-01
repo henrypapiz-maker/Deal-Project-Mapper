@@ -209,6 +209,7 @@ export interface Person {
   name: string;
   role?: string;
   email?: string;
+  permissionLevel?: "admin" | "imo_lead" | "workstream_lead" | "viewer" | "external";
 }
 
 export interface Note {

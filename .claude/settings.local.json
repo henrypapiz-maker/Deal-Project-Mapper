@@ -57,7 +57,10 @@
       "Bash(python3 _patch_dashboard.py)",
       "Bash(node _patch_dashboard.js)",
       "Bash(find C:/Users/henry/Deal-Project-Mapper/app -type f -name *.ts -o -name *.tsx)",
-      "Bash(find C:/Users/henry/Deal-Project-Mapper/components -type f -name *.ts*)"
+      "Bash(find C:/Users/henry/Deal-Project-Mapper/components -type f -name *.ts*)",
+      "Bash(curl -s -X POST http://localhost:3000/api/deals -H \"Content-Type: application/json\" -d @C:/Users/henry/Downloads/coral-reef-fixed.json)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:d.get\\(k\\) for k in [''''id'''',''''error'''']}, indent=2\\)\\)\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/deals -H 'Content-Type: application/json' -d @C:/Users/henry/Downloads/coral-reef-fixed.json)"
     ]
   }
 }

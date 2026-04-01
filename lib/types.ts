@@ -309,6 +309,7 @@ export interface GeneratedDeal {
   progressSnapshots: ProgressSnapshot[];
   savedFilters: SavedFilter[];
   changeLog: ChangeEvent[];
+  ragOverrides?: Record<string, "red" | "amber" | "green">; // persistent RAG overrides keyed by workstream name
 }
 
 export interface WorkstreamSummary {

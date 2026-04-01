@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, Priority } from "@/lib/types";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 import { generateSnapshot, getCurrentPeriodEnd, computeProgramRAG } from "@/lib/progress";
@@ -97,6 +97,7 @@ interface Props {
   onUpdateRisk: (riskId: string, updates: { status?: string; notes?: string; linkedItemIds?: string[] }) => void;
   onAddDependency: (itemId: string, dependsOnId: string, depType?: string, detail?: string) => void;
   onRemoveDependency: (itemId: string, dependsOnId: string) => void;
+  onUpdateRagOverride: (workstream: string, rag: "red" | "amber" | "green" | undefined) => void;
 }
 
 function ProgressChart({ workstreams }: { workstreams: Array<{ workstream: string; completed: number; inProgress: number; blocked: number; total: number; pctComplete: number; ragStatus: string; ragOverride?: string }> }) {
@@ -310,11 +311,23 @@ export default function Dashboard({
   onUpdateRisk,
   onAddDependency,
   onRemoveDependency,
+  onUpdateRagOverride,
 }: Props) {
   const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco">("live_status");
   const [showHelp, setShowHelp] = useState(false);
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
+
+  // Keep selectedItem in sync with live data
+  useEffect(() => {
+    if (selectedItem) {
+      const updated = deal.checklistItems.find(i => i.id === selectedItem.id);
+      if (updated && updated !== selectedItem) {
+        setSelectedItem(updated);
+      }
+    }
+  }, [deal.checklistItems]);
+
   const [guidanceText, setGuidanceText] = useState<string>("");
   const [guidanceLoading, setGuidanceLoading] = useState(false);
   const [filterPhase, setFilterPhase] = useState<string>("all");
@@ -358,6 +371,7 @@ export default function Dashboard({
   const [newDepTarget, setNewDepTarget] = useState("");
   const [newDepType, setNewDepType] = useState("predecessor");
   const [newDepDetail, setNewDepDetail] = useState("");
+  const [taskAddedFlash, setTaskAddedFlash] = useState(false);
 
   // SteerCo narrative sections
   const [scNarrative, setScNarrative] = useState<Record<string, string>>({
@@ -384,7 +398,7 @@ export default function Dashboard({
         }),
       });
       setScSaved(true);
-      setTimeout(() => setScSaved(false), 3000);
+      setTimeout(() => setScSaved(false), 2000);
     } catch (e) { console.warn("Failed to save narrative:", e); }
     finally { setScSaving(false); }
   };
@@ -707,14 +721,14 @@ export default function Dashboard({
               </div>
             </div>
             {/* KPI Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
                 { label: "Overall Progress", value: `${kpis.pctComplete}%`, sub: `${kpis.complete} of ${kpis.total} items`, color: C.accent, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("all"); } },
                 { label: "In Progress", value: kpis.inProgress, sub: "items actively being worked", color: C.accentLight, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("in_progress"); } },
                 { label: "Blocked Items", value: kpis.blocked, sub: "require escalation", color: kpis.blocked > 3 ? C.danger : C.warning, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("blocked"); } },
                 { label: "Overdue", value: overdueCount, sub: "past milestone date", color: overdueCount > 0 ? C.danger : C.success, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("overdue"); } },
                 { label: "Active Risks", value: riskAlerts.filter(r => r.status === "open").length, sub: `${riskAlerts.filter(r => r.severity === "critical").length} critical`, color: C.danger, click: () => { setActiveTab("risks"); } },
-                { label: "Unassigned", value: checklistItems.filter(i => i.status !== "na" && !i.ownerId).length, sub: "items need an owner", color: checklistItems.filter(i => i.status !== "na" && !i.ownerId).length > 20 ? C.warning : C.muted, click: () => { setActiveTab("checklist"); setFilterOwner("unassigned"); } },
+                { label: "Unassigned", value: checklistItems.filter(i => i.status !== "na" && !i.ownerId).length, sub: "items need an owner", color: checklistItems.filter(i => i.status !== "na" && !i.ownerId).length > 20 ? C.warning : C.muted, click: () => { setActiveTab("checklist"); setFilterPhase("all"); setFilterWs("all"); setFilterPriority("all"); setFilterStatus("all"); setFilterOwner("unassigned"); } },
               ].map((kpi, i) => (
                 <div key={i} onClick={kpi.click} style={{
                   padding: 16, borderRadius: 8, background: C.cardBg,
@@ -802,18 +816,26 @@ export default function Dashboard({
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 {/* Risk Register */}
                 <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
-                    Risk Register — {riskAlerts.length} Active
-                  </div>
-                  {riskAlerts.length === 0 ? (
-                    <div style={{ fontSize: 11, color: C.success, padding: 8 }}>✓ No material risks detected for this deal profile</div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {riskAlerts.map((r) => (
-                        <RiskCard key={r.id} risk={r} />
-                      ))}
-                    </div>
-                  )}
+                  {(() => {
+                    const manualCats = new Set(riskAlerts.filter(r => r.source === "manual").map(r => r.category));
+                    const dedupedRisks = riskAlerts.filter(r => !(r.source === "auto" && manualCats.has(r.category)));
+                    return (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
+                          Risk Register — {dedupedRisks.length} Active
+                        </div>
+                        {dedupedRisks.length === 0 ? (
+                          <div style={{ fontSize: 11, color: C.success, padding: 8 }}>✓ No material risks detected for this deal profile</div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {dedupedRisks.map((r) => (
+                              <RiskCard key={r.id} risk={r} />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Milestones */}
@@ -970,13 +992,14 @@ export default function Dashboard({
                 onClick={() => setShowAddTask(!showAddTask)}
                 style={{
                   padding: "4px 12px", borderRadius: 4, fontSize: 10, fontWeight: 600,
-                  background: showAddTask ? C.danger + "22" : C.accent + "22",
-                  color: showAddTask ? C.danger : C.accent,
-                  border: `1px solid ${showAddTask ? C.danger + "44" : C.accent + "44"}`,
+                  background: taskAddedFlash ? C.success : showAddTask ? C.danger + "22" : C.accent + "22",
+                  color: taskAddedFlash ? "#fff" : showAddTask ? C.danger : C.accent,
+                  border: `1px solid ${taskAddedFlash ? C.success : showAddTask ? C.danger + "44" : C.accent + "44"}`,
                   cursor: "pointer", fontFamily: "inherit",
+                  transition: "background 0.2s, color 0.2s, border-color 0.2s",
                 }}
               >
-                {showAddTask ? "Cancel" : "+ New Task"}
+                {taskAddedFlash ? "✓ Added!" : showAddTask ? "Cancel" : "+ New Task"}
               </button>
               <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 9, color: C.textMuted, cursor: "pointer" }}>
                 <input type="checkbox" checked={showNaItems} onChange={(e) => setShowNaItems(e.target.checked)} />
@@ -1069,6 +1092,8 @@ export default function Dashboard({
                     onAddTask({ workstream: newTaskWs, description: newTaskDesc.trim(), phase: newTaskPhase, priority: newTaskPriority, section: "Custom" });
                     setNewTaskDesc("");
                     setShowAddTask(false);
+                    setTaskAddedFlash(true);
+                    setTimeout(() => setTaskAddedFlash(false), 2000);
                   }}
                   disabled={!newTaskWs || !newTaskDesc.trim()}
                   style={{
@@ -1119,24 +1144,32 @@ export default function Dashboard({
                 display: "flex", gap: 8, alignItems: "center", padding: "8px 12px", marginBottom: 12,
                 borderRadius: 6, background: C.accent + "11", border: `1px solid ${C.accent}44`,
               }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: C.accentLight }}>{selectedIds.size} items selected</span>
-                <span style={{ color: C.border }}>|</span>
-                {(["in_progress", "blocked", "complete", "not_started"] as const).map(status => (
-                  <button key={status} onClick={() => {
+                <span style={{ fontSize: 11, fontWeight: 600, color: C.accentLight }}>{selectedIds.size} selected</span>
+                <span style={{ color: C.border }}>—</span>
+                <span style={{ fontSize: 11, color: C.textMuted }}>Change status to:</span>
+                <select
+                  defaultValue=""
+                  onChange={(e) => {
+                    const newStatus = e.target.value as ItemStatus;
+                    if (!newStatus) return;
                     selectedIds.forEach(id => {
                       const item = checklistItems.find(i => i.id === id);
-                      if (item) onUpdateStatus(item.id, status);
+                      if (item) onUpdateStatus(item.id, newStatus);
                     });
                     setSelectedIds(new Set());
-                  }} style={{
-                    padding: "3px 10px", borderRadius: 4, fontSize: 10, fontWeight: 600, cursor: "pointer",
-                    background: status === "complete" ? C.success + "22" : status === "blocked" ? C.danger + "22" : status === "in_progress" ? C.accent + "22" : C.deepBlue,
-                    color: status === "complete" ? C.success : status === "blocked" ? C.danger : status === "in_progress" ? C.accent : C.textMuted,
-                    border: `1px solid ${status === "complete" ? C.success : status === "blocked" ? C.danger : status === "in_progress" ? C.accent : C.border}44`,
-                  }}>
-                    {status === "in_progress" ? "→ In Progress" : status === "blocked" ? "✕ Blocked" : status === "complete" ? "✓ Complete" : "○ Not Started"}
-                  </button>
-                ))}
+                    e.target.value = "";
+                  }}
+                  style={{
+                    padding: "3px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                    background: C.deepBlue, color: C.text, border: `1px solid ${C.accent}66`,
+                  }}
+                >
+                  <option value="" disabled>Select status…</option>
+                  <option value="not_started">Not Started</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="complete">Complete</option>
+                  <option value="blocked">Blocked</option>
+                </select>
                 <button onClick={() => setSelectedIds(new Set())} style={{
                   marginLeft: "auto", padding: "3px 8px", borderRadius: 4, fontSize: 10,
                   background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, cursor: "pointer",
@@ -1512,12 +1545,27 @@ export default function Dashboard({
                   <tbody>
                     {deal.people.map((p) => {
                       const items = checklistItems.filter(i => i.ownerId === p.id);
+                      const assignedCount = items.length;
+                      const workloadColor = assignedCount > 60 ? C.danger : assignedCount > 30 ? C.warning : C.success;
+                      const workloadLabel = assignedCount > 60 ? "Overloaded" : assignedCount > 30 ? "Heavy" : "Manageable";
                       return (
                         <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}22` }}>
                           <td style={{ padding: 6, fontWeight: 600 }}>{p.name}</td>
                           <td style={{ padding: 6, color: C.textMuted }}>{p.role || "—"}</td>
                           <td style={{ padding: 6, color: C.accentLight }}>{p.email || "—"}</td>
-                          <td style={{ padding: 6, textAlign: "center" }}>{items.length}</td>
+                          <td style={{ padding: 6, textAlign: "center" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                              <span style={{ fontWeight: 600 }}>{assignedCount}</span>
+                              <span
+                                title={workloadLabel}
+                                style={{
+                                  display: "inline-block", width: 8, height: 8, borderRadius: "50%",
+                                  background: workloadColor, flexShrink: 0,
+                                  boxShadow: `0 0 4px ${workloadColor}80`,
+                                }}
+                              />
+                            </div>
+                          </td>
                           <td style={{ padding: 6, textAlign: "center", color: C.success }}>{items.filter(i => i.status === "complete").length}</td>
                           <td style={{ padding: 6, textAlign: "center", color: items.filter(i => i.status === "blocked").length > 0 ? C.danger : C.muted }}>
                             {items.filter(i => i.status === "blocked").length}
@@ -1748,14 +1796,24 @@ export default function Dashboard({
             })()}
 
             {/* Active Risk Cards */}
-            {riskAlerts.length === 0 ? (
+            {(() => {
+              // Deduplicate: if a manual risk and an auto risk share the same category,
+              // only show the manual one (it has a richer description). Mark source badges
+              // so users can distinguish auto-detected from manual entries.
+              const manualCategories = new Set(
+                riskAlerts.filter(r => r.source === "manual").map(r => r.category)
+              );
+              const deduplicatedRisks = riskAlerts.filter(r =>
+                !(r.source === "auto" && manualCategories.has(r.category))
+              );
+              return deduplicatedRisks.length === 0 ? (
               <div style={{ padding: 24, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, textAlign: "center" }}>
                 <div style={{ fontSize: 24, marginBottom: 8 }}>✓</div>
                 <div style={{ fontSize: 14, color: C.success }}>No risks in register</div>
                 <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Add risks manually or they will be auto-detected from your deal profile.</div>
               </div>
             ) : (
-              riskAlerts.map((r) => (
+              deduplicatedRisks.map((r) => (
                 <div key={r.id} style={{
                   padding: 16, borderRadius: 8, background: C.cardBg,
                   border: `1px solid ${r.severity === "critical" ? "#EF444444" : r.severity === "high" ? "#F59E0B44" : C.border}`,
@@ -1835,7 +1893,8 @@ export default function Dashboard({
                   </div>
                 </div>
               ))
-            )}
+            );
+            })()}
 
             {/* Ad-Hoc Dependency Linking */}
             <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}` }}>
@@ -1979,16 +2038,26 @@ export default function Dashboard({
             <div style={{ position: "relative", paddingLeft: 140 }}>
               <div style={{ position: "absolute", left: 136, top: 0, bottom: 0, width: 2, background: C.border }} />
               {[
-                { phase: "Pre-Close", period: "Now → Close", color: C.accent, items: deal.checklistItems.filter(i => i.phase === "pre_close" && i.status !== "na").map(i => i.description.slice(0, 50)) },
-                { phase: "Day 1", period: intake.closeDate || "Close Date", color: C.warning, items: deal.checklistItems.filter(i => i.phase === "day_1" && i.status !== "na" && i.priority === "critical").slice(0, 5).map(i => i.description.slice(0, 50)) },
-                { phase: "Day 1–30", period: "+30 days", color: C.accentLight, items: deal.checklistItems.filter(i => i.phase === "day_30" && i.status !== "na").slice(0, 5).map(i => i.description.slice(0, 50)) },
-                { phase: "Day 30–60", period: "+60 days", color: C.success, items: deal.checklistItems.filter(i => i.phase === "day_60" && i.status !== "na").slice(0, 4).map(i => i.description.slice(0, 50)) },
-                { phase: "Day 60–90", period: "+90 days", color: C.success, items: deal.checklistItems.filter(i => i.phase === "day_90" && i.status !== "na").slice(0, 4).map(i => i.description.slice(0, 50)) },
-                { phase: "Year 1", period: "+365 days", color: C.muted, items: deal.checklistItems.filter(i => i.phase === "year_1" && i.status !== "na").slice(0, 3).map(i => i.description.slice(0, 50)) },
+                { phase: "Pre-Close", phaseKey: "pre_close", period: "Now → Close", color: C.accent, items: deal.checklistItems.filter(i => i.phase === "pre_close" && i.status !== "na") },
+                { phase: "Day 1", phaseKey: "day_1", period: intake.closeDate || "Close Date", color: C.warning, items: deal.checklistItems.filter(i => i.phase === "day_1" && i.status !== "na" && i.priority === "critical").slice(0, 5) },
+                { phase: "Day 1–30", phaseKey: "day_30", period: "+30 days", color: C.accentLight, items: deal.checklistItems.filter(i => i.phase === "day_30" && i.status !== "na").slice(0, 5) },
+                { phase: "Day 30–60", phaseKey: "day_60", period: "+60 days", color: C.success, items: deal.checklistItems.filter(i => i.phase === "day_60" && i.status !== "na").slice(0, 4) },
+                { phase: "Day 60–90", phaseKey: "day_90", period: "+90 days", color: C.success, items: deal.checklistItems.filter(i => i.phase === "day_90" && i.status !== "na").slice(0, 4) },
+                { phase: "Year 1", phaseKey: "year_1", period: "+365 days", color: C.muted, items: deal.checklistItems.filter(i => i.phase === "year_1" && i.status !== "na").slice(0, 3) },
               ].map((phase, i) => (
                 <div key={i} style={{ display: "flex", marginBottom: 24, position: "relative" }}>
                   <div style={{ width: 120, textAlign: "right", paddingRight: 24, paddingTop: 2 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: phase.color }}>{phase.phase}</div>
+                    <div
+                      style={{ fontSize: 11, fontWeight: 700, color: phase.color, cursor: "pointer", textDecoration: "underline dotted" }}
+                      title={`View all ${phase.phase} items in Checklist`}
+                      onClick={() => {
+                        setActiveTab("checklist");
+                        setFilterPhase(phase.phaseKey);
+                        setFilterWs("all");
+                        setFilterStatus("all");
+                        setFilterPriority("all");
+                      }}
+                    >{phase.phase}</div>
                     <div style={{ fontSize: 9, color: C.textMuted }}>{phase.period}</div>
                   </div>
                   <div style={{
@@ -2000,13 +2069,29 @@ export default function Dashboard({
                       <span style={{ fontSize: 10, color: C.muted }}>No items for this phase</span>
                     ) : (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {phase.items.map((item, j) => (
-                          <span key={j} style={{
-                            padding: "3px 8px", borderRadius: 4, fontSize: 10,
-                            background: phase.color + "18", color: phase.color,
-                            border: `1px solid ${phase.color}33`,
-                          }}>{item}{item.length === 50 ? "…" : ""}</span>
-                        ))}
+                        {phase.items.map((item, j) => {
+                          const label = item.description.slice(0, 50);
+                          return (
+                            <span
+                              key={j}
+                              title={`Go to "${item.description}" in Checklist`}
+                              onClick={() => {
+                                setActiveTab("checklist");
+                                setFilterPhase(phase.phaseKey);
+                                setFilterWs("all");
+                                setFilterStatus("all");
+                                setFilterPriority("all");
+                                setSelectedItem(item);
+                              }}
+                              style={{
+                                padding: "3px 8px", borderRadius: 4, fontSize: 10,
+                                background: phase.color + "18", color: phase.color,
+                                border: `1px solid ${phase.color}33`,
+                                cursor: "pointer",
+                              }}
+                            >{label}{label.length === 50 ? "…" : ""}</span>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2039,9 +2124,28 @@ export default function Dashboard({
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => {
-                  const snapshot = generateSnapshot(deal, getCurrentPeriodEnd());
+                <button onClick={async () => {
+                  const snapshot = generateSnapshot(deal, getCurrentPeriodEnd(), deal.ragOverrides);
                   onSaveSnapshot(snapshot);
+                  // Also sync to DB bowler table
+                  if (deal.id) {
+                    try {
+                      // Fetch the current reporting period's UUID
+                      const pRes = await fetch(`/api/periods?dealId=${deal.id}`);
+                      const pData = await pRes.json();
+                      const periods: any[] = pData.periods || [];
+                      const currentPeriod = periods.find((p: any) => p.is_current) || periods[periods.length - 1];
+                      if (currentPeriod?.id) {
+                        fetch("/api/bowler", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ dealId: deal.id, periodId: currentPeriod.id }),
+                        }).catch(() => {}); // Best effort — don't block on failure
+                      }
+                    } catch {
+                      // Best effort — localStorage snapshot already saved above
+                    }
+                  }
                 }} style={{
                   padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
                   background: C.success, color: "#fff", border: "none", cursor: "pointer",
@@ -2053,9 +2157,9 @@ export default function Dashboard({
                 <button onClick={() => {
                   const currentSnapshot = deal.progressSnapshots.length > 0
                     ? deal.progressSnapshots[deal.progressSnapshots.length - 1]
-                    : generateSnapshot(deal, getCurrentPeriodEnd());
+                    : generateSnapshot(deal, getCurrentPeriodEnd(), deal.ragOverrides);
                   const text = currentSnapshot.workstreams.map(ws => {
-                    const rag = (ws.ragOverride || ws.ragStatus).toUpperCase();
+                    const rag = ((deal.ragOverrides?.[ws.workstream] || ws.ragOverride || ws.ragStatus)).toUpperCase();
                     return `${ws.workstream} [${rag}] — ${ws.pctComplete}% complete, ${ws.blocked} blocked\n${ws.narrative || "No narrative provided"}`;
                   }).join("\n\n");
                   navigator.clipboard.writeText(`Integration Status Report — ${intake.dealName}\nWeek ending ${getCurrentPeriodEnd()}\n\n${text}`);
@@ -2083,8 +2187,16 @@ export default function Dashboard({
             {(() => {
               const currentSnapshot = deal.progressSnapshots.length > 0
                 ? deal.progressSnapshots[deal.progressSnapshots.length - 1]
-                : generateSnapshot(deal, getCurrentPeriodEnd());
-              const programRAG = computeProgramRAG(currentSnapshot.workstreams);
+                : generateSnapshot(deal, getCurrentPeriodEnd(), deal.ragOverrides);
+              // Apply persisted deal-level overrides on top of snapshot values
+              const snapshotWithOverrides = {
+                ...currentSnapshot,
+                workstreams: currentSnapshot.workstreams.map(ws => ({
+                  ...ws,
+                  ragOverride: deal.ragOverrides?.[ws.workstream] ?? ws.ragOverride,
+                })),
+              };
+              const programRAG = computeProgramRAG(snapshotWithOverrides.workstreams);
               const ragColor = programRAG === "red" ? C.danger : programRAG === "amber" ? C.warning : C.success;
 
               return (
@@ -2119,7 +2231,7 @@ export default function Dashboard({
                   {/* Workstream RAG Table with Narrative Editor */}
                   <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 12, color: C.textMuted }}>
-                      Workstream Status — {currentSnapshot.workstreams.length} Workstreams
+                      Workstream Status — {snapshotWithOverrides.workstreams.length} Workstreams
                     </div>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                       <thead>
@@ -2135,17 +2247,19 @@ export default function Dashboard({
                         </tr>
                       </thead>
                       <tbody>
-                        {currentSnapshot.workstreams.map((ws) => {
-                          const effectiveRag = ws.ragOverride || ws.ragStatus;
+                        {snapshotWithOverrides.workstreams.map((ws) => {
+                          const persistedOverride = deal.ragOverrides?.[ws.workstream];
+                          const effectiveRag = persistedOverride || ws.ragOverride || ws.ragStatus;
                           const ragColor2 = effectiveRag === "red" ? C.danger : effectiveRag === "amber" ? C.warning : C.success;
                           const isEditing = editingNarrative === ws.workstream;
                           return (
                             <tr key={ws.workstream} style={{ borderBottom: `1px solid ${C.border}22` }}>
                               <td style={{ padding: "8px 8px", fontWeight: 600, fontSize: 11 }}>{ws.workstream}</td>
                               <td style={{ padding: "8px 4px", textAlign: "center" }}>
-                                <select value={ws.ragOverride || ""} onChange={(e) => {
-                                  const val = e.target.value || undefined;
-                                  onUpdateNarrative(currentSnapshot.id, ws.workstream, { ragOverride: val });
+                                <select value={persistedOverride || ws.ragOverride || ""} onChange={(e) => {
+                                  const val = (e.target.value || undefined) as "red" | "amber" | "green" | undefined;
+                                  onUpdateRagOverride(ws.workstream, val);
+                                  onUpdateNarrative(snapshotWithOverrides.id, ws.workstream, { ragOverride: val });
                                 }} style={{
                                   background: "transparent", border: `1px solid ${ragColor2}44`, borderRadius: 4,
                                   color: ragColor2, fontSize: 10, fontWeight: 700, padding: "2px 4px", cursor: "pointer",
@@ -2177,7 +2291,7 @@ export default function Dashboard({
                                       style={{ padding: "3px 6px", borderRadius: 3, border: `1px solid ${C.border}`, background: C.deepBlue, color: C.text, fontSize: 10 }} />
                                     <div style={{ display: "flex", gap: 4 }}>
                                       <button onClick={() => {
-                                        onUpdateNarrative(currentSnapshot.id, ws.workstream, { narrative: narrativeText, keyRisks: narrativeRisks, nextSteps: narrativeNext });
+                                        onUpdateNarrative(snapshotWithOverrides.id, ws.workstream, { narrative: narrativeText, keyRisks: narrativeRisks, nextSteps: narrativeNext });
                                         setEditingNarrative(null);
                                       }} style={{ padding: "3px 10px", borderRadius: 3, background: C.success, color: "#fff", border: "none", fontSize: 9, cursor: "pointer", fontWeight: 600 }}>Save</button>
                                       <button onClick={() => setEditingNarrative(null)} style={{ padding: "3px 10px", borderRadius: 3, background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, fontSize: 9, cursor: "pointer" }}>Cancel</button>
@@ -2207,7 +2321,7 @@ export default function Dashboard({
                       Owner Workload
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-                      {currentSnapshot.owners.map((owner) => {
+                      {snapshotWithOverrides.owners.map((owner) => {
                         const pct = owner.total ? Math.round((owner.completed / owner.total) * 100) : 0;
                         return (
                           <div key={owner.ownerName} style={{ padding: 10, borderRadius: 6, background: C.deepBlue, border: `1px solid ${C.border}` }}>
@@ -2229,7 +2343,7 @@ export default function Dashboard({
 
                   {/* Progress Chart */}
                   <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.border}`, marginBottom: 16 }}>
-                    <ProgressChart workstreams={currentSnapshot.workstreams} />
+                    <ProgressChart workstreams={snapshotWithOverrides.workstreams} />
                   </div>
 
                   {/* Burndown Chart */}
@@ -2278,16 +2392,16 @@ export default function Dashboard({
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  {scSaved && <span style={{ fontSize: 10, color: C.success, fontWeight: 600 }}>Saved</span>}
                   <button onClick={loadSteerCoNarrative} style={{
                     padding: "5px 12px", borderRadius: 5, border: `1px solid ${C.border}`, cursor: "pointer",
                     background: "transparent", color: C.textMuted, fontSize: 10, fontWeight: 500,
                   }}>Load Previous</button>
                   <button onClick={saveSteerCoNarrative} disabled={scSaving || !deal.id} style={{
                     padding: "5px 16px", borderRadius: 5, border: "none", cursor: "pointer",
-                    background: C.accent, color: "#fff", fontSize: 10, fontWeight: 600,
+                    background: scSaved ? C.success : C.accent, color: "#fff", fontSize: 10, fontWeight: 600,
                     opacity: scSaving || !deal.id ? 0.5 : 1,
-                  }}>{scSaving ? "Saving..." : "Save to DB"}</button>
+                    transition: "background 0.2s",
+                  }}>{scSaving ? "Saving..." : scSaved ? "✓ Saved!" : "💾 Save to DB"}</button>
                 </div>
               </div>
 

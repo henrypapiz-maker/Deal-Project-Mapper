@@ -12,7 +12,7 @@ function computeRAG(stats: { blocked: number; total: number; completed: number; 
   return "red";
 }
 
-export function generateSnapshot(deal: GeneratedDeal, periodEnd: string): ProgressSnapshot {
+export function generateSnapshot(deal: GeneratedDeal, periodEnd: string, ragOverrides?: Record<string, "red" | "amber" | "green">): ProgressSnapshot {
   const todayStr = new Date().toISOString().split("T")[0];
   const activeItems = deal.checklistItems.filter(i => i.status !== "na");
 
@@ -48,9 +48,13 @@ export function generateSnapshot(deal: GeneratedDeal, periodEnd: string): Progre
       : null;
     const lastWsSnapshot = lastSnapshot?.workstreams.find(w => w.workstream === ws);
 
+    // Resolve ragOverride: explicit parameter map takes priority, then deal-level ragOverrides, then last snapshot value
+    const resolvedRagOverride = (ragOverrides ?? deal.ragOverrides)?.[ws] ?? lastWsSnapshot?.ragOverride;
+
     return {
       workstream: ws,
       ragStatus: computeRAG({ blocked: wsBlocked, total: wsTotal, completed: wsCompleted, pastDue: wsPastDue }),
+      ...(resolvedRagOverride ? { ragOverride: resolvedRagOverride } : {}),
       completed: wsCompleted,
       inProgress: wsInProgress,
       blocked: wsBlocked,

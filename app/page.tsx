@@ -344,6 +344,21 @@ export default function Home() {
     });
   }, []);
 
+  // Persist RAG override at deal level (survives tab switches and snapshot regeneration)
+  const handleUpdateRagOverride = useCallback((workstream: string, rag: "red" | "amber" | "green" | undefined) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const current = prev.ragOverrides ?? {};
+      const updated = { ...current };
+      if (rag) {
+        updated[workstream] = rag;
+      } else {
+        delete updated[workstream];
+      }
+      return { ...prev, ragOverrides: updated };
+    });
+  }, []);
+
   // Save filter
   const handleSaveFilter = useCallback((name: string, filters: any) => {
     setDeal((prev) => {
@@ -477,7 +492,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} onUpdateRagOverride={handleUpdateRagOverride} />;
   }
 
   // Multi-deal list view

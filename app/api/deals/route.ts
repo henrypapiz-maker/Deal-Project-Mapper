@@ -287,6 +287,7 @@ export async function GET(request: Request) {
           functionalScope: deal.functional_scope ?? [],
         },
         checklistItems: items.map((i: any) => ({
+          id: i.id,
           itemId: i.item_id,
           workstream: i.workstream,
           section: i.section,
@@ -367,6 +368,24 @@ export async function GET(request: Request) {
     }
   } catch (error: any) {
     console.error("Load deal error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// DELETE: Remove a deal and all child records (CASCADE handles it)
+export async function DELETE(request: Request) {
+  try {
+    const sql = getSql();
+    if (!sql) return NextResponse.json({ error: "Database not configured" }, { status: 500 });
+
+    const { searchParams } = new URL(request.url);
+    const dealId = searchParams.get("id");
+    if (!dealId) return NextResponse.json({ error: "id parameter required" }, { status: 400 });
+
+    await sql`DELETE FROM deals WHERE id = ${dealId}`;
+    return NextResponse.json({ success: true, deleted: dealId });
+  } catch (error: any) {
+    console.error("Delete deal error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

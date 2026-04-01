@@ -32,10 +32,21 @@ export default function Home() {
     try {
       const res = await fetch(`/api/deals?id=${dealId}`);
       const data = await res.json();
-      if (data.deal) {
-        setDeal(data.deal);
-        saveDeal(data.deal); // also cache in localStorage
+      // API returns deal fields at top level (with id, intake, checklistItems, etc.)
+      if (data.id || data.intake) {
+        // Ensure each checklist item has an internal id
+        if (data.checklistItems) {
+          data.checklistItems = data.checklistItems.map((item: any, idx: number) => ({
+            ...item,
+            id: item.id || `db-${idx}-${Date.now()}`,
+          }));
+        }
+        if (!data.changeLog) data.changeLog = [];
+        setDeal(data);
+        saveDeal(data);
         setAppState("dashboard");
+      } else {
+        console.warn("Deal data missing expected fields:", Object.keys(data));
       }
     } catch (e) { console.warn("Failed to load deal from DB:", e); }
   }
@@ -509,6 +520,18 @@ export default function Home() {
                         textTransform: "uppercase",
                       }}>{d.status || "active"}</span>
                       <span style={{ fontSize: 10, color: "#64748B" }}>→</span>
+                      <button onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`Delete "${d.name}"? This cannot be undone.`)) return;
+                        try {
+                          await fetch(`/api/deals?id=${d.id}`, { method: "DELETE" });
+                          fetchDeals();
+                        } catch {}
+                      }} style={{
+                        padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.3)",
+                        background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 600,
+                        cursor: "pointer",
+                      }}>Delete</button>
                     </div>
                   </div>
                 );

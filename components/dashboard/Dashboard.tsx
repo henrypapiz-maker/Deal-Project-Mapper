@@ -5,6 +5,7 @@ import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, Priority } fr
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 import { generateSnapshot, getCurrentPeriodEnd, computeProgramRAG } from "@/lib/progress";
 import BowlerTable from "./BowlerTable";
+import HelpDrawer from "./HelpDrawer";
 
 const C = {
   navy: "#0F1B2D",
@@ -311,6 +312,7 @@ export default function Dashboard({
   onRemoveDependency,
 }: Props) {
   const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco">("live_status");
+  const [showHelp, setShowHelp] = useState(false);
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
   const [guidanceText, setGuidanceText] = useState<string>("");
@@ -601,8 +603,16 @@ export default function Dashboard({
             border: `1px solid rgba(51, 65, 85, 0.5)`, background: "transparent",
             color: C.textMuted, fontSize: 11, cursor: "pointer", fontWeight: 500,
           }}>\u2190 New Deal</button>
+          <button onClick={() => setShowHelp(!showHelp)} style={{
+            width: 30, height: 30, borderRadius: "50%",
+            border: `1px solid ${showHelp ? C.accent : "rgba(51, 65, 85, 0.5)"}`,
+            background: showHelp ? C.accent + "22" : "transparent",
+            color: showHelp ? C.accent : C.textMuted, fontSize: 14, fontWeight: 700,
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          }} title="Help">?</button>
         </div>
       </div>
+      {showHelp && <HelpDrawer activeTab={activeTab} onClose={() => setShowHelp(false)} />}
 
       <div style={{ padding: "20px 24px", maxWidth: 1400, margin: "0 auto" }}>
 

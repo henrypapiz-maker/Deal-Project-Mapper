@@ -473,10 +473,13 @@ export default function Home() {
                 color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
               }}>+ New Deal</button>
               {hasSaved && (
-                <button onClick={() => { const saved = loadDeal(); if (saved) { setDeal(saved); setAppState("dashboard"); } }} style={{
+                <button onClick={() => {
+                  const saved = loadDeal();
+                  if (saved) { setDeal(saved); setAppState("dashboard"); }
+                }} style={{
                   padding: "10px 24px", borderRadius: 8, border: "1px solid rgba(59, 130, 246, 0.4)",
                   background: "transparent", color: "#3B82F6", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}>Resume Local Deal</button>
+                }}>Resume Local Draft</button>
               )}
             </div>
           </div>
@@ -619,18 +622,27 @@ export default function Home() {
         >
           Start New Deal →
         </button>
-        {hasSaved && (
-          <button onClick={() => {
-            const saved = loadDeal();
-            if (saved) { setDeal(saved); setAppState("dashboard"); }
-          }} style={{
-            display: "block", margin: "12px auto 0", padding: "12px 28px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-            background: "transparent", color: "#3B82F6",
-            border: "1px solid rgba(59, 130, 246, 0.4)", cursor: "pointer", fontFamily: "inherit",
-          }}>
-            Resume Previous Deal
-          </button>
-        )}
+        <button onClick={async () => {
+          // Try localStorage first, then fall back to most recent DB deal
+          const saved = loadDeal();
+          if (saved) { setDeal(saved); setAppState("dashboard"); return; }
+          // Load most recent deal from DB
+          try {
+            const res = await fetch("/api/deals");
+            const data = await res.json();
+            if (data.deals && data.deals.length > 0) {
+              await loadDealFromDb(data.deals[0].id);
+            } else {
+              setAppState("intake");
+            }
+          } catch { setAppState("intake"); }
+        }} style={{
+          display: "block", margin: "12px auto 0", padding: "12px 28px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+          background: "transparent", color: "#3B82F6",
+          border: "1px solid rgba(59, 130, 246, 0.4)", cursor: "pointer", fontFamily: "inherit",
+        }}>
+          Resume Latest Deal
+        </button>
         <button onClick={() => { fetchDeals(); setAppState("deals"); }} style={{
           display: "block", margin: "8px auto 0", padding: "10px 28px", borderRadius: 8, fontSize: 12, fontWeight: 500,
           background: "transparent", color: "#64748B",

@@ -15,6 +15,9 @@ export default function Home() {
   const [hasSaved, setHasSaved] = useState(false);
   const [dealsList, setDealsList] = useState<any[]>([]);
   const [loadingDeals, setLoadingDeals] = useState(false);
+  const [portfolioSearch, setPortfolioSearch] = useState("");
+  const [portfolioSort, setPortfolioSort] = useState("newest");
+  const [portfolioPage, setPortfolioPage] = useState(1);
 
   // Fetch all deals from DB for multi-deal support
   async function fetchDeals() {
@@ -53,6 +56,23 @@ export default function Home() {
 
   // Auto-save to localStorage (immediate) + DB (debounced 2 s after last change)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false); // Prevent concurrent DB saves
+
+  // BUG-02 fix: Push browser history state so back button works
+  useEffect(() => {
+    if (appState !== "landing") {
+      window.history.pushState({ appState }, "", window.location.pathname);
+    }
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state?.appState) {
+        setAppState(e.state.appState);
+      } else {
+        setAppState("landing");
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [appState]);
 
   useEffect(() => {
     if (!deal) return;
@@ -60,24 +80,28 @@ export default function Home() {
     saveDeal(deal);
     // Debounce the DB write — cancel any pending timer first
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      fetch("/api/deals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(deal),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.dealId && !deal.id) {
-            // Back-fill the DB-assigned UUID into state so future saves hit ON CONFLICT
-            setDeal((prev) =>
-              prev ? { ...prev, id: data.dealId } : prev
-            );
-          }
-        })
-        .catch((err) =>
-          console.warn("DB save failed, localStorage preserved:", err.message)
-        );
+    // BUG-03/05 fix: Skip DB save if already saving or if this is just an id backfill
+    saveTimerRef.current = setTimeout(async () => {
+      if (savingRef.current) return; // Prevent concurrent saves
+      savingRef.current = true;
+      try {
+        const res = await fetch("/api/deals", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(deal),
+        });
+        const data = await res.json();
+        if (data.dealId && !deal.id) {
+          // Back-fill the DB-assigned UUID into state — but skip re-triggering save
+          setDeal((prev) =>
+            prev ? { ...prev, id: data.dealId } : prev
+          );
+        }
+      } catch (err: any) {
+        console.warn("DB save failed, localStorage preserved:", err.message);
+      } finally {
+        savingRef.current = false;
+      }
     }, 2000);
   }, [deal]);
 
@@ -484,6 +508,33 @@ export default function Home() {
             </div>
           </div>
 
+          {/* BUG-10: Search + Sort controls */}
+          {!loadingDeals && dealsList.length > 0 && (
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
+              <input
+                type="text"
+                placeholder="Search deals by name..."
+                value={portfolioSearch}
+                onChange={e => setPortfolioSearch(e.target.value)}
+                style={{
+                  flex: 1, padding: "8px 14px", borderRadius: 6, fontSize: 12,
+                  background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
+                  color: "#F8FAFC", fontFamily: "inherit",
+                }}
+              />
+              <select value={portfolioSort} onChange={e => setPortfolioSort(e.target.value)} style={{
+                padding: "8px 12px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
+                color: "#94A3B8", fontFamily: "inherit", cursor: "pointer",
+              }}>
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="name_asc">Name A→Z</option>
+                <option value="name_desc">Name Z→A</option>
+              </select>
+            </div>
+          )}
+
           {loadingDeals && <div style={{ textAlign: "center", color: "#64748B", padding: 40 }}>Loading deals...</div>}
 
           {!loadingDeals && dealsList.length === 0 && (
@@ -493,54 +544,96 @@ export default function Home() {
             </div>
           )}
 
-          {dealsList.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {dealsList.map((d: any) => {
-                const statusColors: Record<string, string> = { active: "#10B981", pre_close: "#F59E0B", complete: "#3B82F6", archived: "#64748B" };
-                return (
-                  <div key={d.id} onClick={() => loadDealFromDb(d.id)} style={{
-                    padding: "16px 20px", borderRadius: 10,
-                    background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
-                    cursor: "pointer", transition: "all 0.15s",
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.borderColor = "#3B82F6")}
-                    onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(51, 65, 85, 0.5)")}
-                  >
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#F8FAFC", marginBottom: 4 }}>{d.name}</div>
-                      <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#94A3B8" }}>
-                        <span>{d.deal_structure?.replace(/_/g, " ")}</span>
-                        <span>{d.integration_model?.replace(/_/g, " ")}</span>
-                        <span>Close: {d.close_date ? new Date(d.close_date).toLocaleDateString() : "—"}</span>
+          {dealsList.length > 0 && (() => {
+            // BUG-10/11: Filter, sort, and paginate
+            let filtered = dealsList.filter((d: any) =>
+              !portfolioSearch || d.name?.toLowerCase().includes(portfolioSearch.toLowerCase())
+            );
+            filtered.sort((a: any, b: any) => {
+              if (portfolioSort === "name_asc") return (a.name || "").localeCompare(b.name || "");
+              if (portfolioSort === "name_desc") return (b.name || "").localeCompare(a.name || "");
+              if (portfolioSort === "oldest") return (a.created_at || "").localeCompare(b.created_at || "");
+              return (b.created_at || "").localeCompare(a.created_at || ""); // newest
+            });
+            const PAGE_SIZE = 10;
+            const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+            const paged = filtered.slice((portfolioPage - 1) * PAGE_SIZE, portfolioPage * PAGE_SIZE);
+
+            return (
+              <>
+                <div style={{ fontSize: 10, color: "#64748B", marginBottom: 8 }}>
+                  Showing {paged.length} of {filtered.length} deals{portfolioSearch ? ` matching "${portfolioSearch}"` : ""}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {paged.map((d: any) => {
+                    const statusColors: Record<string, string> = { active: "#10B981", pre_close: "#F59E0B", complete: "#3B82F6", archived: "#64748B" };
+                    return (
+                      <div key={d.id} onClick={() => loadDealFromDb(d.id)} style={{
+                        padding: "16px 20px", borderRadius: 10,
+                        background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
+                        cursor: "pointer", transition: "all 0.15s",
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                      }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = "#3B82F6")}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(51, 65, 85, 0.5)")}
+                      >
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: "#F8FAFC", marginBottom: 4 }}>{d.name}</div>
+                          <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#94A3B8" }}>
+                            <span>{d.deal_structure?.replace(/_/g, " ")}</span>
+                            <span>{d.integration_model?.replace(/_/g, " ")}</span>
+                            <span>Close: {d.close_date ? new Date(d.close_date).toLocaleDateString() : "—"}</span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <span style={{
+                            fontSize: 9, fontWeight: 600, padding: "3px 10px", borderRadius: 4,
+                            background: (statusColors[d.status] || "#64748B") + "22",
+                            color: statusColors[d.status] || "#64748B",
+                            textTransform: "uppercase",
+                          }}>{d.status || "active"}</span>
+                          {/* BUG-15: Better open label */}
+                          <button onClick={(e) => { e.stopPropagation(); loadDealFromDb(d.id); }} style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(59,130,246,0.3)",
+                            background: "transparent", color: "#3B82F6", fontSize: 9, fontWeight: 600,
+                            cursor: "pointer",
+                          }}>Open →</button>
+                          <button onClick={async (e) => {
+                            e.stopPropagation();
+                            if (!window.confirm(`Delete "${d.name}"? This cannot be undone.`)) return;
+                            try {
+                              await fetch(`/api/deals?id=${d.id}`, { method: "DELETE" });
+                              fetchDeals();
+                            } catch {}
+                          }} style={{
+                            padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.3)",
+                            background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 600,
+                            cursor: "pointer",
+                          }}>Delete</button>
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span style={{
-                        fontSize: 9, fontWeight: 600, padding: "3px 10px", borderRadius: 4,
-                        background: (statusColors[d.status] || "#64748B") + "22",
-                        color: statusColors[d.status] || "#64748B",
-                        textTransform: "uppercase",
-                      }}>{d.status || "active"}</span>
-                      <span style={{ fontSize: 10, color: "#64748B" }}>→</span>
-                      <button onClick={async (e) => {
-                        e.stopPropagation();
-                        if (!window.confirm(`Delete "${d.name}"? This cannot be undone.`)) return;
-                        try {
-                          await fetch(`/api/deals?id=${d.id}`, { method: "DELETE" });
-                          fetchDeals();
-                        } catch {}
-                      }} style={{
-                        padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.3)",
-                        background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 600,
-                        cursor: "pointer",
-                      }}>Delete</button>
-                    </div>
+                    );
+                  })}
+                </div>
+                {/* BUG-11: Pagination */}
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+                    <button disabled={portfolioPage <= 1} onClick={() => setPortfolioPage(p => p - 1)} style={{
+                      padding: "4px 12px", borderRadius: 4, border: "1px solid rgba(51,65,85,0.5)",
+                      background: "transparent", color: portfolioPage <= 1 ? "#334155" : "#94A3B8",
+                      fontSize: 10, cursor: portfolioPage <= 1 ? "default" : "pointer",
+                    }}>← Prev</button>
+                    <span style={{ fontSize: 10, color: "#64748B", lineHeight: "28px" }}>Page {portfolioPage} of {totalPages}</span>
+                    <button disabled={portfolioPage >= totalPages} onClick={() => setPortfolioPage(p => p + 1)} style={{
+                      padding: "4px 12px", borderRadius: 4, border: "1px solid rgba(51,65,85,0.5)",
+                      background: "transparent", color: portfolioPage >= totalPages ? "#334155" : "#94A3B8",
+                      fontSize: 10, cursor: portfolioPage >= totalPages ? "default" : "pointer",
+                    }}>Next →</button>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </>
+            );
+          })()}
 
           <button onClick={() => setAppState("landing")} style={{
             display: "block", margin: "24px auto 0", fontSize: 11, color: "#64748B",
@@ -674,7 +767,7 @@ export default function Home() {
         </div>
 
         <div style={{ marginTop: 24, fontSize: 10, color: "#334155", letterSpacing: 0.5 }}>
-          DealMapper v0.5.0 · M&A Integration Engine · March 2026
+          DealMapper v0.6.0 · M&A Integration Engine · April 2026
         </div>
       </div>
     </div>

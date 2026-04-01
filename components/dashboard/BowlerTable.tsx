@@ -165,7 +165,7 @@ export default function BowlerTable({ dealId, closeDate, onCellClick }: BowlerTa
               padding: "5px 14px", borderRadius: 5, border: hasCells ? `1px solid ${C.border}` : "none", cursor: "pointer",
               background: hasCells ? "transparent" : C.success, color: hasCells ? C.textMuted : "#fff",
               fontSize: 10, fontWeight: 600, opacity: snapshotting ? 0.6 : 1,
-            }}>{snapshotting ? "Snapshotting..." : hasCells ? "Refresh Snapshot" : "Take Snapshot"}</button>
+            }}>{snapshotting ? "Snapshotting..." : hasCells ? "Refresh Snapshot" : "Capture Snapshot"}</button>
           )}
           {hasCells && (
             <button onClick={() => {
@@ -197,7 +197,7 @@ export default function BowlerTable({ dealId, closeDate, onCellClick }: BowlerTa
       {!hasCells ? (
         <div style={{ padding: 40, textAlign: "center", color: C.textMuted }}>
           <div style={{ fontSize: 13, marginBottom: 8 }}>No snapshot data yet</div>
-          <div style={{ fontSize: 11 }}>Click &ldquo;Take Snapshot&rdquo; to capture current item statuses into the bowler table.</div>
+          <div style={{ fontSize: 11 }}>Click &ldquo;Capture Snapshot&rdquo; to capture current item statuses into the bowler table.</div>
         </div>
       ) : (
         <div style={{ overflowX: "auto" }}>

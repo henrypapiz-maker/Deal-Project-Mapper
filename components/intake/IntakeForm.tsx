@@ -79,14 +79,29 @@ const FUNCTIONAL_AREAS: { value: FunctionalArea; label: string }[] = [
   { value: "operations", label: "Operations" },
 ];
 
+const FUNCTION_OPTIONS: { code: string; label: string }[] = [
+  { code: "finance", label: "Finance & Accounting" },
+  { code: "tax", label: "Tax" },
+  { code: "treasury", label: "Treasury" },
+  { code: "it", label: "IT & Systems" },
+  { code: "hr", label: "HR & People" },
+  { code: "legal", label: "Legal" },
+  { code: "communications", label: "Communications" },
+  { code: "facilities", label: "Facilities" },
+  { code: "esg", label: "ESG" },
+  { code: "controls", label: "Controls & Governance" },
+  { code: "fpa", label: "FP&A" },
+  { code: "operations", label: "Operations" },
+];
+
 interface Props {
   onSubmit: (intake: DealIntake) => void;
 }
 
 const EMPTY_INTAKE: DealIntake = {
   dealName: "",
-  dealStructure: "stock_purchase",
-  integrationModel: "fully_integrated",
+  dealStructure: "" as any,
+  integrationModel: "" as any,
   closeDate: "",
   functionalScope: ["all"],
   crossBorder: false,
@@ -115,14 +130,18 @@ export default function IntakeForm({ onSubmit }: Props) {
       ? form.jurisdictions.filter((j) => j !== code)
       : [...form.jurisdictions, code];
     set("jurisdictions", next);
-    // Auto-set crossBorder if non-US selected
-    const hasNonUS = next.some((j) => !j.startsWith("US"));
-    set("crossBorder", hasNonUS);
+    // Don't auto-override crossBorder — user already explicitly chose it
+    // Only auto-set to true if multiple countries selected (never reset to false)
+    if (next.length > 1 || next.some((j) => !j.startsWith("US"))) {
+      set("crossBorder", true);
+    }
   }
 
   function validateTier1(): boolean {
     const e: typeof errors = {};
     if (!form.dealName.trim()) e.dealName = "Deal name is required";
+    if (!form.dealStructure) e.dealStructure = "Select a deal structure";
+    if (!form.integrationModel) e.integrationModel = "Select an integration model";
     if (!form.closeDate) e.closeDate = "Close date is required";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -257,6 +276,9 @@ export default function IntakeForm({ onSubmit }: Props) {
       {/* ===== TIER 2 ===== */}
       {tier === 2 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <div style={{ fontSize: 11, color: COLORS.textMuted, padding: "8px 12px", borderRadius: 6, background: `${COLORS.accent}10`, border: `1px solid ${COLORS.accent}20` }}>
+            💡 These fields help refine your integration plan. Skip any field you don&apos;t know yet — they can be updated later.
+          </div>
           <Field label="Cross-Border Deal?">
             <div style={{ display: "flex", gap: 8 }}>
               {[
@@ -343,51 +365,50 @@ export default function IntakeForm({ onSubmit }: Props) {
           <Field label="Functional Scope" hint="Select which functions are in scope. Unselected functions will have checklist items marked N/A.">
             <div style={{ marginBottom: 8 }}>
               <button
-                onClick={() => {
-                  const isAll = form.functionalScope.includes("all");
-                  set("functionalScope", isAll ? [] : ["all"]);
-                }}
+                onClick={() => set("functionalScope", ["all"])}
                 style={{
-                  padding: "6px 12px", borderRadius: 4, border: `2px solid`,
+                  padding: "6px 14px", borderRadius: 4, border: `2px solid`,
                   borderColor: form.functionalScope.includes("all") ? COLORS.accent : COLORS.border,
                   background: form.functionalScope.includes("all") ? COLORS.accent + "18" : COLORS.cardBg,
                   color: form.functionalScope.includes("all") ? COLORS.accent : COLORS.textMuted,
                   fontSize: 10, fontWeight: 700, cursor: "pointer",
                 }}
               >
-                All Functions
+                {form.functionalScope.includes("all") ? "✓ All Functions" : "All Functions"}
               </button>
             </div>
-            {!form.functionalScope.includes("all") && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-                {FUNCTIONAL_AREAS.map((fa) => {
-                  const isSelected = form.functionalScope.includes(fa.value);
-                  return (
-                    <button
-                      key={fa.value}
-                      onClick={() => {
-                        const next = isSelected
-                          ? form.functionalScope.filter((f) => f !== fa.value)
-                          : [...form.functionalScope, fa.value];
-                        set("functionalScope", next as FunctionalArea[]);
-                      }}
-                      style={{
-                        padding: "6px 10px", borderRadius: 4, border: `1px solid`,
-                        borderColor: isSelected ? COLORS.accent : COLORS.border,
-                        background: isSelected ? COLORS.accent + "22" : COLORS.cardBg,
-                        color: isSelected ? COLORS.accent : COLORS.textMuted,
-                        fontSize: 10, fontWeight: 600, cursor: "pointer", textAlign: "left",
-                      }}
-                    >
-                      {fa.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {!form.functionalScope.includes("all") && form.functionalScope.includes("it") && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              {FUNCTION_OPTIONS.map((fn) => {
+                const isSelected = form.functionalScope.includes("all" as any) || form.functionalScope.includes(fn.code as any);
+                return (
+                  <button
+                    key={fn.code}
+                    onClick={() => {
+                      const currentCodes: string[] = form.functionalScope.includes("all" as any)
+                        ? FUNCTION_OPTIONS.map((f) => f.code)
+                        : [...form.functionalScope];
+                      const next = isSelected
+                        ? currentCodes.filter((c) => c !== fn.code)
+                        : [...currentCodes.filter((c) => c !== "all"), fn.code];
+                      const allSelected = FUNCTION_OPTIONS.every((f) => next.includes(f.code));
+                      set("functionalScope", (allSelected ? ["all"] : next) as any);
+                    }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 4, border: `1px solid`,
+                      borderColor: isSelected ? COLORS.accent : COLORS.border,
+                      background: isSelected ? COLORS.accent + "22" : COLORS.cardBg,
+                      color: isSelected ? COLORS.accent : COLORS.textMuted,
+                      fontSize: 10, fontWeight: 600, cursor: "pointer", textAlign: "left",
+                    }}
+                  >
+                    {fn.label}
+                  </button>
+                );
+              })}
+            </div>
+            {(form.functionalScope.includes("all") || form.functionalScope.includes("it")) && (
               <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}33`, fontSize: 10, color: COLORS.accent }}>
-                IT selected — 10 IT workstreams activated (Governance, Enterprise Apps, Infrastructure, ITGC, etc.)
+                IT & Systems selected — 10 IT workstreams activated (Governance, Enterprise Apps, Infrastructure, ITGC, etc.)
               </div>
             )}
           </Field>

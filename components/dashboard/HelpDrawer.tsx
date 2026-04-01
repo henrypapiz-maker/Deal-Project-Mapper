@@ -342,7 +342,7 @@ export default function HelpDrawer({ activeTab, onClose }: HelpDrawerProps) {
         padding: "10px 16px", borderTop: `1px solid ${C.border}`,
         fontSize: 9, color: C.textMuted, textAlign: "center",
       }}>
-        DealMapper v0.5.1 · Help updates with active tab
+        DealMapper v0.6.0 · Help updates with active tab
       </div>
     </div>
   );

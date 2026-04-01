@@ -625,7 +625,7 @@ export default function Dashboard({
           {[
             ["Structure", STRUCTURE_LABELS[intake.dealStructure]],
             ["Model", MODEL_LABELS[intake.integrationModel]],
-            ["Close Date", intake.closeDate || "TBD"],
+            ["Close Date", intake.closeDate ? new Date(intake.closeDate).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" }) : "TBD"],
             ["Cross-Border", intake.crossBorder ? intake.jurisdictions.join(", ") : "Domestic"],
             ["TSA", intake.tsaRequired.toUpperCase()],
             ["Sector", intake.industrySector || "—"],
@@ -2338,7 +2338,7 @@ export default function Dashboard({
           marginTop: 24, padding: "14px 0", borderTop: `1px solid rgba(51, 65, 85, 0.4)`,
           display: "flex", justifyContent: "space-between", fontSize: 10, color: C.muted
         }}>
-          <span>DealMapper v0.5.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
+          <span>DealMapper v0.6.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
           <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 24 workstreams</span>
         </div>
       </div>

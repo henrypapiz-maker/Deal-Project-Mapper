@@ -34,21 +34,31 @@ export default function BowlerTable({ dealId, closeDate, onCellClick }: BowlerTa
     setLoading(true);
     setError(null);
     try {
+      // Ensure periods exist
       await fetch("/api/periods", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dealId, closeDate }),
       });
+      // Fetch periods
       const pRes = await fetch(`/api/periods?dealId=${dealId}`);
       const pData = await pRes.json();
       const allPeriods = pData.periods || [];
-      setPeriods(allPeriods.slice(-viewConfig.visiblePeriods));
+      const visiblePeriods = allPeriods.slice(-viewConfig.visiblePeriods);
+      setPeriods(visiblePeriods);
 
+      // Fetch ALL bowler cells for this deal in a single request per level
+      // Then match by period_id on the client side
       const allCells: any[] = [];
       for (const level of ["program", "track", "workstream"]) {
-        const cRes = await fetch(`/api/bowler?dealId=${dealId}&level=${level}&periods=${viewConfig.visiblePeriods}`);
+        const cRes = await fetch(`/api/bowler?dealId=${dealId}&level=${level}&periods=${allPeriods.length || 20}`);
         const cData = await cRes.json();
-        if (cData.cells) allCells.push(...cData.cells);
+        if (cData.cells) {
+          // Filter to only cells matching our visible period IDs
+          const visibleIds = new Set(visiblePeriods.map((p: any) => p.id));
+          const filtered = cData.cells.filter((c: any) => visibleIds.has(c.period_id));
+          allCells.push(...filtered);
+        }
       }
       setCells(allCells);
     } catch (e: any) {
@@ -62,8 +72,16 @@ export default function BowlerTable({ dealId, closeDate, onCellClick }: BowlerTa
 
   const takeSnapshot = async (periodId: string) => {
     setSnapshotting(true);
+    setError(null);
     try {
-      await fetch("/api/bowler", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dealId, periodId }) });
+      const res = await fetch("/api/bowler", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dealId, periodId }) });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Snapshot failed");
+        return;
+      }
+      // Wait briefly for DB to commit, then refresh
+      await new Promise(r => setTimeout(r, 500));
       await initBowler();
     } catch (e: any) { setError(e.message); }
     finally { setSnapshotting(false); }

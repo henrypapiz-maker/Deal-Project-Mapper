@@ -658,8 +658,16 @@ export default function Dashboard({
                       const complete = checklistItems.filter(i => i.status === "complete").length;
                       const blocked = checklistItems.filter(i => i.status === "blocked").length;
                       const pct = totalActive ? Math.round((complete / totalActive) * 100) : 0;
-                      const health = blocked > totalActive * 0.1 ? "At Risk" : pct >= 50 ? "On Track" : pct >= 20 ? "In Progress" : "Getting Started";
-                      const healthColor = health === "At Risk" ? C.danger : health === "On Track" ? C.success : C.warning;
+                      const inProgress = checklistItems.filter(i => i.status === "in_progress").length;
+                      const health = blocked > totalActive * 0.1 ? "At Risk" :
+                        pct >= 90 ? "Closing Out" :
+                        pct >= 50 ? "On Track" :
+                        (inProgress > 0 || pct >= 5) ? "Active" :
+                        "Getting Started";
+                      const healthColor = health === "At Risk" ? C.danger :
+                        health === "Closing Out" ? C.accent :
+                        health === "On Track" ? C.success :
+                        health === "Active" ? C.warning : C.textMuted;
                       return (
                         <>
                           <span style={{
@@ -2182,7 +2190,7 @@ export default function Dashboard({
                                     setNarrativeRisks(typeof ws.keyRisks === "string" ? ws.keyRisks : (ws.keyRisks || []).join(", "));
                                     setNarrativeNext(typeof ws.nextSteps === "string" ? ws.nextSteps : (ws.nextSteps || []).join(", "));
                                   }} style={{ cursor: "pointer", fontSize: 10, color: ws.narrative ? C.text : C.muted, fontStyle: ws.narrative ? "normal" : "italic" }}>
-                                    {ws.narrative ? (ws.narrative.length > 60 ? ws.narrative.substring(0, 60) + "..." : ws.narrative) : "Click to add narrative..."}
+                                    {ws.narrative ? (ws.narrative.length > 120 ? <span title={ws.narrative}>{ws.narrative.substring(0, 120)}…</span> : ws.narrative) : "Click to add narrative..."}
                                   </div>
                                 )}
                               </td>

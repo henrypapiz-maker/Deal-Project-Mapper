@@ -6,6 +6,8 @@ import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 import { generateSnapshot, getCurrentPeriodEnd, computeProgramRAG } from "@/lib/progress";
 import BowlerTable from "./BowlerTable";
 import HelpDrawer from "./HelpDrawer";
+import ReportDrafter from "./ReportDrafter";
+import SlidePreview from "./SlidePreview";
 
 const C = {
   navy: "#0F1B2D",
@@ -381,6 +383,8 @@ export default function Dashboard({
   });
   const [scSaving, setScSaving] = useState(false);
   const [scSaved, setScSaved] = useState(false);
+  const [showReportDrafter, setShowReportDrafter] = useState(false);
+  const [showSlidePreview, setShowSlidePreview] = useState(false);
 
   const saveSteerCoNarrative = async () => {
     if (!deal.id) return;
@@ -2167,8 +2171,37 @@ export default function Dashboard({
                   padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
                   background: C.deepBlue, color: C.text, border: `1px solid ${C.border}`, cursor: "pointer",
                 }}>📋 Copy Summary</button>
+                <button onClick={() => setShowReportDrafter(!showReportDrafter)} style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  background: showReportDrafter ? C.accent : C.deepBlue,
+                  color: showReportDrafter ? "#fff" : C.text,
+                  border: `1px solid ${showReportDrafter ? C.accent : C.border}`, cursor: "pointer",
+                }}>🤖 AI Assistant</button>
+                <button onClick={() => setShowSlidePreview(true)} style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                  background: C.deepBlue, color: C.text, border: `1px solid ${C.border}`, cursor: "pointer",
+                }}>📊 Slide Deck</button>
               </div>
             </div>
+
+            {/* AI Report Drafter */}
+            {showReportDrafter && (
+              <ReportDrafter
+                deal={deal}
+                scNarrative={scNarrative}
+                onUpdateNarrative={(key, value) => setScNarrative(prev => ({ ...prev, [key]: value }))}
+                onUpdateAllNarratives={(narratives) => setScNarrative(prev => ({ ...prev, ...narratives }))}
+              />
+            )}
+
+            {/* Slide Deck Preview Modal */}
+            {showSlidePreview && (
+              <SlidePreview
+                deal={deal}
+                scNarrative={scNarrative}
+                onClose={() => setShowSlidePreview(false)}
+              />
+            )}
 
             {/* Bowler Table — Time-Phased RAG Grid */}
             {deal.id && (

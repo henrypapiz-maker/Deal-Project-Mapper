@@ -1043,23 +1043,37 @@ export function buildSectionPrompt(section: SectionKey, context: ReportContext):
   switch (section) {
     case "overallStatus":
       sectionSpecific = `
-SECTION FOCUS: Provide a holistic view of integration health, velocity, and trajectory.
+SECTION FOCUS: The opening paragraph the Board reads first. Must establish overall health, velocity, and the 2-3 things that matter most this period.
 DATA TO DRAW ON:
-- Program stats: ${context.snapshotStats.pctComplete}% complete, ${context.snapshotStats.blocked} blocked, ${context.snapshotStats.pastDue} past-due
-- Top workstream RAG concentrations
-- Overall risk profile
-INCLUDE: Overall progress assessment, key themes, headline risks, and forward outlook.`;
+- Program stats: ${context.snapshotStats.pctComplete}% complete (${context.snapshotStats.completed} of ${context.snapshotStats.totalActive} items), ${context.snapshotStats.blocked} blocked, ${context.snapshotStats.pastDue} past-due
+- Workstream RAG distribution: ${context.workstreamBreakdown.filter((w) => w.effectiveRag === "red").length} red, ${context.workstreamBreakdown.filter((w) => w.effectiveRag === "amber").length} amber, ${context.workstreamBreakdown.filter((w) => w.effectiveRag === "green").length} green
+- Deal characteristics: ${context.dealProfile.structureLabel}, ${context.dealProfile.modelLabel}, ${context.dealProfile.crossBorder ? `cross-border (${context.dealProfile.jurisdictions.join(", ")})` : "domestic"}
+- Critical risks: ${context.riskRegister.filter((r) => r.severity === "critical").length} critical, ${context.riskRegister.filter((r) => r.severity === "high").length} high
+- Team: ${context.teamRoster.length} assigned members
+FORMATTING: Write 2-3 paragraphs (NOT numbered items for this section only):
+Paragraph 1: One-sentence verdict with RAG rating, completion %, and headline theme (e.g., "The integration is rated AMBER at ${context.snapshotStats.pctComplete}% completion, driven by [2-3 key factors]").
+Paragraph 2: Key progress highlights and what's working well. Be specific — name workstreams and owners.
+Paragraph 3: Forward outlook — what to watch in the next period, upcoming milestones, and trajectory assessment.`;
       break;
 
     case "keyIssues":
       sectionSpecific = `
-SECTION FOCUS: Surface the most critical issues requiring immediate attention.
+SECTION FOCUS: Surface the 3-5 most critical issues that could derail the integration or require SteerCo intervention.
 DATA TO DRAW ON:
 BLOCKED ITEMS (${context.blockedItems.length} total):
-${context.blockedItems.slice(0, 10).map((b) => `- [${b.itemId}] ${b.workstream}: ${b.description}${b.blockedReason ? ` (${b.blockedReason})` : ""}`).join("\n")}
+${context.blockedItems.slice(0, 10).map((b) => `- [${b.itemId}] ${b.workstream}: ${b.description}${b.blockedReason ? ` — BLOCKED: ${b.blockedReason}` : ""}`).join("\n")}
 RED WORKSTREAMS:
-${context.workstreamBreakdown.filter((w) => w.effectiveRag === "red").map((w) => `- ${w.name}: ${w.blocked} blocked, ${w.pastDue} past-due`).join("\n")}
-INCLUDE: Top 3-5 prioritised issues, owner accountability, resolution path.`;
+${context.workstreamBreakdown.filter((w) => w.effectiveRag === "red").map((w) => `- ${w.name}: ${w.blocked} blocked, ${w.pastDue} past-due, ${w.pctComplete}% complete`).join("\n")}
+AMBER WORKSTREAMS:
+${context.workstreamBreakdown.filter((w) => w.effectiveRag === "amber").map((w) => `- ${w.name}: ${w.blocked} blocked, ${w.pctComplete}% complete`).join("\n")}
+CRITICAL RISKS:
+${context.riskRegister.filter((r) => r.severity === "critical" || r.severity === "high").map((r) => `- ${r.category} (${r.severity}): ${r.description}`).join("\n")}
+FORMATTING: Each issue MUST include: (1) What is the issue (specific, quantified), (2) Why it matters (downstream impact, dollar exposure), (3) What needs to happen (action, owner, deadline).
+Example format:
+"1. ERP vendor license transfer delay — compresses parallel-run window by 3 weeks
+   The legacy license transfer from [vendor] requires counterparty signature that has been pending since [date]. Without resolution, the Day 90 ERP cutover date is at risk, affecting [N] downstream items across IT and Finance workstreams.
+   → Recommended: Approve interim cloud bridge workaround ($380K) to protect the cutover date. Decision owner: CIO. Deadline: [date]."
+PRODUCE 3-6 items following this exact pattern.`;
       break;
 
     case "keyDelays":
@@ -1094,13 +1108,18 @@ INCLUDE: Operational, financial, and organisational impacts; quantify where poss
 
     case "materialDependencies":
       sectionSpecific = `
-SECTION FOCUS: Articulate the critical interdependencies that could cause cascade delays.
+SECTION FOCUS: Map the critical interdependencies as GATE relationships. Each dependency must follow the pattern: "[Source] GATES [Target] — [Impact if unresolved]".
 DATA TO DRAW ON:
-- Blocked items that gate other workstreams
 - TSA required: ${context.dealProfile.tsaRequired}
-- Cross-border: ${context.dealProfile.crossBorder} (${context.dealProfile.jurisdictions.join(", ")})
-- High-dependency blocked items from the blocked items list
-INCLUDE: Named dependencies, owning workstream, downstream impact if unresolved, target resolution date.`;
+- Cross-border jurisdictions: ${context.dealProfile.jurisdictions.join(", ")}
+- Blocked items (potential gates): ${context.blockedItems.slice(0, 8).map((b) => `[${b.itemId}] ${b.workstream}: ${b.description} — ${b.blockedReason || "reason not specified"}`).join("; ")}
+- Red/amber workstreams: ${context.workstreamBreakdown.filter((w) => w.effectiveRag !== "green").map((w) => `${w.name} (${w.effectiveRag})`).join(", ")}
+- Risk-linked dependencies: ${context.riskRegister.filter((r) => /depend|gate|block|prerequisite/i.test(r.description)).map((r) => r.description.slice(0, 100)).join("; ")}
+FORMATTING: Each dependency MUST be structured as:
+"1. [Regulatory/System/Resource] gates [Downstream item/workstream] — [quantified impact]
+   [Context: What is the dependency, why it exists, current status]. [Downstream cascade: How many items/workstreams are affected if unresolved]. [Timeline: When must this be resolved to avoid delay, and what is the fallback plan].
+   → Resolution owner: [Name/Role]. Target date: [Date]. Escalation trigger: [Condition]."
+PRODUCE 4-6 dependency items. Prioritize those with the widest downstream impact. Use specific item IDs and workstream names from the data.`;
       break;
 
     case "materialOperationalImpacts":
@@ -1115,23 +1134,42 @@ INCLUDE: Systems continuity, facilities, workforce readiness, and customer-facin
 
     case "keyDecisionsEscalations":
       sectionSpecific = `
-SECTION FOCUS: List decisions required from leadership and items escalated from the IMO.
+SECTION FOCUS: Decisions that ONLY the SteerCo can make. Each decision must be a clear yes/no or choose-A-vs-B ask.
 DATA TO DRAW ON:
-- Blocked items requiring decisions: ${context.blockedItems.filter((b) => /decision|escalat|approv/i.test((b.blockedReason ?? "") + b.description)).map((b) => `[${b.itemId}] ${b.description}`).join("; ")}
-- High-severity open risks requiring executive action
-- Red workstreams: ${context.workstreamBreakdown.filter((w) => w.effectiveRag === "red").map((w) => w.name).join(", ")}
-INCLUDE: Decision owner, deadline, consequence of inaction, recommended action.`;
+- Blocked items requiring executive decisions: ${context.blockedItems.filter((b) => /decision|escalat|approv|authoriz/i.test((b.blockedReason ?? "") + b.description)).map((b) => `[${b.itemId}] ${b.workstream}: ${b.description} — ${b.blockedReason || ""}`).join("; ")}
+- Critical/high risks requiring executive action: ${context.riskRegister.filter((r) => r.severity === "critical" || r.severity === "high").map((r) => `${r.category}: ${r.description}`).join("; ")}
+- Red workstreams needing intervention: ${context.workstreamBreakdown.filter((w) => w.effectiveRag === "red").map((w) => `${w.name}: ${w.blocked} blocked, ${w.pctComplete}% complete`).join("; ")}
+- Team workload imbalances: ${context.ownerWorkload.filter((o) => o.blocked > 0).map((o) => `${o.ownerName}: ${o.blocked} blocked of ${o.total}`).join("; ")}
+FORMATTING: Each decision MUST follow this exact pattern:
+"D-[N] · [Clear decision statement] — [$ impact or timeline impact]
+   CONTEXT: [Why this decision is needed now. What happened. What's at stake.]
+   CONSEQUENCE OF INACTION: [What happens if SteerCo does NOT decide by the deadline.]
+   RECOMMENDED ACTION: [Specific recommendation with rationale.]
+   OWNER: [Decision maker]. DEADLINE: [Date]."
+Example:
+"D-1 · Approve IT interim cloud bridge — $380K one-time cost
+   CONTEXT: The ERP vendor license transfer requires counterparty approval that has been delayed 3 weeks. Without a workaround, the Day 90 ERP go-live date slips to Q2, affecting 12 downstream Finance items.
+   CONSEQUENCE OF INACTION: ERP cutover delay cascades into Year 1 consolidation timeline. Estimated additional cost of $1.2M for extended parallel operations.
+   RECOMMENDED ACTION: Approve the $380K cloud bridge to decouple from vendor timeline. ROI is positive even in worst case.
+   OWNER: PE Sponsor + CIO. DEADLINE: This week."
+PRODUCE 2-5 decision items. Only include items that genuinely require SteerCo authority — do not include operational decisions the IMO can make.`;
       break;
 
     case "financialImpacts":
       sectionSpecific = `
-SECTION FOCUS: Quantify financial risks, synergy status, and cost impacts.
+SECTION FOCUS: Board-level financial impact quantification. Every item must have a dollar amount or say "to be quantified."
 DATA TO DRAW ON:
-- Financial risks: ${context.riskRegister.filter((r) => ["tax_structure_leakage", "stranded_costs", "financial_reporting_gap", "tsa_dependency"].includes(r.category)).map((r) => `${r.category} (${r.severity})`).join(", ")}
-- FP&A workstream: ${context.workstreamBreakdown.find((w) => w.name === "FP&A") ? `${context.workstreamBreakdown.find((w) => w.name === "FP&A")?.pctComplete}% complete, ${context.workstreamBreakdown.find((w) => w.name === "FP&A")?.effectiveRag}` : "not active"}
-- Income Tax / TSA workstream RAGs
-- Deal value: ${context.dealProfile.dealValue}
-INCLUDE: Synergy capture progress, stranded cost exposure, TSA financial impact, GAAP conversion costs.`;
+- Financial risks: ${context.riskRegister.filter((r) => ["tax_structure_leakage", "stranded_costs", "financial_reporting_gap", "tsa_dependency"].includes(r.category)).map((r) => `${r.category} (${r.severity}): ${r.description}`).join("; ")}
+- FP&A workstream: ${context.workstreamBreakdown.find((w) => w.name === "FP&A") ? `${context.workstreamBreakdown.find((w) => w.name === "FP&A")?.pctComplete}% complete, RAG: ${context.workstreamBreakdown.find((w) => w.name === "FP&A")?.effectiveRag}` : "not active"}
+- Treasury workstream: ${context.workstreamBreakdown.find((w) => w.name === "Treasury") ? `${context.workstreamBreakdown.find((w) => w.name === "Treasury")?.pctComplete}% complete` : "not active"}
+- Tax workstream: ${context.workstreamBreakdown.find((w) => w.name === "Income Tax") ? `${context.workstreamBreakdown.find((w) => w.name === "Income Tax")?.pctComplete}% complete` : "not active"}
+- Deal value: ${context.dealProfile.dealValue}, Deal size class: ${context.materiality.sizeClass}
+- Budget-related notes: ${context.itemNotes.filter((n) => /budget|cost|spend|forecast|\$/i.test(n.noteText)).slice(0, 5).map((n) => `[${n.itemId}] ${n.noteText.slice(0, 100)}`).join("; ")}
+FORMATTING: Each financial item follows:
+"1. [Category] — [$ amount or range]
+   [What drives this cost/risk]. [Current status and exposure]. [Mitigation or action to contain].
+   → Budget impact: [Favorable/Unfavorable] [amount]. Confidence: [High/Medium/Low]."
+Include items for: integration budget variance, synergy capture, stranded costs, regulatory/compliance costs, GAAP conversion costs, TSA costs. Quantify every item — even if approximate.`;
       break;
 
     case "overallBudget":
@@ -1145,7 +1183,7 @@ INCLUDE: Overall budget envelope, spend to date, forecast to complete, variances
       break;
   }
 
-  return `You are a senior M&A integration advisor preparing a SteerCo report for "${dealName}".
+  return `You are a senior M&A integration advisor (McKinsey/Bain caliber) preparing a Board-level SteerCo report for "${dealName}".
 
 TONE GUIDANCE: ${toneInstruction}
 
@@ -1155,14 +1193,37 @@ ${sectionSpecific}
 
 TASK: Write the "${label}" section of the integration SteerCo report.
 
-REQUIREMENTS:
-- Length: 200-400 words
-- Do not use bullet lists as the primary format — write in coherent prose paragraphs
-- Use specific data points from the context above
-- Maintain the tone specified: ${tone}
-- Focus on so-what implications, not just status recitation
-- End with a clear forward-looking statement or call to action
-- Do not invent data not present in the context
+CRITICAL FORMATTING REQUIREMENTS — FOLLOW EXACTLY:
+
+1. STRUCTURE: Use numbered items (1., 2., 3.) — NOT prose paragraphs, NOT bullet points.
+   Each numbered item MUST have three parts:
+   a) HEADLINE (bold-worthy): A specific, quantified action-title statement (e.g., "MAS regulatory approval extends timeline by 6 weeks")
+   b) CONTEXT: 2-3 sentences explaining the situation, root cause, and current state. Include specific numbers, dates, owners, and dollar amounts from the data.
+   c) RESOLUTION/NEXT STEP: 1-2 sentences stating the recommended action, owner, deadline, and consequence of inaction.
+
+2. EACH ITEM MUST BE SELF-CONTAINED — a board member reading just one item gets the full picture.
+
+3. SPECIFICITY IS MANDATORY:
+   - Name workstreams, item IDs, team members, dates
+   - Quantify everything: "$X impact", "N items affected", "M weeks delay"
+   - Reference real blocked reasons and risk descriptions from the data
+   - Use "gates" language for dependencies: "X gates Y; if unresolved by [date], Z is at risk"
+
+4. DO NOT:
+   - Write vague statements like "several issues" or "progress has been made"
+   - Combine multiple topics into a single paragraph
+   - List items without context or recommended action
+   - Invent dollar amounts or dates not in the data — say "to be quantified" if unknown
+
+5. LENGTH: 3-6 numbered items per section. Each item is 3-5 sentences total.
+
+6. DECISION ITEMS (for keyDecisionsEscalations): Format as:
+   "D-[N] · [Decision statement] — [$ impact if known]"
+   Then: context + deadline + consequence of inaction + recommended action + owner
+
+7. DEPENDENCY ITEMS (for materialDependencies): Format as:
+   "[Source] gates [Target] — [Impact statement]"
+   Then: explain the linkage, downstream cascade, and mitigation timeline
 
 Write the ${label} section now:`;
 }

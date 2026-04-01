@@ -317,7 +317,7 @@ function Slide1Cover({ deal }: { deal: GeneratedDeal }) {
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          padding: "40px 32px",
+          padding: "28px 24px",
           boxSizing: "border-box",
         }}
       >
@@ -360,7 +360,7 @@ function Slide1Cover({ deal }: { deal: GeneratedDeal }) {
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
-          padding: "40px 48px",
+          padding: "20px 28px",
           boxSizing: "border-box",
         }}
       >

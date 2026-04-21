@@ -202,19 +202,21 @@ export default function Home() {
     });
   }, []);
 
-  const handleAddTask = useCallback((task: { workstream: string; description: string; phase: string; priority: string; section: string }) => {
+  const handleAddTask = useCallback((task: { workstream: string; description: string; phase: string; priority: string; section: string; status?: string; ownerId?: string }) => {
     setDeal((prev) => {
       if (!prev) return prev;
-      const itemCount = prev.checklistItems.length;
+      const custItems = prev.checklistItems.filter(i => i.itemId.startsWith("CUST-"));
+      const nextNum = custItems.length + 1;
       const newItem: ChecklistItem = {
         id: `custom-${Date.now()}`,
-        itemId: `CUST-${String(itemCount + 1).padStart(4, "0")}`,
+        itemId: `CUST-${String(nextNum).padStart(4, "0")}`,
         workstream: task.workstream as any,
-        section: task.section,
+        section: task.section || "Custom",
         description: task.description,
         phase: task.phase as any,
         priority: task.priority as any,
-        status: "not_started",
+        status: (task.status as any) || "not_started",
+        ownerId: task.ownerId || undefined,
         dependencies: [],
         tsaRelevant: false,
         crossBorderFlag: false,
@@ -224,6 +226,18 @@ export default function Home() {
       return {
         ...prev,
         checklistItems: [...prev.checklistItems, newItem],
+      };
+    });
+  }, []);
+
+  const handleUpdateItem = useCallback((itemId: string, updates: Partial<Pick<ChecklistItem, "description" | "workstream" | "phase" | "section" | "priority" | "status" | "ownerId">>) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        checklistItems: prev.checklistItems.map(i =>
+          i.id === itemId ? { ...i, ...updates } : i
+        ),
       };
     });
   }, []);
@@ -541,7 +555,7 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} onUpdateRagOverride={handleUpdateRagOverride} onUpdateDeal={handleUpdateDeal} onUpdatePerson={handleUpdatePerson} onForceSave={handleForceSave} lastSavedAt={lastSavedAt} saveStatus={saveStatus} />;
+    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onUpdateItem={handleUpdateItem} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} onUpdateRagOverride={handleUpdateRagOverride} onUpdateDeal={handleUpdateDeal} onUpdatePerson={handleUpdatePerson} onForceSave={handleForceSave} lastSavedAt={lastSavedAt} saveStatus={saveStatus} />;
   }
 
   // Multi-deal list view

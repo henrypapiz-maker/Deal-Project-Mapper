@@ -87,7 +87,10 @@ interface Props {
     phase: string;
     priority: string;
     section: string;
+    status?: string;
+    ownerId?: string;
   }) => void;
+  onUpdateItem: (itemId: string, updates: Partial<Pick<ChecklistItem, "description" | "workstream" | "phase" | "section" | "priority" | "status" | "ownerId">>) => void;
   onAddPerson: (name: string, role?: string, email?: string) => void;
   onAssignOwner: (itemId: string, ownerId: string | undefined) => void;
   onAddNote: (itemId: string, text: string) => void;
@@ -307,6 +310,7 @@ export default function Dashboard({
   onUpdateBlockedReason,
   onReset,
   onAddTask,
+  onUpdateItem,
   onAddPerson,
   onAssignOwner,
   onAddNote,
@@ -331,6 +335,12 @@ export default function Dashboard({
   const [showHelp, setShowHelp] = useState(false);
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
+  const [editingItem, setEditingItem] = useState(false);
+  const [editDesc, setEditDesc] = useState("");
+  const [editWs, setEditWs] = useState("");
+  const [editCustomWs, setEditCustomWs] = useState("");
+  const [editPhase, setEditPhase] = useState("");
+  const [editSection, setEditSection] = useState("");
 
   // Keep selectedItem in sync with live data
   useEffect(() => {
@@ -350,9 +360,13 @@ export default function Dashboard({
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showAddTask, setShowAddTask] = useState(false);
   const [newTaskWs, setNewTaskWs] = useState<string>("");
+  const [newTaskCustomWs, setNewTaskCustomWs] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
+  const [newTaskSection, setNewTaskSection] = useState("");
   const [newTaskPhase, setNewTaskPhase] = useState<string>("day_30");
   const [newTaskPriority, setNewTaskPriority] = useState<string>("medium");
+  const [newTaskStatus, setNewTaskStatus] = useState<string>("not_started");
+  const [newTaskOwner, setNewTaskOwner] = useState<string>("");
   // showSteerCo removed — SteerCo is now a full tab
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showNaItems, setShowNaItems] = useState(false);
@@ -496,6 +510,7 @@ export default function Dashboard({
 
   async function fetchGuidance(item: ChecklistItem) {
     setSelectedItem(item);
+    setEditingItem(false);
     setGuidanceText("");
     setGuidanceLoading(true);
     try {
@@ -608,6 +623,16 @@ export default function Dashboard({
 
   const today = new Date();
   const closeDate = intake.closeDate ? new Date(intake.closeDate) : null;
+
+  const selectStyle: React.CSSProperties = {
+    background: C.cardBg, color: C.text, border: `1px solid ${C.border}`,
+    borderRadius: 4, padding: "5px 8px", fontSize: 10, fontFamily: "inherit",
+  };
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "5px 8px", borderRadius: 4, fontSize: 10,
+    background: C.cardBg, color: C.text, border: `1px solid ${C.border}`,
+    fontFamily: "inherit", boxSizing: "border-box" as const,
+  };
 
   const TAB_CONFIG = [
     { id: "live_status", label: "Live Status" },
@@ -1185,59 +1210,131 @@ export default function Dashboard({
 
             {showAddTask && (
               <div style={{
-                padding: 12, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.accent}44`,
-                marginBottom: 12, display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap",
+                padding: 14, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.accent}44`,
+                marginBottom: 12,
               }}>
-                <div>
-                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Workstream</div>
-                  <select value={newTaskWs} onChange={(e) => setNewTaskWs(e.target.value)}
-                    style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit", minWidth: 160 }}>
-                    <option value="">Select...</option>
-                    {Array.from(wsStats.keys()).map(ws => <option key={ws} value={ws}>{ws}</option>)}
-                  </select>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 10 }}>
+                  New Checklist Item
                 </div>
-                <div style={{ flex: 1, minWidth: 200 }}>
-                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Description</div>
-                  <input type="text" value={newTaskDesc} onChange={(e) => setNewTaskDesc(e.target.value)}
-                    placeholder="Describe the task..."
-                    style={{ width: "100%", padding: "4px 8px", borderRadius: 4, fontSize: 10, background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, fontFamily: "inherit" }} />
+                {/* Row 1: Description */}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Description *</div>
+                  <textarea
+                    value={newTaskDesc}
+                    onChange={(e) => setNewTaskDesc(e.target.value)}
+                    placeholder="Describe the task or deliverable…"
+                    rows={2}
+                    style={{ width: "100%", padding: "6px 8px", borderRadius: 4, fontSize: 11, background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
+                  />
                 </div>
-                <div>
-                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Phase</div>
-                  <select value={newTaskPhase} onChange={(e) => setNewTaskPhase(e.target.value)}
-                    style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}>
-                    {["pre_close", "day_1", "day_30", "day_60", "day_90", "year_1"].map(p => <option key={p} value={p}>{PHASE_LABELS[p]}</option>)}
-                  </select>
+                {/* Row 2: Workstream + Section */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <div style={{ flex: "0 0 200px" }}>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Workstream *</div>
+                    <select
+                      value={newTaskWs}
+                      onChange={(e) => { setNewTaskWs(e.target.value); if (e.target.value !== "__custom__") setNewTaskCustomWs(""); }}
+                      style={selectStyle}
+                    >
+                      <option value="">Select…</option>
+                      {Array.from(wsStats.keys()).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                      <option value="R&D">R&D</option>
+                      <option value="Commercial">Commercial</option>
+                      <option value="Supply Chain">Supply Chain</option>
+                      <option value="Customer Success">Customer Success</option>
+                      <option value="__custom__">+ Custom workstream…</option>
+                    </select>
+                    {newTaskWs === "__custom__" && (
+                      <input
+                        value={newTaskCustomWs}
+                        onChange={(e) => setNewTaskCustomWs(e.target.value)}
+                        placeholder="Workstream name…"
+                        autoFocus
+                        style={{ ...inputStyle, marginTop: 4 }}
+                      />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Section / Category</div>
+                    <input
+                      value={newTaskSection}
+                      onChange={(e) => setNewTaskSection(e.target.value)}
+                      placeholder="e.g. Planning, Execution…"
+                      style={inputStyle}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Priority</div>
-                  <select value={newTaskPriority} onChange={(e) => setNewTaskPriority(e.target.value)}
-                    style={{ background: C.cardBg, color: C.text, border: `1px solid ${C.border}`, borderRadius: 4, padding: "4px 8px", fontSize: 10, fontFamily: "inherit" }}>
-                    <option value="critical">Critical</option>
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
+                {/* Row 3: Phase + Priority + Status + Owner */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Phase</div>
+                    <select value={newTaskPhase} onChange={(e) => setNewTaskPhase(e.target.value)} style={selectStyle}>
+                      {["pre_close", "day_1", "day_30", "day_60", "day_90", "year_1"].map(p => (
+                        <option key={p} value={p}>{PHASE_LABELS[p]}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Priority</div>
+                    <select value={newTaskPriority} onChange={(e) => setNewTaskPriority(e.target.value)} style={selectStyle}>
+                      <option value="critical">Critical</option>
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Status</div>
+                    <select value={newTaskStatus} onChange={(e) => setNewTaskStatus(e.target.value)} style={selectStyle}>
+                      <option value="not_started">Not Started</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="blocked">Blocked</option>
+                      <option value="complete">Complete</option>
+                      <option value="na">N/A</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Owner</div>
+                    <select value={newTaskOwner} onChange={(e) => setNewTaskOwner(e.target.value)} style={selectStyle}>
+                      <option value="">Unassigned</option>
+                      {deal.people.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
                 </div>
-                <button
-                  onClick={() => {
-                    if (!newTaskWs || !newTaskDesc.trim()) return;
-                    onAddTask({ workstream: newTaskWs, description: newTaskDesc.trim(), phase: newTaskPhase, priority: newTaskPriority, section: "Custom" });
-                    setNewTaskDesc("");
-                    setShowAddTask(false);
-                    setTaskAddedFlash(true);
-                    setTimeout(() => setTaskAddedFlash(false), 2000);
-                  }}
-                  disabled={!newTaskWs || !newTaskDesc.trim()}
-                  style={{
-                    padding: "6px 16px", borderRadius: 4, fontSize: 10, fontWeight: 700,
-                    background: (!newTaskWs || !newTaskDesc.trim()) ? C.muted : C.accent,
-                    color: "#fff", border: "none", cursor: (!newTaskWs || !newTaskDesc.trim()) ? "not-allowed" : "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Add Task
-                </button>
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      const ws = newTaskWs === "__custom__" ? newTaskCustomWs.trim() : newTaskWs;
+                      if (!ws || !newTaskDesc.trim()) return;
+                      onAddTask({
+                        workstream: ws, description: newTaskDesc.trim(),
+                        phase: newTaskPhase, priority: newTaskPriority,
+                        section: newTaskSection.trim() || "Custom",
+                        status: newTaskStatus,
+                        ownerId: newTaskOwner || undefined,
+                      });
+                      setNewTaskDesc(""); setNewTaskSection(""); setNewTaskWs(""); setNewTaskCustomWs("");
+                      setNewTaskStatus("not_started"); setNewTaskOwner("");
+                      setShowAddTask(false); setTaskAddedFlash(true);
+                      setTimeout(() => setTaskAddedFlash(false), 2000);
+                    }}
+                    disabled={!(newTaskWs === "__custom__" ? newTaskCustomWs.trim() : newTaskWs) || !newTaskDesc.trim()}
+                    style={{
+                      padding: "6px 18px", borderRadius: 4, fontSize: 10, fontWeight: 700,
+                      background: C.accent, color: "#fff", border: "none",
+                      cursor: "pointer", fontFamily: "inherit", opacity: (!(newTaskWs === "__custom__" ? newTaskCustomWs.trim() : newTaskWs) || !newTaskDesc.trim()) ? 0.5 : 1,
+                    }}
+                  >
+                    Add Item
+                  </button>
+                  <button
+                    onClick={() => { setShowAddTask(false); setNewTaskDesc(""); setNewTaskWs(""); setNewTaskCustomWs(""); setNewTaskSection(""); setNewTaskStatus("not_started"); setNewTaskOwner(""); }}
+                    style={{ padding: "6px 14px", borderRadius: 4, fontSize: 10, background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1503,14 +1600,130 @@ export default function Dashboard({
               {/* AI Guidance Panel */}
               {selectedItem && (
                 <div style={{ padding: 16, borderRadius: 8, background: C.cardBg, border: `1px solid ${C.accent}33`, position: "sticky", top: 80, maxHeight: "80vh", overflowY: "auto" }}>
-                  <div style={{ fontSize: 9, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
-                    AI Guidance
+                  {/* Item header + edit toggle */}
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
+                    <div style={{ fontSize: 9, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>
+                      {selectedItem.itemId}
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (!editingItem) {
+                          setEditDesc(selectedItem.description);
+                          setEditWs(selectedItem.workstream);
+                          setEditCustomWs("");
+                          setEditPhase(selectedItem.phase);
+                          setEditSection(selectedItem.section || "");
+                        }
+                        setEditingItem(!editingItem);
+                      }}
+                      style={{
+                        padding: "2px 8px", borderRadius: 4, fontSize: 9, fontWeight: 600,
+                        background: editingItem ? C.warning + "22" : C.accent + "22",
+                        color: editingItem ? C.warning : C.accent,
+                        border: `1px solid ${editingItem ? C.warning + "44" : C.accent + "44"}`,
+                        cursor: "pointer", flexShrink: 0,
+                      }}
+                    >
+                      {editingItem ? "Cancel" : "✎ Edit"}
+                    </button>
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, marginBottom: 4 }}>{selectedItem.itemId}</div>
-                  <div style={{ fontSize: 11, color: C.text, marginBottom: 12, lineHeight: 1.5 }}>{selectedItem.description}</div>
-                  <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{selectedItem.workstream}</span>
-                    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.warning + "22", color: C.warning }}>{PHASE_LABELS[selectedItem.phase]}</span>
+
+                  {editingItem ? (
+                    /* ── Edit mode ── */
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Description</div>
+                        <textarea
+                          value={editDesc}
+                          onChange={(e) => setEditDesc(e.target.value)}
+                          rows={3}
+                          style={{ width: "100%", padding: "6px 8px", borderRadius: 4, fontSize: 11, background: C.deepBlue, color: C.text, border: `1px solid ${C.border}`, fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }}
+                        />
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Workstream</div>
+                        <select
+                          value={editWs}
+                          onChange={(e) => { setEditWs(e.target.value); if (e.target.value !== "__custom__") setEditCustomWs(""); }}
+                          style={{ ...selectStyle, width: "100%" }}
+                        >
+                          {Array.from(wsStats.keys()).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                          <option value="R&D">R&D</option>
+                          <option value="Commercial">Commercial</option>
+                          <option value="Supply Chain">Supply Chain</option>
+                          <option value="Customer Success">Customer Success</option>
+                          <option value="__custom__">+ Custom workstream…</option>
+                        </select>
+                        {editWs === "__custom__" && (
+                          <input
+                            value={editCustomWs}
+                            onChange={(e) => setEditCustomWs(e.target.value)}
+                            placeholder="Workstream name…"
+                            autoFocus
+                            style={{ ...inputStyle, marginTop: 4 }}
+                          />
+                        )}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Phase</div>
+                          <select value={editPhase} onChange={(e) => setEditPhase(e.target.value)} style={{ ...selectStyle, width: "100%" }}>
+                            {["pre_close", "day_1", "day_30", "day_60", "day_90", "year_1"].map(p => (
+                              <option key={p} value={p}>{PHASE_LABELS[p]}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Section</div>
+                          <input
+                            value={editSection}
+                            onChange={(e) => setEditSection(e.target.value)}
+                            placeholder="e.g. Planning…"
+                            style={{ ...inputStyle }}
+                          />
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => {
+                            const ws = editWs === "__custom__" ? editCustomWs.trim() : editWs;
+                            if (!ws || !editDesc.trim()) return;
+                            onUpdateItem(selectedItem.id, {
+                              description: editDesc.trim(),
+                              workstream: ws as any,
+                              phase: editPhase as any,
+                              section: editSection.trim() || selectedItem.section,
+                            });
+                            setEditingItem(false);
+                          }}
+                          style={{ padding: "5px 14px", borderRadius: 4, fontSize: 10, fontWeight: 700, background: C.accent, color: "#fff", border: "none", cursor: "pointer" }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingItem(false)}
+                          style={{ padding: "5px 10px", borderRadius: 4, fontSize: 10, background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, cursor: "pointer" }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Read mode ── */
+                    <>
+                      <div style={{ fontSize: 11, color: C.text, marginBottom: 12, lineHeight: 1.5 }}>{selectedItem.description}</div>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.accent + "22", color: C.accent }}>{selectedItem.workstream}</span>
+                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.warning + "22", color: C.warning }}>{PHASE_LABELS[selectedItem.phase]}</span>
+                        {selectedItem.section && selectedItem.section !== "Custom" && (
+                          <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: C.border, color: C.textMuted }}>{selectedItem.section}</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {!editingItem && <><div style={{ fontSize: 9, color: C.accent, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>
+                    AI Guidance
                   </div>
                   {selectedItem && selectedItem.status === "blocked" && (
                     <div style={{ marginBottom: 12 }}>
@@ -1615,9 +1828,10 @@ export default function Dashboard({
                     </div>
                   )}
 
-                  <button onClick={() => setSelectedItem(null)} style={{ marginTop: 12, fontSize: 10, color: C.textMuted, background: "transparent", border: "none", cursor: "pointer" }}>
+                  <button onClick={() => { setSelectedItem(null); setEditingItem(false); }} style={{ marginTop: 12, fontSize: 10, color: C.textMuted, background: "transparent", border: "none", cursor: "pointer" }}>
                     ✕ Close
                   </button>
+                  </> /* end !editingItem */ }
                 </div>
               )}
             </div>
@@ -2215,6 +2429,7 @@ export default function Dashboard({
                                 setFilterStatus("all");
                                 setFilterPriority("all");
                                 setSelectedItem(item);
+                                setEditingItem(false);
                               }}
                               style={{
                                 padding: "3px 8px", borderRadius: 4, fontSize: 10,

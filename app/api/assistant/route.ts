@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { neon } from "@neondatabase/serverless";
 import type { AssistantRequest, AssistantResponse, AppAction } from "@/lib/agent-types";
 import { getAllowedActionsForRole } from "@/lib/agent-permissions";
+import { FEATURE_INDEX_PROMPT } from "@/lib/feature-index";
 import {
   buildStatusReportPrompt,
   buildRiskMemoPrompt,
@@ -126,7 +127,9 @@ RULES:
 4. For ambiguous references, resolve from checklist summary and act on them.
 5. If no deal is loaded, answer M&A questions but note app actions are unavailable.
 6. Keep replies concise — 1-3 sentences unless analysis is requested.
-7. When showing filtered results, call filter_checklist so the user can see them.`;
+7. When showing filtered results, call filter_checklist so the user can see them.
+
+${FEATURE_INDEX_PROMPT}`;
 }
 
 async function synthesizeDocument(

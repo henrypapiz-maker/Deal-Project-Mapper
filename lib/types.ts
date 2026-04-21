@@ -160,7 +160,7 @@ export interface ClassifiedDependency {
 export interface ChecklistItem {
   id: string; // UUID (generated at runtime)
   itemId: string; // FRC-0001 through FRC-0489
-  workstream: Workstream;
+  workstream: Workstream | (string & {});
   // workstreamCode: WorkstreamCode; // TODO: populate in checklist-master.ts
   // track: WorkstreamTrack;         // TODO: populate in checklist-master.ts
   section: string;

@@ -1315,7 +1315,7 @@ export default function Dashboard({
                         ownerId: newTaskOwner || undefined,
                       });
                       setNewTaskDesc(""); setNewTaskSection(""); setNewTaskWs(""); setNewTaskCustomWs("");
-                      setNewTaskStatus("not_started"); setNewTaskOwner("");
+                      setNewTaskStatus("not_started"); setNewTaskOwner(""); setNewTaskPhase("day_30"); setNewTaskPriority("medium");
                       setShowAddTask(false); setTaskAddedFlash(true);
                       setTimeout(() => setTaskAddedFlash(false), 2000);
                     }}
@@ -1329,7 +1329,7 @@ export default function Dashboard({
                     Add Item
                   </button>
                   <button
-                    onClick={() => { setShowAddTask(false); setNewTaskDesc(""); setNewTaskWs(""); setNewTaskCustomWs(""); setNewTaskSection(""); setNewTaskStatus("not_started"); setNewTaskOwner(""); }}
+                    onClick={() => { setShowAddTask(false); setNewTaskDesc(""); setNewTaskWs(""); setNewTaskCustomWs(""); setNewTaskSection(""); setNewTaskStatus("not_started"); setNewTaskOwner(""); setNewTaskPhase("day_30"); setNewTaskPriority("medium"); }}
                     style={{ padding: "6px 14px", borderRadius: 4, fontSize: 10, background: "transparent", color: C.textMuted, border: `1px solid ${C.border}`, cursor: "pointer", fontFamily: "inherit" }}
                   >
                     Cancel

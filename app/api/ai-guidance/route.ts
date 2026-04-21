@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: { "x-api-key": apiKey!, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
-        model: model || "claude-haiku-4-20250414",
+        model: model || "claude-haiku-4-5-20251001",
         max_tokens: maxTokens,
         system,
         messages: messages || [{ role: "user", content: userMsg }],
@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: "claude-haiku-4-20250414",
+          model: "claude-haiku-4-5-20251001",
           max_tokens: 400,
           system: reportSystem,
           messages: [{ role: "user", content: body.prompt || `Draft a status report for the ${workstream} workstream.` }],
@@ -209,7 +209,7 @@ Provide guidance that is:
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-20250414",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 400,
         system: systemPrompt,
         messages: [{ role: "user", content: userPrompt }],

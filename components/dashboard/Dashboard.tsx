@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { GeneratedDeal, ChecklistItem, RiskAlert, ItemStatus, Priority } from "@/lib/types";
+import { useAgentContext } from "@/lib/agent-context";
 import { getKpis, getWorkstreamStats } from "@/lib/decision-tree";
 import { generateSnapshot, getCurrentPeriodEnd, computeProgramRAG } from "@/lib/progress";
 import BowlerTable from "./BowlerTable";
 import HelpDrawer from "./HelpDrawer";
 import ReportDrafter from "./ReportDrafter";
 import SlidePreview from "./SlidePreview";
+import AgentAdminTab from "@/components/agent-admin/AgentAdminTab";
 
 const C = {
   navy: "#0F1B2D",
@@ -325,7 +327,7 @@ export default function Dashboard({
   lastSavedAt,
   saveStatus = "idle",
 }: Props) {
-  const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco" | "admin">("live_status");
+  const [activeTab, setActiveTab] = useState<"live_status" | "checklist" | "team" | "risks" | "timeline" | "steerco" | "admin" | "agent">("live_status");
   const [showHelp, setShowHelp] = useState(false);
   const [selectedWs, setSelectedWs] = useState<string | null>(null);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
@@ -395,6 +397,39 @@ export default function Dashboard({
   const [scSaved, setScSaved] = useState(false);
   const [showReportDrafter, setShowReportDrafter] = useState(false);
   const [showSlidePreview, setShowSlidePreview] = useState(false);
+
+  // Ref keeps agent getters pointing to the latest render's values without re-registering on every state change
+  const agentStateRef = useRef({ deal, activeTab, filterWs, filterStatus, filterPriority, filterPhase, filterOwner });
+  agentStateRef.current = { deal, activeTab, filterWs, filterStatus, filterPriority, filterPhase, filterOwner };
+
+  // Register callbacks with the global agent context so the assistant can drive the app
+  const { register, unregister } = useAgentContext();
+  useEffect(() => {
+    register({
+      setActiveTab: (tab) => setActiveTab(tab as typeof activeTab),
+      setFilterWs,
+      setFilterStatus,
+      setFilterPriority,
+      setFilterPhase,
+      setFilterOwner,
+      setSearchText,
+      onUpdateStatus,
+      onAssignOwner,
+      onBulkAssign,
+      onSaveSnapshot,
+      getDeal: () => agentStateRef.current.deal,
+      getActiveTab: () => agentStateRef.current.activeTab,
+      getFilterState: () => ({
+        workstream: agentStateRef.current.filterWs,
+        status: agentStateRef.current.filterStatus,
+        priority: agentStateRef.current.filterPriority,
+        phase: agentStateRef.current.filterPhase,
+        owner: agentStateRef.current.filterOwner,
+      }),
+    });
+    return () => unregister();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveSteerCoNarrative = async () => {
     if (!deal.id) return;
@@ -582,6 +617,7 @@ export default function Dashboard({
     { id: "timeline", label: "Timeline" },
     { id: "steerco", label: "SteerCo" },
     { id: "admin", label: "Admin" },
+    { id: "agent", label: "✦ Agent" },
   ] as const;
 
   // Admin tab local state
@@ -2876,6 +2912,11 @@ export default function Dashboard({
               </div>
             </div>
           </div>
+        )}
+
+        {/* ─── AGENT ADMIN TAB ─── */}
+        {activeTab === "agent" && (
+          <AgentAdminTab deal={deal} />
         )}
 
         {/* Footer */}

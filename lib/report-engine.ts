@@ -1279,3 +1279,108 @@ After drafting, review your output through the lens of a skeptical board member:
 
 Write the ${label} section now:`;
 }
+
+// ============================================================
+// Document Synthesis Prompts
+// ============================================================
+
+export function buildStatusReportPrompt(context: ReportContext): string {
+  const p = context.dealProfile;
+  const s = context.snapshotStats;
+  const contextText = formatContextForPrompt(context);
+
+  return `You are an M&A integration program manager writing a weekly status report.
+Generate a concise markdown status report (~800 words) using ## headings.
+
+Structure:
+## Program Overview
+One sentence on overall health (include RAG color: 🟢 Green / 🟡 Amber / 🔴 Red), completion %, and deal name.
+
+## Workstream Status
+A table: | Workstream | RAG | % Done | Blocked | Key Issue |
+Include all workstreams with non-trivial activity.
+
+## Top Blockers (${context.blockedItems.length} total)
+List up to 5 blocked items with item ID, workstream, and recommended resolution.
+
+## Upcoming Milestones
+List the next 3 milestone dates from the timeline.
+
+## Key Risks
+Summarize top 3 open risks with severity and recommended action.
+
+## Outlook
+1-2 sentences on trajectory and what needs to happen this week.
+
+Be specific — reference item IDs (e.g. FIN-0003), workstream names, and numbers.
+
+Deal Context:
+${contextText}`;
+}
+
+export function buildRiskMemoPrompt(context: ReportContext): string {
+  const contextText = formatContextForPrompt(context);
+
+  return `You are an M&A integration risk officer writing an executive risk memo.
+Generate a concise markdown risk memo (~500 words).
+
+Structure:
+## Risk Executive Summary
+1-2 sentences: overall risk posture, number of open risks, and critical count.
+
+## Risk Register
+A table: | Risk | Severity | Category | Status | Recommended Action |
+Include all open risks from the register.
+
+## Critical Items Requiring Immediate Attention
+For each CRITICAL severity risk: 2-3 sentences explaining the risk, impact, and specific mitigation steps.
+
+## Risk Trajectory
+1 sentence on whether risk profile is improving or worsening based on blocked/overdue trends.
+
+Reference specific item IDs and workstreams. Be direct — this memo will be read by the board.
+
+Deal Context:
+${contextText}`;
+}
+
+export function buildTaskReportPrompt(context: ReportContext): string {
+  const contextText = formatContextForPrompt(context);
+
+  return `You are an M&A integration PMO analyst writing a task assignment and ownership report.
+Generate a concise markdown report (~600 words).
+
+Structure:
+## Ownership Summary
+A table: | Owner | Total Items | Complete | In Progress | Blocked | % Done |
+Sort by most blocked items first.
+
+## Watch List — Owners with Blocked Items
+For each owner with ≥1 blocked item: list their blocked item IDs, descriptions, and a suggested action.
+
+## Unassigned Items
+Count and list item IDs/workstreams for items with no owner. Flag if count > 10.
+
+## Recommended Actions
+3-5 bullet points on ownership gaps, overloaded leads, and suggested reassignments.
+
+Reference specific person names, item IDs, and workstreams from the data.
+
+Deal Context:
+${contextText}`;
+}
+
+export function buildCsvExport(deal: import("./types").GeneratedDeal): string {
+  const header = "itemId,workstream,section,description,phase,priority,status,owner,milestoneDate,tsaRelevant,blocked";
+  const rows = deal.checklistItems.map((i) => {
+    const owner = deal.people.find((p) => p.id === i.ownerId)?.name ?? "";
+    const desc = i.description.replace(/"/g, '""');
+    return [
+      i.itemId, i.workstream, i.section, `"${desc}"`,
+      i.phase, i.priority, i.status, owner,
+      i.milestoneDate ?? "", i.tsaRelevant ? "yes" : "no",
+      i.blockedReason ? `"${i.blockedReason.replace(/"/g, '""')}"` : "",
+    ].join(",");
+  });
+  return [header, ...rows].join("\n");
+}

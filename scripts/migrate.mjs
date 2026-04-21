@@ -212,6 +212,55 @@ async function migrate() {
   )`;
   console.log("✓ tsa_services table");
 
+  // ── Agent tables ──────────────────────────────────────────
+  await sql`CREATE TABLE IF NOT EXISTS agents.documents (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deal_id      UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    doc_type     VARCHAR(30) NOT NULL,
+    title        VARCHAR(200) NOT NULL,
+    blob_url     TEXT NOT NULL,
+    preview_text TEXT,
+    format       VARCHAR(10) DEFAULT 'markdown',
+    word_count   INTEGER,
+    created_at   TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_agent_docs_deal ON agents.documents(deal_id, created_at DESC)`;
+  console.log("✓ agents.documents table");
+
+  await sql`CREATE TABLE IF NOT EXISTS agents.prompt_library (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(100) NOT NULL,
+    text        TEXT NOT NULL,
+    category    VARCHAR(50),
+    is_global   BOOLEAN DEFAULT FALSE,
+    deal_id     UUID REFERENCES deals(id) ON DELETE CASCADE,
+    created_by  VARCHAR(100),
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  console.log("✓ agents.prompt_library table");
+
+  await sql`CREATE TABLE IF NOT EXISTS agents.skills (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    steps       JSONB NOT NULL DEFAULT '[]',
+    is_global   BOOLEAN DEFAULT TRUE,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  console.log("✓ agents.skills table");
+
+  await sql`CREATE TABLE IF NOT EXISTS agents.role_permissions (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    role         VARCHAR(30) NOT NULL,
+    action_type  VARCHAR(50) NOT NULL,
+    allowed      BOOLEAN DEFAULT TRUE,
+    updated_at   TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(role, action_type)
+  )`;
+  console.log("✓ agents.role_permissions table");
+
   // Verify
   const tables = await sql`SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('public', 'config', 'audit', 'agents') ORDER BY table_schema, table_name`;
   console.log("\n=== ALL TABLES ===");

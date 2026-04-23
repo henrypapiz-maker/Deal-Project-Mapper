@@ -122,9 +122,14 @@ export interface DealIntake {
   targetEntities: number;
 
   // Tier 3 — Advanced (3 fields)
-  targetGaap: string; // "US GAAP" | "IFRS" | "Local" | "Multiple"
-  targetErp: string; // "SAP" | "Oracle" | "NetSuite" | "Other" | "Unknown"
+  targetGaap: string; // "US GAAP" | "IFRS" | "Local GAAP" | "Multiple" | "Unknown" | custom
+  targetErp: string; // "SAP" | "Oracle" | "NetSuite" | "Other" | "Unknown" | custom name
   buyerMaturity: string; // "first" | "occasional" | "serial" | "pe"
+
+  // Optional free-text context captured during intake
+  dealStructureNotes?: string;     // Additional context about the deal structure
+  integrationModelNotes?: string;  // Integration boundary / nuance description
+  tsaNotes?: string;               // TSA scope, expected duration, functions covered
 }
 
 // ============================================================

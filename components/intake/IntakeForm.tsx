@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { DealIntake, DealStructure, IntegrationModel, TsaRequired, FunctionalArea } from "@/lib/types";
+import { useState, useEffect } from "react";
+import type { DealIntake, DealStructure, IntegrationModel, TsaRequired, FunctionalArea, ParentProfile, OrgType, ImoStructure } from "@/lib/types";
 
 const COLORS = {
   navy: "#0F1B2D",
@@ -136,6 +136,41 @@ const BUYER_MATURITY_OPTIONS = [
   { value: "pe",         label: "PE / Financial Sponsor", desc: "Private equity or fund buyer" },
 ];
 
+// ─── Parent Organizational Profile constants ─────────────────────────────────
+const ORG_TYPES: { value: OrgType; label: string; desc: string }[] = [
+  { value: "corporate",        label: "Corporate Strategic", desc: "Operating company making a strategic acquisition" },
+  { value: "pe",               label: "PE / Financial Sponsor", desc: "Private equity or fund-backed buyer" },
+  { value: "family_office",    label: "Family Office",       desc: "Family-owned investment vehicle" },
+  { value: "sovereign_wealth", label: "Sovereign Wealth",    desc: "Government-linked investment fund" },
+  { value: "spac",             label: "SPAC",                desc: "Special purpose acquisition company" },
+];
+
+const IMO_STRUCTURES: { value: ImoStructure; label: string; desc: string }[] = [
+  { value: "centralized",   label: "Centralized IMO",   desc: "Single IMO team manages all workstreams" },
+  { value: "decentralized", label: "Decentralized",      desc: "Workstream leads self-manage; IMO coordinates" },
+  { value: "embedded",      label: "Embedded",           desc: "IMO members sit inside each business unit" },
+  { value: "external",      label: "External (Consulting-led)", desc: "Third-party consulting firm leads IMO" },
+];
+
+const CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "SEK", "NOK", "DKK"];
+
+const MONTH_OPTIONS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+const EMPTY_PROFILE: Omit<ParentProfile, "id" | "createdAt" | "updatedAt"> = {
+  orgName: "",
+  orgType: "",
+  parentIndustry: "",
+  hqJurisdiction: "",
+  parentGaap: "",
+  parentErp: "",
+  fiscalYearEnd: "",
+  reportingCurrency: "USD",
+  imoStructure: "",
+  buyerMaturity: "",
+  integrationPlaybook: "",
+  imoLead: "",
+};
+
 const FUNCTION_OPTIONS: { code: string; label: string }[] = [
   { code: "finance",        label: "Finance & Accounting" },
   { code: "tax",            label: "Tax" },
@@ -192,6 +227,114 @@ export default function IntakeForm({ onSubmit }: Props) {
   const [gaapOtherMode, setGaapOtherMode] = useState(false);
   const [customGaapText, setCustomGaapText] = useState("");
   const [customContextTopic, setCustomContextTopic] = useState("");
+
+  // ── Parent profile state ──────────────────────────────────
+  const [profiles, setProfiles]             = useState<ParentProfile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<ParentProfile | null>(null);
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [profileFormMode, setProfileFormMode] = useState<"create" | "edit">("create");
+  const [pf, setPf] = useState<Omit<ParentProfile, "id" | "createdAt" | "updatedAt">>(EMPTY_PROFILE);
+  const [pfSaving, setPfSaving] = useState(false);
+  const [pfCustomIndustry, setPfCustomIndustry] = useState(false);
+  const [pfCustomErp, setPfCustomErp] = useState(false);
+  const [pfCustomGaap, setPfCustomGaap] = useState(false);
+  const [pfCustomCurrency, setPfCustomCurrency] = useState(false);
+
+  // Load existing profiles on mount
+  useEffect(() => {
+    fetch("/api/parent-profiles")
+      .then(r => r.json())
+      .then(d => {
+        if (d.profiles?.length) {
+          setProfiles(d.profiles);
+          // Auto-select the most recent profile
+          const first = d.profiles[0];
+          setSelectedProfile(first);
+          setForm(prev => ({
+            ...prev,
+            parentProfileId: first.id,
+            buyerMaturity: first.buyerMaturity || prev.buyerMaturity,
+          }));
+        }
+      })
+      .catch(() => {/* offline/new env — silently skip */});
+  }, []);
+
+  function setPfField<K extends keyof typeof EMPTY_PROFILE>(key: K, value: typeof EMPTY_PROFILE[K]) {
+    setPf(prev => ({ ...prev, [key]: value }));
+  }
+
+  function openCreateProfile() {
+    setPf(EMPTY_PROFILE);
+    setPfCustomIndustry(false); setPfCustomErp(false);
+    setPfCustomGaap(false); setPfCustomCurrency(false);
+    setProfileFormMode("create");
+    setShowProfileForm(true);
+  }
+
+  function openEditProfile(p: ParentProfile) {
+    setPf({
+      orgName: p.orgName ?? "",
+      orgType: p.orgType ?? "",
+      parentIndustry: p.parentIndustry ?? "",
+      hqJurisdiction: p.hqJurisdiction ?? "",
+      parentGaap: p.parentGaap ?? "",
+      parentErp: p.parentErp ?? "",
+      fiscalYearEnd: p.fiscalYearEnd ?? "",
+      reportingCurrency: p.reportingCurrency ?? "USD",
+      imoStructure: p.imoStructure ?? "",
+      buyerMaturity: p.buyerMaturity ?? "",
+      integrationPlaybook: p.integrationPlaybook ?? "",
+      imoLead: p.imoLead ?? "",
+    });
+    setPfCustomIndustry(!!(p.parentIndustry && !SECTOR_PRESETS.has(p.parentIndustry)));
+    setPfCustomErp(!!(p.parentErp && !ERP_PRESETS.has(p.parentErp)));
+    setPfCustomGaap(!!(p.parentGaap && !GAAP_PRESETS.has(p.parentGaap)));
+    setPfCustomCurrency(!!(p.reportingCurrency && !CURRENCY_OPTIONS.includes(p.reportingCurrency)));
+    setProfileFormMode("edit");
+    setShowProfileForm(true);
+  }
+
+  async function saveProfile() {
+    if (!pf.orgName.trim()) return;
+    setPfSaving(true);
+    try {
+      const isEdit = profileFormMode === "edit" && selectedProfile?.id;
+      const url = isEdit ? `/api/parent-profiles?id=${selectedProfile!.id}` : "/api/parent-profiles";
+      const method = isEdit ? "PATCH" : "POST";
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pf),
+      });
+      const data = await res.json();
+      if (data.profile) {
+        const saved: ParentProfile = data.profile;
+        setProfiles(prev => isEdit
+          ? prev.map(p => p.id === saved.id ? saved : p)
+          : [saved, ...prev]
+        );
+        setSelectedProfile(saved);
+        setForm(prev => ({
+          ...prev,
+          parentProfileId: saved.id,
+          buyerMaturity: saved.buyerMaturity || prev.buyerMaturity,
+        }));
+        setShowProfileForm(false);
+      }
+    } finally {
+      setPfSaving(false);
+    }
+  }
+
+  function selectProfile(p: ParentProfile) {
+    setSelectedProfile(p);
+    setForm(prev => ({
+      ...prev,
+      parentProfileId: p.id,
+      buyerMaturity: p.buyerMaturity || prev.buyerMaturity,
+    }));
+  }
 
   function set<K extends keyof DealIntake>(key: K, value: DealIntake[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -311,6 +454,489 @@ export default function IntakeForm({ onSubmit }: Props) {
           checklist, risk assessment, and AI guidance within seconds.
         </p>
       </div>
+
+      {/* ═══════════════════ TIER 0 — PARENT ORGANIZATIONAL CONTEXT ═══════════════════ */}
+      <div style={{ marginBottom: 28 }}>
+        {/* Section header */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <div style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: 1.2, textTransform: "uppercase",
+            color: "#A78BFA", background: "#A78BFA18", padding: "3px 8px",
+            borderRadius: 4, border: "1px solid #A78BFA44",
+          }}>
+            Tier 0 · Immutable
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.text }}>
+            Parent Organizational Context
+          </div>
+          <div style={{ flex: 1, height: 1, background: COLORS.border }} />
+        </div>
+
+        {/* Profile not yet configured */}
+        {!selectedProfile && !showProfileForm && (
+          <div style={{
+            padding: 16, borderRadius: 10, border: `1px dashed #A78BFA66`,
+            background: "#A78BFA0A", display: "flex", alignItems: "center",
+            justifyContent: "space-between", gap: 12,
+          }}>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text, marginBottom: 3 }}>
+                No parent profile configured
+              </div>
+              <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                Set the immutable acquirer context once — it persists across all deals.
+              </div>
+            </div>
+            <button
+              onClick={openCreateProfile}
+              style={{
+                padding: "8px 16px", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                background: "#A78BFA22", border: "1px solid #A78BFA88",
+                color: "#A78BFA", cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              + Configure Profile
+            </button>
+          </div>
+        )}
+
+        {/* Profile selected — read-only banner */}
+        {selectedProfile && !showProfileForm && (
+          <div style={{
+            padding: "12px 16px", borderRadius: 10,
+            background: "#A78BFA0F", border: "1px solid #A78BFA44",
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                {/* Org name + type */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#C4B5FD" }}>
+                    {selectedProfile.orgName}
+                  </span>
+                  {selectedProfile.orgType && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, color: "#A78BFA",
+                      background: "#A78BFA22", padding: "2px 8px", borderRadius: 4,
+                      textTransform: "uppercase", letterSpacing: 0.8,
+                    }}>
+                      {ORG_TYPES.find(o => o.value === selectedProfile.orgType)?.label ?? selectedProfile.orgType}
+                    </span>
+                  )}
+                  {selectedProfile.hqJurisdiction && (
+                    <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      🌐 {selectedProfile.hqJurisdiction}
+                    </span>
+                  )}
+                </div>
+                {/* Key attributes row */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+                  {selectedProfile.parentGaap && (
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      <span style={{ color: COLORS.text, fontWeight: 600 }}>GAAP: </span>{selectedProfile.parentGaap}
+                    </div>
+                  )}
+                  {selectedProfile.parentErp && (
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      <span style={{ color: COLORS.text, fontWeight: 600 }}>ERP: </span>{selectedProfile.parentErp}
+                    </div>
+                  )}
+                  {selectedProfile.fiscalYearEnd && (
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      <span style={{ color: COLORS.text, fontWeight: 600 }}>FYE: </span>{selectedProfile.fiscalYearEnd}
+                    </div>
+                  )}
+                  {selectedProfile.reportingCurrency && (
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      <span style={{ color: COLORS.text, fontWeight: 600 }}>Currency: </span>{selectedProfile.reportingCurrency}
+                    </div>
+                  )}
+                  {selectedProfile.imoStructure && (
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      <span style={{ color: COLORS.text, fontWeight: 600 }}>IMO: </span>
+                      {IMO_STRUCTURES.find(s => s.value === selectedProfile.imoStructure)?.label ?? selectedProfile.imoStructure}
+                    </div>
+                  )}
+                  {selectedProfile.buyerMaturity && (
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      <span style={{ color: COLORS.text, fontWeight: 600 }}>Maturity: </span>
+                      {BUYER_MATURITY_OPTIONS.find(b => b.value === selectedProfile.buyerMaturity)?.label ?? selectedProfile.buyerMaturity}
+                    </div>
+                  )}
+                  {selectedProfile.imoLead && (
+                    <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                      <span style={{ color: COLORS.text, fontWeight: 600 }}>IMO Lead: </span>{selectedProfile.imoLead}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Action buttons */}
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                {profiles.length > 1 && (
+                  <select
+                    value={selectedProfile.id}
+                    onChange={e => {
+                      const p = profiles.find(x => x.id === e.target.value);
+                      if (p) selectProfile(p);
+                    }}
+                    style={{
+                      padding: "5px 8px", borderRadius: 6, fontSize: 10,
+                      border: "1px solid #A78BFA44", background: "#A78BFA11",
+                      color: "#A78BFA", cursor: "pointer",
+                    }}
+                  >
+                    {profiles.map(p => (
+                      <option key={p.id} value={p.id}>{p.orgName}</option>
+                    ))}
+                  </select>
+                )}
+                <button
+                  onClick={() => openEditProfile(selectedProfile)}
+                  style={{
+                    padding: "5px 12px", borderRadius: 6, fontSize: 10, fontWeight: 700,
+                    border: "1px solid #A78BFA44", background: "#A78BFA11",
+                    color: "#A78BFA", cursor: "pointer",
+                  }}
+                >
+                  ✎ Edit
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Profile create/edit form */}
+        {showProfileForm && (
+          <div style={{
+            padding: 20, borderRadius: 10,
+            background: "#0F1420", border: "1px solid #A78BFA55",
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#C4B5FD", marginBottom: 16 }}>
+              {profileFormMode === "create" ? "Configure Parent Profile" : "Edit Parent Profile"}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+              {/* Org Name */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                  Organization Name <span style={{ color: "#EF4444" }}>*</span>
+                </div>
+                <input
+                  type="text"
+                  value={pf.orgName}
+                  onChange={e => setPfField("orgName", e.target.value)}
+                  placeholder='e.g., "Acme Corp" or "Blackstone Fund VIII"'
+                  style={{ ...inputStyle(), width: "100%", boxSizing: "border-box" }}
+                />
+              </div>
+
+              {/* Org Type */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                  Organization Type
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {ORG_TYPES.map(o => (
+                    <button
+                      key={o.value}
+                      onClick={() => setPfField("orgType", pf.orgType === o.value ? "" : o.value)}
+                      style={{
+                        padding: "8px 12px", borderRadius: 7, fontSize: 11, cursor: "pointer",
+                        textAlign: "left", display: "flex", alignItems: "center", gap: 10,
+                        border: `1px solid ${pf.orgType === o.value ? "#A78BFA" : COLORS.border}`,
+                        background: pf.orgType === o.value ? "#A78BFA18" : COLORS.cardBg,
+                        color: pf.orgType === o.value ? "#C4B5FD" : COLORS.text,
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontWeight: 700 }}>{o.label}</span>
+                        <span style={{ color: COLORS.textMuted, marginLeft: 8, fontSize: 10 }}>{o.desc}</span>
+                      </div>
+                      {pf.orgType === o.value && <span style={{ color: "#A78BFA", fontSize: 14 }}>✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Parent Industry + HQ side by side */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    Parent Industry
+                  </div>
+                  {pfCustomIndustry ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        type="text"
+                        value={pf.parentIndustry}
+                        onChange={e => setPfField("parentIndustry", e.target.value)}
+                        placeholder="Enter industry…"
+                        style={{ ...inputStyle(), flex: 1 }}
+                        autoFocus
+                      />
+                      <button onClick={() => { setPfField("parentIndustry", ""); setPfCustomIndustry(false); }}
+                        style={{ padding: "0 10px", borderRadius: 6, border: `1px solid ${COLORS.border}`, background: COLORS.cardBg, color: COLORS.textMuted, cursor: "pointer", fontSize: 12 }}>
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {SECTORS.map(s => (
+                        <button key={s}
+                          onClick={() => setPfField("parentIndustry", pf.parentIndustry === s ? "" : s)}
+                          style={{
+                            padding: "4px 9px", borderRadius: 5, fontSize: 10, cursor: "pointer",
+                            border: `1px solid ${pf.parentIndustry === s ? "#A78BFA" : COLORS.border}`,
+                            background: pf.parentIndustry === s ? "#A78BFA18" : COLORS.cardBg,
+                            color: pf.parentIndustry === s ? "#C4B5FD" : COLORS.textMuted,
+                          }}
+                        >{s}</button>
+                      ))}
+                      <button onClick={() => setPfCustomIndustry(true)}
+                        style={{ padding: "4px 9px", borderRadius: 5, fontSize: 10, cursor: "pointer", border: `1px dashed ${COLORS.border}`, background: "transparent", color: COLORS.textMuted }}>
+                        Other…
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    HQ Jurisdiction
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                    {JURISDICTIONS.slice(0, 8).map(j => (
+                      <button key={j.code}
+                        onClick={() => setPfField("hqJurisdiction", pf.hqJurisdiction === j.code ? "" : j.code)}
+                        style={{
+                          padding: "4px 9px", borderRadius: 5, fontSize: 10, cursor: "pointer",
+                          border: `1px solid ${pf.hqJurisdiction === j.code ? "#A78BFA" : COLORS.border}`,
+                          background: pf.hqJurisdiction === j.code ? "#A78BFA18" : COLORS.cardBg,
+                          color: pf.hqJurisdiction === j.code ? "#C4B5FD" : COLORS.textMuted,
+                        }}
+                      >{j.code}</button>
+                    ))}
+                    <input type="text"
+                      value={JURISDICTIONS.some(j => j.code === pf.hqJurisdiction) || !pf.hqJurisdiction ? "" : pf.hqJurisdiction}
+                      onChange={e => setPfField("hqJurisdiction", e.target.value)}
+                      placeholder="Other…"
+                      style={{ ...inputStyle(), width: 70, padding: "4px 8px", fontSize: 10 }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Parent GAAP + Parent ERP side by side */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    Parent GAAP Standard
+                  </div>
+                  {pfCustomGaap ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input type="text" value={pf.parentGaap} onChange={e => setPfField("parentGaap", e.target.value)}
+                        placeholder="Enter GAAP…" style={{ ...inputStyle(), flex: 1 }} autoFocus />
+                      <button onClick={() => { setPfField("parentGaap", ""); setPfCustomGaap(false); }}
+                        style={{ padding: "0 10px", borderRadius: 6, border: `1px solid ${COLORS.border}`, background: COLORS.cardBg, color: COLORS.textMuted, cursor: "pointer", fontSize: 12 }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {GAAP_OPTIONS.map(g => (
+                        <button key={g} onClick={() => setPfField("parentGaap", pf.parentGaap === g ? "" : g)}
+                          style={{
+                            padding: "4px 9px", borderRadius: 5, fontSize: 10, cursor: "pointer",
+                            border: `1px solid ${pf.parentGaap === g ? "#A78BFA" : COLORS.border}`,
+                            background: pf.parentGaap === g ? "#A78BFA18" : COLORS.cardBg,
+                            color: pf.parentGaap === g ? "#C4B5FD" : COLORS.textMuted,
+                          }}
+                        >{g}</button>
+                      ))}
+                      <button onClick={() => setPfCustomGaap(true)}
+                        style={{ padding: "4px 9px", borderRadius: 5, fontSize: 10, cursor: "pointer", border: `1px dashed ${COLORS.border}`, background: "transparent", color: COLORS.textMuted }}>
+                        Other…
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    Parent ERP System
+                  </div>
+                  {pfCustomErp ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input type="text" value={pf.parentErp} onChange={e => setPfField("parentErp", e.target.value)}
+                        placeholder="Enter ERP…" style={{ ...inputStyle(), flex: 1 }} autoFocus />
+                      <button onClick={() => { setPfField("parentErp", ""); setPfCustomErp(false); }}
+                        style={{ padding: "0 10px", borderRadius: 6, border: `1px solid ${COLORS.border}`, background: COLORS.cardBg, color: COLORS.textMuted, cursor: "pointer", fontSize: 12 }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {ERP_OPTIONS.map(e => (
+                        <button key={e} onClick={() => setPfField("parentErp", pf.parentErp === e ? "" : e)}
+                          style={{
+                            padding: "4px 9px", borderRadius: 5, fontSize: 10, cursor: "pointer",
+                            border: `1px solid ${pf.parentErp === e ? "#A78BFA" : COLORS.border}`,
+                            background: pf.parentErp === e ? "#A78BFA18" : COLORS.cardBg,
+                            color: pf.parentErp === e ? "#C4B5FD" : COLORS.textMuted,
+                          }}
+                        >{e}</button>
+                      ))}
+                      <button onClick={() => setPfCustomErp(true)}
+                        style={{ padding: "4px 9px", borderRadius: 5, fontSize: 10, cursor: "pointer", border: `1px dashed ${COLORS.border}`, background: "transparent", color: COLORS.textMuted }}>
+                        Other…
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* FYE + Currency + IMO Structure */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    Fiscal Year End
+                  </div>
+                  <select
+                    value={pf.fiscalYearEnd}
+                    onChange={e => setPfField("fiscalYearEnd", e.target.value)}
+                    style={{ ...inputStyle(), width: "100%", boxSizing: "border-box" }}
+                  >
+                    <option value="">Select month…</option>
+                    {MONTH_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    Reporting Currency
+                  </div>
+                  {pfCustomCurrency ? (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input type="text" value={pf.reportingCurrency} onChange={e => setPfField("reportingCurrency", e.target.value)}
+                        placeholder="e.g. SGD…" style={{ ...inputStyle(), flex: 1 }} autoFocus />
+                      <button onClick={() => { setPfField("reportingCurrency", "USD"); setPfCustomCurrency(false); }}
+                        style={{ padding: "0 10px", borderRadius: 6, border: `1px solid ${COLORS.border}`, background: COLORS.cardBg, color: COLORS.textMuted, cursor: "pointer", fontSize: 12 }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 5 }}>
+                      <select
+                        value={pf.reportingCurrency}
+                        onChange={e => setPfField("reportingCurrency", e.target.value)}
+                        style={{ ...inputStyle(), flex: 1, boxSizing: "border-box" }}
+                      >
+                        {CURRENCY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <button onClick={() => setPfCustomCurrency(true)}
+                        style={{ padding: "0 10px", borderRadius: 6, border: `1px solid ${COLORS.border}`, background: COLORS.cardBg, color: COLORS.textMuted, cursor: "pointer", fontSize: 10 }}>
+                        Other
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                    IMO Lead
+                  </div>
+                  <input type="text" value={pf.imoLead ?? ""} onChange={e => setPfField("imoLead", e.target.value)}
+                    placeholder="Name of standing IMO lead…"
+                    style={{ ...inputStyle(), width: "100%", boxSizing: "border-box" }} />
+                </div>
+              </div>
+
+              {/* IMO Structure */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                  IMO Structure
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {IMO_STRUCTURES.map(s => (
+                    <button key={s.value}
+                      onClick={() => setPfField("imoStructure", pf.imoStructure === s.value ? "" : s.value)}
+                      style={{
+                        padding: "8px 12px", borderRadius: 7, fontSize: 11, cursor: "pointer", textAlign: "left",
+                        border: `1px solid ${pf.imoStructure === s.value ? "#A78BFA" : COLORS.border}`,
+                        background: pf.imoStructure === s.value ? "#A78BFA18" : COLORS.cardBg,
+                        color: pf.imoStructure === s.value ? "#C4B5FD" : COLORS.text,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{s.label}</div>
+                      <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>{s.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Buyer Maturity — moved here from Tier 3 */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                  Acquirer M&A Maturity
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {BUYER_MATURITY_OPTIONS.map(o => (
+                    <button key={o.value}
+                      onClick={() => setPfField("buyerMaturity", pf.buyerMaturity === o.value ? "" : o.value)}
+                      style={{
+                        padding: "8px 12px", borderRadius: 7, fontSize: 11, cursor: "pointer", textAlign: "left",
+                        border: `1px solid ${pf.buyerMaturity === o.value ? "#A78BFA" : COLORS.border}`,
+                        background: pf.buyerMaturity === o.value ? "#A78BFA18" : COLORS.cardBg,
+                        color: pf.buyerMaturity === o.value ? "#C4B5FD" : COLORS.text,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{o.label}</div>
+                      <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2 }}>{o.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Integration Playbook (optional) */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.textMuted, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                  Integration Playbook <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>— optional</span>
+                </div>
+                <textarea
+                  value={pf.integrationPlaybook ?? ""}
+                  onChange={e => setPfField("integrationPlaybook", e.target.value)}
+                  placeholder="e.g. Proprietary 90-day playbook, Big-4 integration framework, PE-standard 100-day plan…"
+                  rows={2}
+                  style={{
+                    ...inputStyle(), width: "100%", boxSizing: "border-box",
+                    resize: "vertical", lineHeight: 1.5, fontFamily: "inherit",
+                  }}
+                />
+              </div>
+
+              {/* Form actions */}
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 4 }}>
+                <button
+                  onClick={() => setShowProfileForm(false)}
+                  style={{
+                    padding: "8px 18px", borderRadius: 7, fontSize: 12, fontWeight: 600,
+                    border: `1px solid ${COLORS.border}`, background: COLORS.cardBg,
+                    color: COLORS.textMuted, cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveProfile}
+                  disabled={pfSaving || !pf.orgName.trim()}
+                  style={{
+                    padding: "8px 20px", borderRadius: 7, fontSize: 12, fontWeight: 700,
+                    border: "1px solid #A78BFA",
+                    background: pf.orgName.trim() && !pfSaving ? "#A78BFA" : "#A78BFA44",
+                    color: "#fff", cursor: pf.orgName.trim() && !pfSaving ? "pointer" : "not-allowed",
+                    opacity: pfSaving ? 0.7 : 1,
+                  }}
+                >
+                  {pfSaving ? "Saving…" : profileFormMode === "create" ? "Save Profile" : "Update Profile"}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+      </div>
+      {/* ═══════════════════════════════ end TIER 0 ═══════════════════════════════ */}
 
       {/* Tier Progress */}
       <div style={{ display: "flex", gap: 0, marginBottom: 32 }}>
@@ -885,20 +1511,33 @@ export default function IntakeForm({ onSubmit }: Props) {
             )}
           </Field>
 
-          {/* ── Buyer Maturity ── */}
-          <Field label="Acquirer M&A Maturity">
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {BUYER_MATURITY_OPTIONS.map((opt) => (
-                <SelectCard
-                  key={opt.value}
-                  label={opt.label}
-                  desc={opt.desc}
-                  selected={form.buyerMaturity === opt.value}
-                  onClick={() => set("buyerMaturity", opt.value)}
-                />
-              ))}
+          {/* ── Buyer Maturity — inherited from Parent Profile (Tier 0) ── */}
+          <div style={{
+            padding: "12px 16px", borderRadius: 8,
+            background: "#A78BFA0A", border: "1px solid #A78BFA33",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+          }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#A78BFA", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.8 }}>
+                Acquirer M&A Maturity
+              </div>
+              {form.buyerMaturity ? (
+                <div style={{ fontSize: 12, color: COLORS.text, fontWeight: 600 }}>
+                  {BUYER_MATURITY_OPTIONS.find(b => b.value === form.buyerMaturity)?.label ?? form.buyerMaturity}
+                  <span style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: 400, marginLeft: 8 }}>
+                    — inherited from Parent Profile
+                  </span>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                  Not set — configure in the Parent Profile (Tier 0) above
+                </div>
+              )}
             </div>
-          </Field>
+            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, color: "#A78BFA", background: "#A78BFA18", padding: "2px 7px", borderRadius: 4, whiteSpace: "nowrap" }}>
+              TIER 0
+            </span>
+          </div>
 
           {/* ══ ADDITIONAL CONTEXT BUCKET ══════════════════════════════════════ */}
           <div style={{ marginTop: 8 }}>

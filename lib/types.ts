@@ -103,6 +103,40 @@ export type FunctionalArea =
   | "all";
 
 // ============================================================
+// Parent Organizational Profile (immutable acquirer context)
+// ============================================================
+export type OrgType =
+  | "corporate"         // Corporate strategic acquirer
+  | "pe"                // Private equity / financial sponsor
+  | "family_office"     // Family office
+  | "sovereign_wealth"  // Sovereign wealth fund
+  | "spac";             // SPAC
+
+export type ImoStructure =
+  | "centralized"   // Single IMO manages all workstreams
+  | "decentralized" // Workstream leads self-manage
+  | "embedded"      // IMO members sit inside business units
+  | "external";     // Consulting-led IMO
+
+export interface ParentProfile {
+  id?: string;
+  orgName: string;
+  orgType: OrgType | string;
+  parentIndustry?: string;
+  hqJurisdiction?: string;
+  parentGaap?: string;         // Acquirer's own GAAP standard
+  parentErp?: string;          // Acquirer's own ERP
+  fiscalYearEnd?: string;      // "Jan" | "Feb" | ... | "Dec"
+  reportingCurrency?: string;  // "USD" | "EUR" | "GBP" | custom
+  imoStructure?: ImoStructure | string;
+  buyerMaturity?: string;      // "first" | "occasional" | "serial" | "pe"
+  integrationPlaybook?: string; // Free-text methodology description
+  imoLead?: string;            // Primary IMO lead name
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ============================================================
 // Intake Form — Deal Profile (12-field, 3-tier)
 // ============================================================
 export interface DealIntake {
@@ -133,6 +167,9 @@ export interface DealIntake {
 
   // Additional general context bucket — open-ended topic + notes pairs
   additionalContext?: Array<{ topic: string; label: string; notes: string }>;
+
+  // Parent organizational profile link
+  parentProfileId?: string;
 }
 
 // ============================================================
@@ -309,6 +346,7 @@ export interface ChangeEvent {
 export interface GeneratedDeal {
   id?: string; // DB-assigned UUID (populated after first successful save)
   intake: DealIntake;
+  parentProfile?: ParentProfile; // Linked acquirer profile (denormalized for offline use)
   checklistItems: ChecklistItem[];
   riskAlerts: RiskAlert[];
   workstreamSummary: WorkstreamSummary[];

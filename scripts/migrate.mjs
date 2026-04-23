@@ -261,6 +261,29 @@ async function migrate() {
   )`;
   console.log("✓ agents.role_permissions table");
 
+  // ── Parent Organizational Profiles ────────────────────────
+  await sql`CREATE TABLE IF NOT EXISTS parent_profiles (
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    org_name             VARCHAR(100) NOT NULL,
+    org_type             VARCHAR(30),
+    parent_industry      VARCHAR(50),
+    hq_jurisdiction      VARCHAR(50),
+    parent_gaap          VARCHAR(20),
+    parent_erp           VARCHAR(50),
+    fiscal_year_end      VARCHAR(3),
+    reporting_currency   VARCHAR(10),
+    imo_structure        VARCHAR(30),
+    buyer_maturity       VARCHAR(20),
+    integration_playbook TEXT,
+    imo_lead             VARCHAR(100),
+    created_at           TIMESTAMPTZ DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  console.log("✓ parent_profiles table");
+
+  await sql`ALTER TABLE deals ADD COLUMN IF NOT EXISTS parent_profile_id UUID REFERENCES parent_profiles(id) ON DELETE SET NULL`;
+  console.log("✓ deals.parent_profile_id FK column");
+
   // Verify
   const tables = await sql`SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('public', 'config', 'audit', 'agents') ORDER BY table_schema, table_name`;
   console.log("\n=== ALL TABLES ===");

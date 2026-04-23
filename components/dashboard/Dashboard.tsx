@@ -645,6 +645,11 @@ export default function Dashboard({
     { id: "agent", label: "✦ Agent" },
   ] as const;
 
+  const TAB_ICONS: Record<string, string> = {
+    live_status: "◉", checklist: "☰", team: "◈", risks: "⚡",
+    timeline: "▦", steerco: "▤", admin: "⚙", agent: "✦",
+  };
+
   // Admin tab local state
   const [adminDealName, setAdminDealName] = useState(deal.intake.dealName);
   const [adminDealStatus, setAdminDealStatus] = useState<string>("active");
@@ -721,6 +726,12 @@ export default function Dashboard({
           svg rect[fill="#1E293B"] { fill: #F1F5F9 !important; }
         }
         @keyframes savePulse { 0%,100%{opacity:1} 50%{opacity:0.45} }
+        select, input[type=text], input[type=date], input[type=email] { font-size: clamp(11px, 1vw, 13px) !important; }
+        @media (max-width: 768px) { select, input[type=text], input[type=date], input[type=email] { font-size: 13px !important; } }
+        .dm-sidebar { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+        .dm-sidebar::-webkit-scrollbar { width: 4px; }
+        .dm-sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .dm-sidebar-btn:hover { background: rgba(59, 130, 246, 0.1) !important; color: #CBD5E1 !important; }
       `}</style>
       {/* Top Nav */}
       <div style={{
@@ -746,16 +757,7 @@ export default function Dashboard({
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 2, alignItems: "center", background: "rgba(30, 41, 59, 0.5)", borderRadius: 8, padding: 3 }}>
-          {TAB_CONFIG.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
-              padding: "7px 16px", borderRadius: 6, border: "none", cursor: "pointer",
-              background: activeTab === tab.id ? (tab.id === "steerco" ? "#22C55E" : C.accent) : "transparent",
-              color: activeTab === tab.id ? "#fff" : C.textMuted,
-              fontSize: 11, fontWeight: 600, letterSpacing: 0.3,
-              transition: "all 0.15s ease",
-            }}>{tab.label}</button>
-          ))}
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* Autosave Status Indicator */}
           {saveStatus !== "idle" && (
             <span style={{
@@ -786,7 +788,52 @@ export default function Dashboard({
       </div>
       {showHelp && <HelpDrawer activeTab={activeTab} onClose={() => setShowHelp(false)} />}
 
-      <div style={{ padding: "20px 24px", maxWidth: 1400, margin: "0 auto" }}>
+      {/* ── App body: sidebar + main ── */}
+      <div style={{ display: "flex", flex: 1, minHeight: "calc(100vh - 57px)" }}>
+
+        {/* ─── Left Sidebar Navigation ─── */}
+        <nav className="dm-sidebar" style={{
+          width: 210, flexShrink: 0,
+          background: "rgba(8, 14, 28, 0.88)",
+          borderRight: "1px solid rgba(51, 65, 85, 0.45)",
+          display: "flex", flexDirection: "column",
+          padding: "16px 8px 32px",
+          gap: 2,
+          position: "sticky", top: 57,
+          height: "calc(100vh - 57px)",
+          overflowY: "auto",
+          zIndex: 5,
+        }}>
+          {TAB_CONFIG.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const accent = tab.id === "steerco" ? "#22C55E" : tab.id === "agent" ? C.accentLight : C.accent;
+            return (
+              <button
+                key={tab.id}
+                className="dm-sidebar-btn"
+                onClick={() => setActiveTab(tab.id as any)}
+                style={{
+                  width: "100%", padding: "9px 12px", borderRadius: 7,
+                  border: "none", cursor: "pointer", outline: "none",
+                  background: isActive ? accent + "1A" : "transparent",
+                  color: isActive ? accent : C.textMuted,
+                  fontSize: 12, fontWeight: isActive ? 700 : 500,
+                  letterSpacing: 0.2, textAlign: "left",
+                  display: "flex", alignItems: "center", gap: 9,
+                  transition: "all 0.15s ease",
+                  borderLeft: `3px solid ${isActive ? accent : "transparent"}`,
+                }}>
+                <span style={{ fontSize: 13, lineHeight: 1, opacity: isActive ? 1 : 0.5 }}>
+                  {TAB_ICONS[tab.id]}
+                </span>
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* ─── Main Content ─── */}
+        <div style={{ flex: 1, padding: "20px 24px", maxWidth: "calc(1400px - 210px)", margin: "0 auto", minWidth: 0 }}>
 
         {/* Deal Context Bar */}
         <div style={{
@@ -3142,7 +3189,8 @@ export default function Dashboard({
           <span>DealMapper v0.7.0 · Generated {new Date(deal.generatedAt).toLocaleString()}</span>
           <span>Powered by Claude AI · {deal.checklistItems.filter(i => i.status !== "na").length} active items across 24 workstreams</span>
         </div>
-      </div>
+        </div>{/* main content */}
+      </div>{/* flex body */}
     </div>
   );
 }

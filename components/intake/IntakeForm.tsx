@@ -77,6 +77,58 @@ const ERP_OPTIONS = ["SAP", "Oracle", "NetSuite", "Workday", "Microsoft Dynamics
 const ERP_PRESETS = new Set(ERP_OPTIONS);
 // "Other" handled separately with free-text
 
+// ─── Additional context topic suggestions ────────────────────────────────────
+const CONTEXT_TOPICS: { id: string; label: string; icon: string; placeholder: string }[] = [
+  {
+    id: "contracts",
+    label: "Contract & Commercial",
+    icon: "📋",
+    placeholder: "e.g. complex earn-out provisions, revenue-sharing arrangements, change-of-control clauses, IP licensing terms, minimum purchase commitments, price adjustment mechanisms…",
+  },
+  {
+    id: "customers",
+    label: "Client & Customer",
+    icon: "🤝",
+    placeholder: "e.g. key account dependencies, customer consent / assignment requirements, revenue concentration risks, CRM migration, loyalty programme obligations, NPS / SLA commitments…",
+  },
+  {
+    id: "employees",
+    label: "Employee & People",
+    icon: "👤",
+    placeholder: "e.g. key person retention packages, works council / union consultation obligations, change-in-control payments, headcount synergy targets, TUPE / WARN Act applicability…",
+  },
+  {
+    id: "regulatory",
+    label: "Regulatory & Compliance",
+    icon: "⚖",
+    placeholder: "e.g. pending investigations or consent orders, industry-specific licences, antitrust / HSR filing status, CFIUS review, data-protection authority notifications, environmental permits…",
+  },
+  {
+    id: "operational",
+    label: "Operational Dependencies",
+    icon: "⚙",
+    placeholder: "e.g. critical vendor or sole-source supplier relationships, outsourced functions, shared-service dependencies, logistics or warehouse obligations, manufacturing constraints…",
+  },
+  {
+    id: "financial",
+    label: "Financial Considerations",
+    icon: "◆",
+    placeholder: "e.g. working capital peg and target, debt assumptions or payoff requirements, pension / OPEB liabilities, contingent liabilities, earnout mechanics, intercompany balances…",
+  },
+  {
+    id: "technology",
+    label: "Technology & IP",
+    icon: "◈",
+    placeholder: "e.g. licensed or owned IP and patents, open-source obligations, key software licence assignments, proprietary data assets, source-code escrow, cybersecurity posture…",
+  },
+  {
+    id: "cultural",
+    label: "Cultural & Change",
+    icon: "◉",
+    placeholder: "e.g. cultural integration challenges, org structure decisions pending, leadership alignment gaps, employee communication plan, change-readiness assessment findings…",
+  },
+];
+
 const BUYER_MATURITY_OPTIONS = [
   { value: "first",      label: "First-Time Acquirer",    desc: "No prior acquisitions at this scale" },
   { value: "occasional", label: "Occasional Acquirer",    desc: "1–3 deals in past 5 years" },
@@ -122,6 +174,7 @@ const EMPTY_INTAKE: DealIntake = {
   dealStructureNotes: "",
   integrationModelNotes: "",
   tsaNotes: "",
+  additionalContext: [],
 };
 
 export default function IntakeForm({ onSubmit }: Props) {
@@ -138,6 +191,7 @@ export default function IntakeForm({ onSubmit }: Props) {
   const [customErpText, setCustomErpText] = useState("");
   const [gaapOtherMode, setGaapOtherMode] = useState(false);
   const [customGaapText, setCustomGaapText] = useState("");
+  const [customContextTopic, setCustomContextTopic] = useState("");
 
   function set<K extends keyof DealIntake>(key: K, value: DealIntake[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -176,6 +230,22 @@ export default function IntakeForm({ onSubmit }: Props) {
   function removeCustomFunction(code: string) {
     const next = (form.functionalScope as string[]).filter(c => c !== code);
     set("functionalScope", (next.length === 0 ? ["all"] : next) as any);
+  }
+
+  function addContextTopic(id: string, label: string, placeholder: string = "") {
+    const existing = form.additionalContext ?? [];
+    if (existing.find(e => e.topic === id)) return; // already added
+    set("additionalContext", [...existing, { topic: id, label, notes: "" }]);
+  }
+
+  function removeContextTopic(id: string) {
+    set("additionalContext", (form.additionalContext ?? []).filter(e => e.topic !== id));
+  }
+
+  function updateContextNotes(id: string, notes: string) {
+    set("additionalContext", (form.additionalContext ?? []).map(e =>
+      e.topic === id ? { ...e, notes } : e
+    ));
   }
 
   function validateTier1(): boolean {
@@ -829,6 +899,156 @@ export default function IntakeForm({ onSubmit }: Props) {
               ))}
             </div>
           </Field>
+
+          {/* ══ ADDITIONAL CONTEXT BUCKET ══════════════════════════════════════ */}
+          <div style={{ marginTop: 8 }}>
+            {/* Section divider */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+              <div style={{ flex: 1, height: 1, background: COLORS.border }} />
+              <span style={{
+                fontSize: 10, fontWeight: 800, letterSpacing: 1.2,
+                color: COLORS.textMuted, whiteSpace: "nowrap", textTransform: "uppercase",
+              }}>
+                Additional Context — Optional
+              </span>
+              <div style={{ flex: 1, height: 1, background: COLORS.border }} />
+            </div>
+
+            <div style={{
+              padding: 16, borderRadius: 10,
+              background: "#141F33",
+              border: `1px solid ${COLORS.border}`,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text, marginBottom: 4 }}>
+                General Context Bucket
+              </div>
+              <div style={{ fontSize: 11, color: COLORS.textMuted, lineHeight: 1.55, marginBottom: 14 }}>
+                Capture any deal-specific nuances that don&apos;t fit the structured fields above — contract terms,
+                client or customer considerations, employee matters, or anything else your team needs to track.
+              </div>
+
+              {/* Suggested topic chips */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+                {CONTEXT_TOPICS.map((t) => {
+                  const isAdded = !!(form.additionalContext ?? []).find(e => e.topic === t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => isAdded ? removeContextTopic(t.id) : addContextTopic(t.id, t.label)}
+                      style={{
+                        padding: "5px 11px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                        border: `1px solid ${isAdded ? COLORS.accent : COLORS.border}`,
+                        background: isAdded ? `${COLORS.accent}22` : "transparent",
+                        color: isAdded ? COLORS.accent : COLORS.textMuted,
+                        cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <span style={{ fontSize: 12 }}>{t.icon}</span>
+                      {t.label}
+                      {isAdded && <span style={{ fontSize: 13, lineHeight: 1, marginLeft: 2, opacity: 0.7 }}>×</span>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Active context entries */}
+              {(form.additionalContext ?? []).length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+                  {(form.additionalContext ?? []).map((entry) => {
+                    const def = CONTEXT_TOPICS.find(t => t.id === entry.topic);
+                    return (
+                      <div key={entry.topic} style={{
+                        borderRadius: 8, border: `1px solid ${COLORS.accent}33`,
+                        background: `${COLORS.accent}08`, overflow: "hidden",
+                      }}>
+                        {/* Entry header */}
+                        <div style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "8px 12px",
+                          borderBottom: `1px solid ${COLORS.accent}22`,
+                          background: `${COLORS.accent}0D`,
+                        }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.accent, display: "flex", alignItems: "center", gap: 6 }}>
+                            {def && <span style={{ fontSize: 13 }}>{def.icon}</span>}
+                            {entry.label}
+                          </span>
+                          <button
+                            onClick={() => removeContextTopic(entry.topic)}
+                            style={{ background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer", fontSize: 16, lineHeight: 1, padding: "0 2px" }}
+                            title="Remove this section"
+                          >×</button>
+                        </div>
+                        {/* Textarea */}
+                        <textarea
+                          value={entry.notes}
+                          onChange={(e) => updateContextNotes(entry.topic, e.target.value)}
+                          placeholder={def?.placeholder ?? `Add notes about ${entry.label}…`}
+                          rows={3}
+                          style={{
+                            width: "100%", padding: "10px 12px",
+                            background: "transparent", border: "none",
+                            color: COLORS.text, fontSize: 12,
+                            fontFamily: "inherit", outline: "none",
+                            resize: "vertical", lineHeight: 1.55,
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Add custom topic */}
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="text"
+                  value={customContextTopic}
+                  onChange={(e) => setCustomContextTopic(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && customContextTopic.trim()) {
+                      e.preventDefault();
+                      addContextTopic(
+                        `custom_${Date.now()}`,
+                        customContextTopic.trim()
+                      );
+                      setCustomContextTopic("");
+                    }
+                  }}
+                  placeholder="Add a custom topic (e.g. Environmental, Insurance, Post-close Obligations)…"
+                  style={{ ...inputStyle(), flex: 1, fontSize: 11 }}
+                />
+                <button
+                  onClick={() => {
+                    if (customContextTopic.trim()) {
+                      addContextTopic(`custom_${Date.now()}`, customContextTopic.trim());
+                      setCustomContextTopic("");
+                    }
+                  }}
+                  disabled={!customContextTopic.trim()}
+                  style={{
+                    padding: "0 14px", borderRadius: 6,
+                    border: `1px solid ${COLORS.accent}`,
+                    background: `${COLORS.accent}22`, color: COLORS.accent,
+                    fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    opacity: customContextTopic.trim() ? 1 : 0.4,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  + Add
+                </button>
+              </div>
+
+              {(form.additionalContext ?? []).length === 0 && (
+                <div style={{ marginTop: 10, fontSize: 10, color: COLORS.textMuted, textAlign: "center" }}>
+                  Click a topic above to add it, or type a custom one and press Enter / + Add
+                </div>
+              )}
+            </div>
+          </div>
+          {/* ══ end additional context ══════════════════════════════════════════ */}
+
         </div>
       )}
 

@@ -130,6 +130,9 @@ export interface DealIntake {
   dealStructureNotes?: string;     // Additional context about the deal structure
   integrationModelNotes?: string;  // Integration boundary / nuance description
   tsaNotes?: string;               // TSA scope, expected duration, functions covered
+
+  // Additional general context bucket — open-ended topic + notes pairs
+  additionalContext?: Array<{ topic: string; label: string; notes: string }>;
 }
 
 // ============================================================

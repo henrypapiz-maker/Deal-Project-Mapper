@@ -1,6 +1,4 @@
-import { neon } from "@neondatabase/serverless";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getMainSql } from "@/lib/db";
 
 const DEFAULTS: Record<string, Record<string, boolean>> = {
   admin:            { navigate_tab: true,  filter_checklist: true,  update_item_status: true,  assign_owner: true,  bulk_assign_owner: true,  draft_report: true,  generate_snapshot: true,  synthesize_document: true,  save_document: true,  run_skill: true  },
@@ -25,6 +23,7 @@ export async function getAllowedActionsForRole(role: string): Promise<Set<string
     return cache.data[role];
   }
 
+  const sql = getMainSql();
   const rows = await sql`SELECT role, action_type, allowed FROM agents.role_permissions`;
 
   const map: Record<string, Set<string>> = {};

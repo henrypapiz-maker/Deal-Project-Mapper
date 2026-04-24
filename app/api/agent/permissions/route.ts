@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
 import { getAllowedActionsForRole, invalidatePermissionCache, ALL_ACTION_TYPES, DEFAULTS } from "@/lib/agent-permissions";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getMainSql } from "@/lib/db";
 
 export async function GET() {
+  const sql = getMainSql();
   try {
     const rows = await sql`SELECT role, action_type, allowed FROM agents.role_permissions ORDER BY role, action_type`;
     const matrix: Array<{ role: string; actionType: string; allowed: boolean }> = [];
@@ -26,6 +25,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const sql = getMainSql();
   const { role, actionType, allowed } = await req.json();
   if (!role || !actionType || allowed === undefined) {
     return NextResponse.json({ error: "role, actionType, allowed required" }, { status: 400 });

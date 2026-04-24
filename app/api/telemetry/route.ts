@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getMainSql } from "@/lib/db";
 
 /**
  * GET /api/telemetry?dealId=<uuid>&limit=<n>
@@ -11,6 +9,7 @@ const sql = neon(process.env.DATABASE_URL!);
  *   Returns override_log rows for a deal.
  */
 export async function GET(req: NextRequest) {
+  const sql = getMainSql();
   const dealId = req.nextUrl.searchParams.get("dealId");
   const limitParam = parseInt(req.nextUrl.searchParams.get("limit") ?? "100", 10);
   const limit = Math.min(limitParam, 500);
@@ -52,6 +51,7 @@ export async function GET(req: NextRequest) {
  * Called fire-and-forget from server routes; no auth check needed (internal).
  */
 export async function POST(req: NextRequest) {
+  const sql = getMainSql();
   try {
     const body = await req.json();
     const {

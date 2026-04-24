@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getMainSql } from "@/lib/db";
 
 // ── Row → ParentProfile mapper ────────────────────────────────────────────────
 function rowToProfile(r: Record<string, unknown>) {
@@ -26,6 +24,7 @@ function rowToProfile(r: Record<string, unknown>) {
 
 // ── GET /api/parent-profiles — list all profiles ──────────────────────────────
 export async function GET() {
+  const sql = getMainSql();
   try {
     const rows = await sql`
       SELECT * FROM parent_profiles ORDER BY created_at DESC
@@ -39,6 +38,7 @@ export async function GET() {
 
 // ── POST /api/parent-profiles — create a new profile ─────────────────────────
 export async function POST(req: NextRequest) {
+  const sql = getMainSql();
   const body = await req.json();
   const {
     orgName, orgType, parentIndustry, hqJurisdiction, parentGaap,
@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
 
 // ── PATCH /api/parent-profiles?id=<uuid> — update a profile ──────────────────
 export async function PATCH(req: NextRequest) {
+  const sql = getMainSql();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
@@ -112,6 +113,7 @@ export async function PATCH(req: NextRequest) {
 
 // ── DELETE /api/parent-profiles?id=<uuid> — delete a profile ─────────────────
 export async function DELETE(req: NextRequest) {
+  const sql = getMainSql();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getMainSql } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
+  const sql = getMainSql();
   const dealId = req.nextUrl.searchParams.get("dealId");
   try {
     const rows = dealId
@@ -17,6 +16,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const sql = getMainSql();
   const { name, text, category, isGlobal = false, dealId, createdBy } = await req.json();
   if (!name || !text) return NextResponse.json({ error: "name and text required" }, { status: 400 });
   try {
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const sql = getMainSql();
   const { id, name, text, category } = await req.json();
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
   try {
@@ -53,6 +54,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const sql = getMainSql();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
   try {

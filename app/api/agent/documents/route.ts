@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
 import { put, del } from "@vercel/blob";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getMainSql } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
+  const sql = getMainSql();
   const dealId = req.nextUrl.searchParams.get("dealId");
   if (!dealId) return NextResponse.json({ error: "dealId required" }, { status: 400 });
 
@@ -24,6 +23,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const sql = getMainSql();
   const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
   const { dealId, title, content, docType, format = "markdown" } = await req.json();
   if (!dealId || !title || !content || !docType) {
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  const sql = getMainSql();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 

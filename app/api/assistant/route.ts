@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
 import type { AssistantRequest, AssistantResponse, AppAction } from "@/lib/agent-types";
+import { getMainSql } from "@/lib/db";
 import { getAllowedActionsForRole } from "@/lib/agent-permissions";
 import { FEATURE_INDEX_PROMPT } from "@/lib/feature-index";
 import {
@@ -12,8 +12,6 @@ import {
   assembleReportContext,
   formatContextForPrompt,
 } from "@/lib/report-engine";
-
-const sql = neon(process.env.DATABASE_URL!);
 
 const CLAUDE_HEADERS = (apiKey: string) => ({
   "x-api-key": apiKey,
@@ -139,6 +137,7 @@ async function synthesizeDocument(
   docType: string,
   title?: string
 ): Promise<{ content: string; resolvedTitle: string; format: "markdown" | "csv"; inputTokens: number; outputTokens: number }> {
+  const sql = getMainSql();
   // Fetch deal data from DB for synthesis context
   const [dealRow] = await sql`SELECT * FROM deals WHERE id = ${dealId}`;
   if (!dealRow) throw new Error("Deal not found");
@@ -273,6 +272,7 @@ async function expandSkill(
   messages: Array<{ role: string; content: string }>,
   systemPrompt: string
 ): Promise<AppAction[]> {
+  const sql = getMainSql();
   const res = await fetch("/api/agent/skills?name=" + encodeURIComponent(skillName), {
     headers: { "content-type": "application/json" },
   }).catch(() => null);
@@ -317,6 +317,7 @@ async function expandSkill(
 }
 
 export async function POST(req: NextRequest) {
+  const sql = getMainSql();
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "no_api_key" }, { status: 500 });

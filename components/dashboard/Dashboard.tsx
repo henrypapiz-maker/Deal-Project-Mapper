@@ -10,6 +10,7 @@ import HelpDrawer from "./HelpDrawer";
 import ReportDrafter from "./ReportDrafter";
 import SlidePreview from "./SlidePreview";
 import AgentAdminTab from "@/components/agent-admin/AgentAdminTab";
+import { MustHaveWarningModal } from "@/components/checklist/MustHaveWarningModal";
 
 const C = {
   navy: "#0F1B2D",
@@ -107,6 +108,7 @@ interface Props {
   onUpdateRagOverride: (workstream: string, rag: "red" | "amber" | "green" | undefined) => void;
   onUpdateDeal?: (updates: Partial<import("@/lib/types").GeneratedDeal>) => void;
   onUpdatePerson?: (personId: string, updates: Partial<import("@/lib/types").Person>) => void;
+  onUpdateWorkstreamOverride?: (workstream: string, patch: Partial<import("@/lib/types").WorkstreamContextOverride> & { action?: "reactivate" | "priority_bump" | "priority_reduce" }) => void;
   onForceSave?: () => Promise<void>;
   lastSavedAt?: string;
   saveStatus?: "idle" | "saving" | "saved" | "error";
@@ -327,6 +329,7 @@ export default function Dashboard({
   onUpdateRagOverride,
   onUpdateDeal,
   onUpdatePerson,
+  onUpdateWorkstreamOverride,
   onForceSave,
   lastSavedAt,
   saveStatus = "idle",
@@ -651,6 +654,16 @@ export default function Dashboard({
   };
 
   // Admin tab local state
+  const [genIntelOpen, setGenIntelOpen] = useState(false);
+  const [genIntelLayer, setGenIntelLayer] = useState<string | null>(null);
+  const [telemetryRows, setTelemetryRows] = useState<any[]>([]);
+  const [telemetrySummary, setTelemetrySummary] = useState<any>(null);
+  const [telemetryLoading, setTelemetryLoading] = useState(false);
+  const [overrideRows, setOverrideRows] = useState<any[]>([]);
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [pendingOverride, setPendingOverride] = useState<{ item: ChecklistItem; targetStatus: ItemStatus } | null>(null);
+  const [wsNotesDraft, setWsNotesDraft] = useState<Record<string, string>>({});
+  const [wsReactivateConfirm, setWsReactivateConfirm] = useState<string | null>(null);
   const [adminDealName, setAdminDealName] = useState(deal.intake.dealName);
   const [adminDealStatus, setAdminDealStatus] = useState<string>("active");
   const [adminCloseDate, setAdminCloseDate] = useState(deal.intake.closeDate || "");
@@ -658,6 +671,24 @@ export default function Dashboard({
   const [adminApiStatus, setAdminApiStatus] = useState<"unknown" | "ok" | "error">("unknown");
   const [adminApiChecking, setAdminApiChecking] = useState(false);
   const [adminImportError, setAdminImportError] = useState<string | null>(null);
+
+  // ── Section J: Neon Branch Operations state ──────────────────────────────
+  const [branchStatus, setBranchStatus]           = useState<any | null>(null);
+  const [branchStatusLoading, setBranchStatusLoading] = useState(false);
+
+  async function refreshBranchStatus() {
+    if (!deal.id) return;
+    setBranchStatusLoading(true);
+    try {
+      const res  = await fetch(`/api/admin/db-status?dealId=${deal.id}`);
+      const data = await res.json();
+      setBranchStatus(data);
+    } catch {
+      setBranchStatus({ error: "Failed to fetch branch status" });
+    } finally {
+      setBranchStatusLoading(false);
+    }
+  }
 
   async function checkApiStatus() {
     setAdminApiChecking(true);
@@ -687,6 +718,27 @@ export default function Dashboard({
     }
     setAdminApiChecking(false);
   }
+
+  // Fetch telemetry + override log when Admin tab opens (lazy)
+  const hasFetchedAdminData = useRef(false);
+  useEffect(() => {
+    if (activeTab !== "admin" || !deal.id || hasFetchedAdminData.current) return;
+    hasFetchedAdminData.current = true;
+
+    setTelemetryLoading(true);
+    fetch(`/api/telemetry?dealId=${deal.id}&limit=100`)
+      .then(r => r.json())
+      .then(d => { setTelemetryRows(d.telemetry ?? []); setTelemetrySummary(d.summary ?? null); })
+      .catch(() => {})
+      .finally(() => setTelemetryLoading(false));
+
+    setOverrideLoading(true);
+    fetch(`/api/telemetry?dealId=${deal.id}&type=overrides&limit=100`)
+      .then(r => r.json())
+      .then(d => setOverrideRows(d.overrides ?? []))
+      .catch(() => {})
+      .finally(() => setOverrideLoading(false));
+  }, [activeTab, deal.id]);
 
   function exportDealAsJson() {
     const blob = new Blob([JSON.stringify(deal, null, 2)], { type: "application/json" });
@@ -787,6 +839,19 @@ export default function Dashboard({
         </div>
       </div>
       {showHelp && <HelpDrawer activeTab={activeTab} onClose={() => setShowHelp(false)} />}
+
+      {pendingOverride && (
+        <MustHaveWarningModal
+          item={pendingOverride.item}
+          targetStatus={pendingOverride.targetStatus}
+          dealId={deal.id ?? ""}
+          onConfirm={(item, targetStatus) => {
+            onUpdateStatus(item.id, targetStatus);
+            setPendingOverride(null);
+          }}
+          onCancel={() => setPendingOverride(null)}
+        />
+      )}
 
       {/* ── App body: sidebar + main ── */}
       <div style={{ display: "flex", flex: 1, minHeight: "calc(100vh - 57px)" }}>
@@ -1591,7 +1656,15 @@ export default function Dashboard({
                               value={item.status}
                               onChange={(e) => {
                                 e.stopPropagation();
-                                onUpdateStatus(item.id, e.target.value as ItemStatus);
+                                const newStatus = e.target.value as ItemStatus;
+                                const mustHaveAlertSet = new Set((deal.mustHaveAlerts ?? []).map(a => a.itemId));
+                                if (newStatus === "na" && mustHaveAlertSet.has(item.itemId)) {
+                                  const alert = (deal.mustHaveAlerts ?? []).find(a => a.itemId === item.itemId);
+                                  const itemWithReason = alert ? { ...item, naJustification: alert.reason } : item;
+                                  setPendingOverride({ item: itemWithReason, targetStatus: newStatus });
+                                } else {
+                                  onUpdateStatus(item.id, newStatus);
+                                }
                               }}
                               onClick={(e) => e.stopPropagation()}
                               style={{
@@ -3130,10 +3203,432 @@ export default function Dashboard({
               </div>
             </div>
 
-            {/* ─ Section E: System Info ─ */}
+            {/* ─ Section E: Generation Intelligence ─ */}
+            {deal.generationLog && deal.generationLog.length > 0 && (() => {
+              const log = deal.generationLog!;
+              const signals = deal.parameterSignals ?? [];
+              const mustHaveCount = (deal.mustHaveAlerts ?? []).length;
+              const naCount = log.filter(e => e.layer === "filtering").reduce((acc, e) => acc + e.itemsAffected.length, 0);
+              const elevatedCount = log.filter(e => e.layer === "priority" && e.rule.includes("elevat")).reduce((acc, e) => acc + e.itemsAffected.length, 0);
+              const phaseCount = log.filter(e => e.layer === "timeline").reduce((acc, e) => acc + e.itemsAffected.length, 0);
+              const layerIds = ["filtering", "priority", "parent_gap", "sector", "timeline"] as const;
+              const layerLabels: Record<string, string> = {
+                filtering: "Layer 1 — Enhanced Filtering",
+                priority: "Layer 2 — Priority Calibration",
+                parent_gap: "Layer 3 — Parent Profile Gap Analysis",
+                sector: "Layer 4 — Sector Overlay",
+                timeline: "Layer 5 — Timeline Adjustment",
+              };
+              const signalColors: Record<string, string> = {
+                elevate: "#10B981", reduce: "#F59E0B", exclude: "#EF4444",
+                extend: "#A78BFA", compress: "#60A5FA", activate: "#3B82F6",
+              };
+              return (
+                <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                  {/* Header row */}
+                  <div
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none" }}
+                    onClick={() => setGenIntelOpen(o => !o)}
+                  >
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: C.textMuted, marginBottom: 4 }}>
+                        E. Generation Intelligence
+                      </div>
+                      {/* Summary row */}
+                      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                        {[
+                          { label: "Items excluded", value: naCount, color: "#EF4444" },
+                          { label: "Priority elevated", value: elevatedCount, color: "#10B981" },
+                          { label: "Phase-adjusted", value: phaseCount, color: "#A78BFA" },
+                          { label: "Must-haves protected", value: mustHaveCount, color: "#F59E0B" },
+                          { label: "Signals detected", value: signals.length, color: "#60A5FA" },
+                        ].map(({ label, value, color }) => (
+                          <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ fontSize: 16, fontWeight: 800, color }}>{value}</span>
+                            <span style={{ fontSize: 10, color: C.textMuted }}>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          // Trigger methodology report generation via agent
+                          const msg = new CustomEvent("agent:prompt", { detail: "generate methodology report" });
+                          window.dispatchEvent(msg);
+                        }}
+                        style={{
+                          padding: "6px 14px", borderRadius: 6, border: `1px solid ${C.border}`,
+                          background: "transparent", color: C.textMuted, fontSize: 10, fontWeight: 600,
+                          cursor: "pointer", fontFamily: "inherit",
+                        }}
+                      >
+                        ↓ Methodology Report
+                      </button>
+                      <span style={{ fontSize: 16, color: C.textMuted, transform: genIntelOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
+                    </div>
+                  </div>
+
+                  {genIntelOpen && (
+                    <div style={{ marginTop: 16 }}>
+                      {/* Parameter signals table */}
+                      {signals.length > 0 && (
+                        <div style={{ marginBottom: 16 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, color: C.textMuted, marginBottom: 8 }}>
+                            Parameter Signals
+                          </div>
+                          <div style={{ borderRadius: 6, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                              <thead>
+                                <tr style={{ background: C.deepBlue, borderBottom: `1px solid ${C.border}` }}>
+                                  {["Parameter", "Value", "Signal", "Description"].map(h => (
+                                    <th key={h} style={{ textAlign: "left", padding: "7px 10px", color: C.textMuted, fontWeight: 600, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.7 }}>{h}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {signals.map((s, i) => (
+                                  <tr key={i} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                                    <td style={{ padding: "6px 10px", color: C.textMuted, fontFamily: "monospace", fontSize: 9 }}>{s.parameter}</td>
+                                    <td style={{ padding: "6px 10px", color: C.text, fontWeight: 600 }}>{s.value}</td>
+                                    <td style={{ padding: "6px 10px" }}>
+                                      <span style={{
+                                        padding: "2px 7px", borderRadius: 4, fontSize: 9, fontWeight: 700, textTransform: "uppercase",
+                                        background: (signalColors[s.signal] ?? C.accent) + "22",
+                                        color: signalColors[s.signal] ?? C.accent,
+                                        border: `1px solid ${(signalColors[s.signal] ?? C.accent)}44`,
+                                      }}>{s.signal}</span>
+                                    </td>
+                                    <td style={{ padding: "6px 10px", color: C.textMuted, lineHeight: 1.5 }}>{s.description}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Layer accordion */}
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.8, color: C.textMuted, marginBottom: 8 }}>
+                        Layer Breakdown
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {layerIds.map(layerId => {
+                          const entries = log.filter(e => e.layer === layerId);
+                          if (entries.length === 0) return null;
+                          const isOpen = genIntelLayer === layerId;
+                          return (
+                            <div key={layerId} style={{ borderRadius: 8, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                              <div
+                                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: C.deepBlue, cursor: "pointer" }}
+                                onClick={() => setGenIntelLayer(isOpen ? null : layerId)}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: C.text }}>{layerLabels[layerId]}</span>
+                                  <span style={{ fontSize: 9, color: C.textMuted }}>{entries.length} rule{entries.length !== 1 ? "s" : ""} fired</span>
+                                </div>
+                                <span style={{ fontSize: 12, color: C.textMuted, transform: isOpen ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
+                              </div>
+                              {isOpen && (
+                                <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10, background: C.cardBg }}>
+                                  {entries.map((entry, i) => (
+                                    <div key={i} style={{ paddingBottom: 10, borderBottom: i < entries.length - 1 ? `1px solid ${C.border}22` : "none" }}>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                        <span style={{ fontSize: 9, fontFamily: "monospace", color: C.accent, background: C.accent + "18", padding: "1px 7px", borderRadius: 4 }}>{entry.rule}</span>
+                                        <span style={{ fontSize: 9, color: C.textMuted }}>parameter: {entry.parameter}</span>
+                                        <span style={{ fontSize: 9, color: C.textMuted }}>· {entry.itemsAffected.length} item{entry.itemsAffected.length !== 1 ? "s" : ""}</span>
+                                      </div>
+                                      <div style={{ fontSize: 10, color: C.text, lineHeight: 1.6, marginBottom: 4 }}>{entry.reasoning}</div>
+                                      {entry.itemsAffected.length > 0 && (
+                                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                          {entry.itemsAffected.slice(0, 12).map(id => (
+                                            <span key={id} style={{ fontSize: 8, fontFamily: "monospace", color: C.textMuted, background: C.deepBlue, border: `1px solid ${C.border}`, borderRadius: 3, padding: "1px 5px" }}>{id}</span>
+                                          ))}
+                                          {entry.itemsAffected.length > 12 && (
+                                            <span style={{ fontSize: 8, color: C.textMuted }}>+{entry.itemsAffected.length - 12} more</span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ─ Section F: Workstream Context ─ */}
+            {(() => {
+              const activeWorkstreams = Array.from(
+                new Set(deal.checklistItems.map(i => i.workstream))
+              ).sort();
+              return (
+                <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, color: C.textMuted }}>
+                    F. Workstream Context
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 14 }}>
+                    Per-workstream notes, priority adjustments, and re-activation of engine-excluded items.
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {activeWorkstreams.map(ws => {
+                      const wsItems = deal.checklistItems.filter(i => i.workstream === ws);
+                      const activeCount = wsItems.filter(i => i.status !== "na").length;
+                      const naCount = wsItems.filter(i => i.status === "na").length;
+                      const reactivatableCount = wsItems.filter(i => i.status === "na" && i.naJustification).length;
+                      const override = deal.workstreamOverrides?.[ws];
+                      const notesDraft = wsNotesDraft[ws] ?? (override?.notes ?? "");
+                      const isConfirming = wsReactivateConfirm === ws;
+
+                      return (
+                        <div key={ws} style={{ padding: "12px 14px", borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+                            <div>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{ws}</span>
+                              <span style={{ marginLeft: 10, fontSize: 10, color: C.textMuted }}>
+                                {activeCount} active
+                                {naCount > 0 && <span style={{ color: C.warning }}> · {naCount} N/A{reactivatableCount > 0 ? ` (${reactivatableCount} engine-excluded)` : ""}</span>}
+                              </span>
+                              {override?.reactivatedAt && (
+                                <span style={{ marginLeft: 8, fontSize: 9, background: "#10B98122", color: "#10B981", border: "1px solid #10B98133", borderRadius: 4, padding: "1px 6px" }}>
+                                  Reactivated {new Date(override.reactivatedAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                              <button
+                                onClick={() => onUpdateWorkstreamOverride?.(ws, { action: "priority_bump" })}
+                                title="Elevate all active items +1 priority tier"
+                                style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${C.border}`, background: "transparent", color: "#10B981", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+                              >↑ Elevate All</button>
+                              <button
+                                onClick={() => onUpdateWorkstreamOverride?.(ws, { action: "priority_reduce" })}
+                                title="Reduce all active items -1 priority tier"
+                                style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${C.border}`, background: "transparent", color: C.warning, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+                              >↓ Reduce All</button>
+                              {reactivatableCount > 0 && (
+                                isConfirming ? (
+                                  <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                                    <span style={{ fontSize: 10, color: C.warning }}>Re-activate {reactivatableCount} items?</span>
+                                    <button
+                                      onClick={() => { onUpdateWorkstreamOverride?.(ws, { action: "reactivate" }); setWsReactivateConfirm(null); }}
+                                      style={{ padding: "3px 10px", borderRadius: 5, border: "none", background: "#EF4444", color: "#fff", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+                                    >Confirm</button>
+                                    <button
+                                      onClick={() => setWsReactivateConfirm(null)}
+                                      style={{ padding: "3px 8px", borderRadius: 5, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+                                    >Cancel</button>
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => setWsReactivateConfirm(ws)}
+                                    style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid rgba(239,68,68,0.4)`, background: "transparent", color: "#EF4444", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+                                  >↺ Reactivate N/A</button>
+                                )
+                              )}
+                            </div>
+                          </div>
+                          <textarea
+                            value={notesDraft}
+                            onChange={e => setWsNotesDraft(d => ({ ...d, [ws]: e.target.value }))}
+                            onBlur={() => {
+                              const notes = wsNotesDraft[ws] ?? "";
+                              if (notes !== (override?.notes ?? "")) {
+                                onUpdateWorkstreamOverride?.(ws, { notes });
+                              }
+                            }}
+                            placeholder={`Deal-specific notes for ${ws}… (auto-saved on blur)`}
+                            rows={2}
+                            style={{
+                              width: "100%", boxSizing: "border-box", background: "rgba(255,255,255,0.04)",
+                              border: `1px solid ${C.border}`, borderRadius: 6, padding: "7px 10px",
+                              color: C.text, fontSize: 11, resize: "vertical", fontFamily: "inherit", lineHeight: 1.5,
+                            }}
+                          />
+                          {override?.notesUpdatedAt && (
+                            <div style={{ fontSize: 9, color: C.muted, marginTop: 3 }}>
+                              Notes last updated {new Date(override.notesUpdatedAt).toLocaleString()}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ─ Section G: Override Log ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: C.textMuted }}>
+                    G. Override &amp; Adversarial Log
+                  </div>
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+                    All deviations from engine baseline — must-have overrides, priority changes, workstream re-activations
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!deal.id) return;
+                    setOverrideLoading(true);
+                    fetch(`/api/telemetry?dealId=${deal.id}&type=overrides&limit=100`)
+                      .then(r => r.json()).then(d => setOverrideRows(d.overrides ?? [])).catch(() => {})
+                      .finally(() => setOverrideLoading(false));
+                  }}
+                  style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+                >↻ Refresh</button>
+              </div>
+              {overrideLoading ? (
+                <div style={{ fontSize: 11, color: C.textMuted, fontStyle: "italic" }}>Loading override log…</div>
+              ) : overrideRows.length === 0 ? (
+                <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>No overrides recorded yet. Must-have N/A confirmations, priority changes, and workstream adjustments will appear here.</div>
+              ) : (
+                <div style={{ maxHeight: 360, overflowY: "auto", borderRadius: 6, border: `1px solid ${C.border}` }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                    <thead style={{ position: "sticky", top: 0, background: C.deepBlue, zIndex: 1 }}>
+                      <tr>
+                        {["Timestamp", "Type", "Item / Workstream", "Old → New", "Reason", "Adversarial?"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "7px 10px", color: C.textMuted, fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.7, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overrideRows.map((r: any) => {
+                        const isAdversarial = r.override_type === "na_must_have";
+                        return (
+                          <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}22`, background: isAdversarial ? "rgba(239,68,68,0.04)" : "transparent" }}>
+                            <td style={{ padding: "6px 10px", color: C.textMuted, whiteSpace: "nowrap", fontSize: 9 }}>
+                              {new Date(r.created_at).toLocaleString()}
+                            </td>
+                            <td style={{ padding: "6px 10px" }}>
+                              <span style={{
+                                fontSize: 8, fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: 4,
+                                background: isAdversarial ? "#EF444422" : "#3B82F622",
+                                color: isAdversarial ? "#EF4444" : "#3B82F6",
+                                border: `1px solid ${isAdversarial ? "#EF444444" : "#3B82F644"}`,
+                              }}>{r.override_type?.replace(/_/g, " ")}</span>
+                            </td>
+                            <td style={{ padding: "6px 10px", color: C.text }}>
+                              {r.item_id && <span style={{ fontFamily: "monospace", color: C.accent, marginRight: 4 }}>{r.item_id}</span>}
+                              {r.workstream && <span style={{ color: C.textMuted }}>{r.workstream}</span>}
+                              {r.item_description && <div style={{ color: C.muted, fontSize: 9, marginTop: 2, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.item_description}</div>}
+                            </td>
+                            <td style={{ padding: "6px 10px", whiteSpace: "nowrap" }}>
+                              {r.previous_value && <><span style={{ color: "#EF4444" }}>{r.previous_value}</span><span style={{ color: C.muted }}> → </span></>}
+                              {r.new_value && <span style={{ color: "#10B981" }}>{r.new_value}</span>}
+                            </td>
+                            <td style={{ padding: "6px 10px", color: C.textMuted, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 9 }}>
+                              {r.override_reason || "—"}
+                            </td>
+                            <td style={{ padding: "6px 10px", textAlign: "center" }}>
+                              {isAdversarial && <span style={{ fontSize: 14 }}>⚠</span>}
+                              {r.warning_shown && <span style={{ fontSize: 9, color: C.warning, marginLeft: 2 }}>warned</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* ─ Section H: API Telemetry ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: C.textMuted }}>
+                    H. API Telemetry
+                  </div>
+                  <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
+                    All Claude API calls — tokens consumed, latency, actions executed
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (!deal.id) return;
+                    setTelemetryLoading(true);
+                    fetch(`/api/telemetry?dealId=${deal.id}&limit=100`)
+                      .then(r => r.json()).then(d => { setTelemetryRows(d.telemetry ?? []); setTelemetrySummary(d.summary ?? null); }).catch(() => {})
+                      .finally(() => setTelemetryLoading(false));
+                  }}
+                  style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}
+                >↻ Refresh</button>
+              </div>
+              {telemetrySummary && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+                  {[
+                    { label: "Total Calls", value: telemetrySummary.totalCalls, color: C.accent },
+                    { label: "Input Tokens", value: telemetrySummary.totalInputTokens?.toLocaleString(), color: C.accentLight },
+                    { label: "Output Tokens", value: telemetrySummary.totalOutputTokens?.toLocaleString(), color: "#10B981" },
+                    { label: "Avg Latency", value: `${telemetrySummary.avgLatency}ms`, color: C.warning },
+                  ].map(({ label, value, color }) => (
+                    <div key={label} style={{ padding: "10px 12px", borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>{label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color }}>{value ?? "—"}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {telemetryLoading ? (
+                <div style={{ fontSize: 11, color: C.textMuted, fontStyle: "italic" }}>Loading telemetry…</div>
+              ) : telemetryRows.length === 0 ? (
+                <div style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>No API calls recorded yet. Assistant interactions and document synthesis will appear here.</div>
+              ) : (
+                <div style={{ maxHeight: 320, overflowY: "auto", borderRadius: 6, border: `1px solid ${C.border}` }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                    <thead style={{ position: "sticky", top: 0, background: C.deepBlue, zIndex: 1 }}>
+                      <tr>
+                        {["Timestamp", "Type", "Model", "In Tokens", "Out Tokens", "Latency", "Actions", "Status"].map(h => (
+                          <th key={h} style={{ textAlign: "left", padding: "7px 10px", color: C.textMuted, fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.7, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {telemetryRows.map((r: any) => (
+                        <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}22` }}>
+                          <td style={{ padding: "6px 10px", color: C.textMuted, whiteSpace: "nowrap", fontSize: 9 }}>{new Date(r.created_at).toLocaleString()}</td>
+                          <td style={{ padding: "6px 10px" }}>
+                            <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: C.accent + "22", color: C.accentLight, border: `1px solid ${C.accent}33` }}>
+                              {r.call_type}{r.doc_type ? `:${r.doc_type}` : ""}
+                            </span>
+                          </td>
+                          <td style={{ padding: "6px 10px", color: C.textMuted, fontSize: 9 }}>{r.model ?? "—"}</td>
+                          <td style={{ padding: "6px 10px", color: C.text, fontFamily: "monospace" }}>{r.input_tokens?.toLocaleString() ?? "—"}</td>
+                          <td style={{ padding: "6px 10px", color: "#10B981", fontFamily: "monospace" }}>{r.output_tokens?.toLocaleString() ?? "—"}</td>
+                          <td style={{ padding: "6px 10px", color: r.latency_ms > 3000 ? C.warning : C.textMuted, fontFamily: "monospace" }}>
+                            {r.latency_ms ? `${r.latency_ms}ms` : "—"}
+                          </td>
+                          <td style={{ padding: "6px 10px", color: C.textMuted, fontSize: 9, maxWidth: 160 }}>
+                            {(r.actions_taken as string[] ?? []).slice(0, 3).join(", ") || "—"}
+                            {(r.actions_taken?.length ?? 0) > 3 && <span style={{ color: C.muted }}> +{r.actions_taken.length - 3}</span>}
+                          </td>
+                          <td style={{ padding: "6px 10px" }}>
+                            <span style={{ fontSize: 9, color: r.status === "ok" ? "#10B981" : "#EF4444", fontWeight: 700 }}>
+                              {r.status ?? "—"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* ─ Section I: System Info ─ */}
             <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
               <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, color: C.textMuted }}>
-                E. System Info
+                F. System Info
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
                 <div style={{ padding: 14, borderRadius: 8, background: C.deepBlue, border: `1px solid ${C.border}` }}>
@@ -3173,6 +3668,123 @@ export default function Dashboard({
                 </div>
               </div>
             </div>
+
+            {/* ─ Section J: Neon Branch Operations ─ */}
+            <div style={{ padding: 20, borderRadius: 10, background: C.cardBg, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, marginBottom: 14, color: C.textMuted }}>
+                J. Neon Branch Operations
+              </div>
+
+              {/* J1 — Live Branch Status */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: C.text }}>Branch Status</div>
+                  <button
+                    onClick={refreshBranchStatus}
+                    disabled={branchStatusLoading || !deal.id}
+                    style={{
+                      padding: "3px 10px", borderRadius: 4, border: `1px solid ${C.border}`,
+                      background: "transparent", color: C.textMuted, fontSize: 9, cursor: "pointer",
+                      opacity: branchStatusLoading ? 0.5 : 1,
+                    }}
+                  >
+                    {branchStatusLoading ? "Checking…" : "Refresh Status"}
+                  </button>
+                </div>
+                {branchStatus && !branchStatus.error ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(175px, 1fr))", gap: 8 }}>
+                    {/* Tile: Branching Enabled */}
+                    <div style={{ padding: 10, borderRadius: 7, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>Branching Enabled</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: branchStatus.branchingEnabled ? C.success : C.warning }}>
+                        {branchStatus.branchingEnabled ? "✅  Active" : "⚠  Not configured"}
+                      </div>
+                    </div>
+                    {/* Tile: NEON_API_KEY */}
+                    <div style={{ padding: 10, borderRadius: 7, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>NEON_API_KEY</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: branchStatus.neonApiKey === "configured" ? C.success : C.warning }}>
+                        {branchStatus.neonApiKey === "configured" ? "✅  Set" : "⚠  Not set"}
+                      </div>
+                    </div>
+                    {/* Tile: NEON_PROJECT_ID */}
+                    <div style={{ padding: 10, borderRadius: 7, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>NEON_PROJECT_ID</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: branchStatus.neonProjectId === "configured" ? C.success : C.warning }}>
+                        {branchStatus.neonProjectId === "configured" ? "✅  Set" : "⚠  Not set"}
+                      </div>
+                    </div>
+                    {/* Tile: Branch ID */}
+                    <div style={{ padding: 10, borderRadius: 7, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>This Deal's Branch</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: branchStatus.dealIsOnBranch ? C.success : C.textMuted, fontFamily: "monospace" }}>
+                        {branchStatus.neonBranchId ?? "main (unbranched)"}
+                      </div>
+                    </div>
+                    {/* Tile: Storage */}
+                    <div style={{ padding: 10, borderRadius: 7, background: C.deepBlue, border: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 9, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.7, marginBottom: 4 }}>Branch Storage</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: branchStatus.dealIsOnBranch ? C.success : C.textMuted }}>
+                        {branchStatus.dealIsOnBranch ? "🔀  Isolated" : "📂  Shared (main)"}
+                      </div>
+                    </div>
+                  </div>
+                ) : branchStatus?.error ? (
+                  <div style={{ fontSize: 10, color: C.danger, padding: "6px 10px", borderRadius: 5, background: C.danger + "11", border: `1px solid ${C.danger}33` }}>
+                    ⚠ {branchStatus.error}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, color: C.textMuted, fontStyle: "italic" }}>
+                    Click "Refresh Status" to check current branch configuration.
+                  </div>
+                )}
+              </div>
+
+              {/* J2 — Architecture */}
+              <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 6, background: C.accent + "10", borderLeft: `3px solid ${C.accent}`, fontSize: 10, lineHeight: 1.6, color: C.accentLight }}>
+                <span style={{ fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, marginRight: 6 }}>ARCHITECTURE</span>
+                Each new deal gets its own Neon branch forked from the main branch at creation time.
+                Main holds <strong>master_catalogue</strong> (seeded baseline) and the deals registry.
+                All deal-specific data — checklist items, risk alerts, SteerCo narratives, bowler tables — lives on the branch, fully isolated from every other deal.
+              </div>
+
+              {/* J3 — Cold Start */}
+              <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 6, background: C.warning + "10", borderLeft: `3px solid ${C.warning}`, fontSize: 10, lineHeight: 1.6, color: "#FBBF24" }}>
+                <span style={{ fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, marginRight: 6 }}>COLD START</span>
+                Neon compute scales to zero after <strong>1 hour of inactivity</strong>. The first request to an idle branch takes 1–3 s to wake the compute.
+                Branch endpoints are configured with <code style={{ background: C.navy, padding: "1px 4px", borderRadius: 3 }}>suspend_timeout_seconds: 3600</code> so active deals stay warm during a working session.
+                If opening a deal feels slow on Monday morning — this is expected. Subsequent requests will be fast.
+              </div>
+
+              {/* J4 — Schema Migrations */}
+              <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 6, background: C.accent + "10", borderLeft: `3px solid ${C.accent}`, fontSize: 10, lineHeight: 1.6, color: C.accentLight }}>
+                <span style={{ fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, marginRight: 6 }}>SCHEMA MIGRATIONS</span>
+                Running <code style={{ background: C.navy, padding: "1px 4px", borderRadius: 3 }}>ALTER TABLE</code> on main does <strong>not</strong> propagate to existing deal branches (they are point-in-time forks).
+                After any DDL change, run the scatter-gather migration to apply it across all active branches:
+                <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 4, background: C.navy, fontFamily: "monospace", fontSize: 9, color: C.text, overflowX: "auto" }}>
+                  MIGRATION_SQL=&quot;ALTER TABLE … ADD COLUMN IF NOT EXISTS …&quot; npm run migrate:branches
+                </div>
+              </div>
+
+              {/* J5 — Write-Back */}
+              <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: 6, background: C.success + "10", borderLeft: `3px solid ${C.success}`, fontSize: 10, lineHeight: 1.6, color: "#34D399" }}>
+                <span style={{ fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, marginRight: 6 }}>WRITE-BACK</span>
+                Custom checklist items added by PMO (not in master_catalogue) can be promoted back to the shared catalogue so they appear in future generated deals:
+                <div style={{ marginTop: 6, padding: "6px 8px", borderRadius: 4, background: C.navy, fontFamily: "monospace", fontSize: 9, color: C.text, overflowX: "auto", lineHeight: 1.7 }}>
+                  GET  /api/catalogue/promote?dealId=&#123;id&#125;   — list eligible items<br />
+                  POST /api/catalogue/promote  &#123; dealId, itemId &#125; — promote one item
+                </div>
+              </div>
+
+              {/* J6 — Setup Checklist */}
+              <div style={{ padding: "10px 12px", borderRadius: 6, background: C.deepBlue, border: `1px solid ${C.border}`, fontSize: 10, lineHeight: 1.8, color: C.textMuted }}>
+                <div style={{ fontWeight: 700, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6, color: C.textMuted }}>SETUP CHECKLIST</div>
+                <div><span style={{ color: C.text, fontWeight: 600 }}>NEON_API_KEY</span> — console.neon.tech → Account Settings → API keys → New API key</div>
+                <div><span style={{ color: C.text, fontWeight: 600 }}>NEON_PROJECT_ID</span> — your project → Settings → General → Project ID (shown in the URL)</div>
+                <div style={{ marginTop: 6, fontSize: 9, color: C.textMuted }}>Add both to .env.local and restart the dev server. New deals created after restart will get their own branch.</div>
+              </div>
+            </div>
+
           </div>
         )}
 

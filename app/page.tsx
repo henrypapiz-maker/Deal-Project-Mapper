@@ -3,8 +3,10 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import IntakeForm from "@/components/intake/IntakeForm";
 import Dashboard from "@/components/dashboard/Dashboard";
-import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person, ChangeEvent, RiskAlert } from "@/lib/types";
+import { MustHaveWarningModal } from "@/components/checklist/MustHaveWarningModal";
+import type { DealIntake, GeneratedDeal, ItemStatus, Priority, ChecklistItem, Person, ChangeEvent, RiskAlert, ParentProfile, WorkstreamContextOverride } from "@/lib/types";
 import { generateDeal } from "@/lib/decision-tree";
+import { isMustHaveItem } from "@/lib/catalogue-metadata";
 import { saveDeal, loadDeal, clearDeal, hasSavedDeal } from "@/lib/persistence";
 
 type AppState = "landing" | "deals" | "intake" | "generating" | "dashboard";
@@ -20,6 +22,25 @@ export default function Home() {
   const [portfolioPage, setPortfolioPage] = useState(1);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSavedAt, setLastSavedAt] = useState<string | undefined>(undefined);
+
+  // Adversarial guard: pending must-have override waiting for PMO confirmation
+  const [mustHavePending, setMustHavePending] = useState<{
+    item: ChecklistItem;
+    targetStatus: ItemStatus;
+  } | null>(null);
+
+  // ── Fire-and-forget override log helper ──────────────────────────────────────
+  const logOverride = useCallback((dealId: string, payload: {
+    itemId?: string; itemDescription?: string; workstream?: string;
+    overrideType: string; previousValue?: string; newValue?: string;
+    warningShown?: boolean; overrideReason?: string;
+  }) => {
+    fetch(`/api/deals/${dealId}/overrides`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {/* non-critical */});
+  }, []);
 
   // Fetch all deals from DB for multi-deal support
   async function fetchDeals() {
@@ -130,10 +151,10 @@ export default function Home() {
     } catch { return null; }
   }
 
-  function handleIntakeSubmit(intake: DealIntake) {
+  function handleIntakeSubmit(intake: DealIntake, parentProfile?: ParentProfile) {
     setAppState("generating");
     setTimeout(async () => {
-      const generated = generateDeal(intake);
+      const generated = generateDeal(intake, parentProfile);
       // Save to DB immediately to get a deal.id for bowler table
       const dbId = await saveToDbImmediate(generated);
       if (dbId) generated.id = dbId;
@@ -142,7 +163,8 @@ export default function Home() {
     }, 1200);
   }
 
-  const handleUpdateStatus = useCallback((itemId: string, status: ItemStatus) => {
+  // Internal: apply a status change directly (after must-have check passes)
+  const applyStatusChange = useCallback((itemId: string, status: ItemStatus) => {
     setDeal((prev) => {
       if (!prev) return prev;
       const item = prev.checklistItems.find(i => i.id === itemId);
@@ -165,11 +187,41 @@ export default function Home() {
     });
   }, []);
 
+  // Public handler: intercepts N/A on must-have items to show adversarial modal
+  const handleUpdateStatus = useCallback((itemId: string, status: ItemStatus) => {
+    if (status !== "na" || !deal) {
+      applyStatusChange(itemId, status);
+      return;
+    }
+    const item = deal.checklistItems.find(i => i.id === itemId);
+    if (!item) { applyStatusChange(itemId, status); return; }
+
+    const mustHave = isMustHaveItem(item.itemId, item.workstream, item.phase, item.priority);
+    if (mustHave) {
+      // Surface adversarial modal — do NOT apply status yet
+      setMustHavePending({ item, targetStatus: status });
+    } else {
+      applyStatusChange(itemId, status);
+    }
+  }, [deal, applyStatusChange]);
+
   const handleUpdatePriority = useCallback((itemId: string, priority: Priority) => {
     setDeal((prev) => {
       if (!prev) return prev;
       const item = prev.checklistItems.find(i => i.id === itemId);
       const oldValue = item?.priority || "unknown";
+      // Log this as a base override if it deviates from the current priority
+      if (prev.id && item && oldValue !== priority) {
+        logOverride(prev.id, {
+          itemId: item.itemId,
+          itemDescription: item.description,
+          workstream: item.workstream,
+          overrideType: "priority_manual",
+          previousValue: oldValue,
+          newValue: priority,
+          warningShown: false,
+        });
+      }
       const event: ChangeEvent = {
         id: `chg-${Date.now()}`,
         timestamp: new Date().toISOString(),
@@ -188,7 +240,7 @@ export default function Home() {
         changeLog: [...(prev.changeLog || []), event],
       };
     });
-  }, []);
+  }, [logOverride]);
 
   const handleUpdateBlockedReason = useCallback((itemId: string, reason: string) => {
     setDeal((prev) => {
@@ -466,6 +518,78 @@ export default function Home() {
     });
   }, []);
 
+  // ── Workstream context override ──────────────────────────────────────────────
+  const handleUpdateWorkstreamOverride = useCallback((
+    workstream: string,
+    patch: Partial<WorkstreamContextOverride> & { action?: "reactivate" | "priority_bump" | "priority_reduce" }
+  ) => {
+    setDeal((prev) => {
+      if (!prev) return prev;
+      const existing = prev.workstreamOverrides?.[workstream] ?? {};
+      const now = new Date().toISOString();
+
+      let updatedItems = prev.checklistItems;
+      const PRIORITY_RANK: Record<string, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+      const PRIORITY_BY_RANK = ["low", "medium", "high", "critical"] as Priority[];
+
+      if (patch.action === "reactivate" || patch.reactivateNa) {
+        // Re-activate engine-N/A'd items in this workstream (those with a naJustification)
+        updatedItems = prev.checklistItems.map(i =>
+          i.workstream === workstream && i.status === "na" && i.naJustification
+            ? { ...i, status: "not_started" as ItemStatus, naJustification: undefined }
+            : i
+        );
+        const reactivatedCount = updatedItems.filter(
+          (i, idx) => i.workstream === workstream && prev.checklistItems[idx].status === "na"
+        ).length;
+        if (prev.id) {
+          logOverride(prev.id, {
+            workstream,
+            overrideType: "workstream_reactivate",
+            previousValue: "na",
+            newValue: "not_started",
+            overrideReason: `Bulk reactivation of ${workstream} workstream items`,
+          });
+        }
+      }
+
+      if (patch.action === "priority_bump" || patch.action === "priority_reduce") {
+        const steps = patch.action === "priority_bump" ? 1 : -1;
+        updatedItems = updatedItems.map(i => {
+          if (i.workstream !== workstream || i.status === "na") return i;
+          const rank = PRIORITY_RANK[i.priority] ?? 1;
+          const newPriority = PRIORITY_BY_RANK[Math.min(3, Math.max(0, rank + steps))];
+          return newPriority !== i.priority ? { ...i, priority: newPriority, priorityOverride: newPriority } : i;
+        });
+        if (prev.id) {
+          logOverride(prev.id, {
+            workstream,
+            overrideType: "workstream_priority_bump",
+            previousValue: "engine-assigned",
+            newValue: patch.action === "priority_bump" ? "+1 tier" : "-1 tier",
+            overrideReason: `Workstream-level priority ${patch.action === "priority_bump" ? "elevation" : "reduction"} applied to ${workstream}`,
+          });
+        }
+      }
+
+      const updatedOverride: WorkstreamContextOverride = {
+        ...existing,
+        ...(patch.notes !== undefined ? { notes: patch.notes, notesUpdatedAt: now } : {}),
+        ...(patch.priorityBump !== undefined ? { priorityBump: patch.priorityBump } : {}),
+        ...(patch.reactivateNa || patch.action === "reactivate" ? { reactivateNa: true, reactivatedAt: now } : {}),
+      };
+
+      return {
+        ...prev,
+        checklistItems: updatedItems,
+        workstreamOverrides: {
+          ...(prev.workstreamOverrides ?? {}),
+          [workstream]: updatedOverride,
+        },
+      };
+    });
+  }, [logOverride]);
+
   // Update deal-level fields (used by Admin tab)
   const handleUpdateDeal = useCallback((updates: Partial<GeneratedDeal>) => {
     setDeal((prev) => {
@@ -555,7 +679,24 @@ export default function Home() {
   }
 
   if (appState === "dashboard" && deal) {
-    return <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onUpdateItem={handleUpdateItem} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} onUpdateRagOverride={handleUpdateRagOverride} onUpdateDeal={handleUpdateDeal} onUpdatePerson={handleUpdatePerson} onForceSave={handleForceSave} lastSavedAt={lastSavedAt} saveStatus={saveStatus} />;
+    return (
+      <>
+        <Dashboard deal={deal} onUpdateStatus={handleUpdateStatus} onUpdatePriority={handleUpdatePriority} onUpdateBlockedReason={handleUpdateBlockedReason} onReset={() => { clearDeal(); setDeal(null); setAppState("deals"); fetchDeals(); }} onAddTask={handleAddTask} onUpdateItem={handleUpdateItem} onAddPerson={handleAddPerson} onAssignOwner={handleAssignOwner} onAddNote={handleAddNote} onAddAttachment={handleAddAttachment} onSaveSnapshot={handleSaveSnapshot} onUpdateNarrative={handleUpdateNarrative} onSaveFilter={handleSaveFilter} onDeleteFilter={handleDeleteFilter} onBulkAssign={handleBulkAssign} onAddRisk={handleAddRisk} onUpdateRisk={handleUpdateRisk} onAddDependency={handleAddDependency} onRemoveDependency={handleRemoveDependency} onUpdateRagOverride={handleUpdateRagOverride} onUpdateDeal={handleUpdateDeal} onUpdatePerson={handleUpdatePerson} onUpdateWorkstreamOverride={handleUpdateWorkstreamOverride} onForceSave={handleForceSave} lastSavedAt={lastSavedAt} saveStatus={saveStatus} />
+        {/* Adversarial must-have override modal */}
+        {mustHavePending && (
+          <MustHaveWarningModal
+            item={mustHavePending.item}
+            targetStatus={mustHavePending.targetStatus}
+            dealId={deal.id ?? ""}
+            onConfirm={(item, targetStatus) => {
+              applyStatusChange(item.id, targetStatus);
+              setMustHavePending(null);
+            }}
+            onCancel={() => setMustHavePending(null)}
+          />
+        )}
+      </>
+    );
   }
 
   // Multi-deal list view

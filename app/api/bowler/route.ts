@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
-import { computeWorkstreamRAG, computeTrackRAG, computeProgramRAG, WORKSTREAM_TRACK_MAP, TRACK_ORDER } from "@/lib/bowler";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getSqlForDeal, getMainSql } from "@/lib/db";
+import {
+  computeWorkstreamRAG,
+  computeTrackRAG,
+  computeProgramRAG,
+  WORKSTREAM_TRACK_MAP,
+  TRACK_ORDER,
+} from "@/lib/bowler";
 
 // GET: Fetch bowler table data
 export async function GET(req: NextRequest) {
   try {
-    const dealId = req.nextUrl.searchParams.get("dealId");
-    const level = req.nextUrl.searchParams.get("level") || "workstream";
+    const dealId       = req.nextUrl.searchParams.get("dealId");
+    const level        = req.nextUrl.searchParams.get("level") || "workstream";
     const periodsCount = parseInt(req.nextUrl.searchParams.get("periods") || "8");
 
     if (!dealId) return NextResponse.json({ error: "dealId required" }, { status: 400 });
 
-    // Get the most recent N periods
+    const sql = await getSqlForDeal(dealId);
+
     const periods = await sql`
       SELECT * FROM reporting_periods
       WHERE deal_id = ${dealId}
@@ -23,12 +28,15 @@ export async function GET(req: NextRequest) {
     periods.reverse(); // chronological order
 
     if (periods.length === 0) {
-      return NextResponse.json({ periods: [], cells: [], message: "No reporting periods. POST /api/periods to generate." });
+      return NextResponse.json({
+        periods: [],
+        cells: [],
+        message: "No reporting periods. POST /api/periods to generate.",
+      });
     }
 
     const periodIds = periods.map((p: any) => p.id);
 
-    // Get bowler cells for requested level
     const cells = await sql`
       SELECT * FROM bowler_cells
       WHERE deal_id = ${dealId}
@@ -51,6 +59,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "dealId and periodId required" }, { status: 400 });
     }
 
+    const sql = await getSqlForDeal(dealId);
+
     // Get all active checklist items for this deal
     const items = await sql`
       SELECT item_id, workstream, status, priority, owner_id, blocked_reason,
@@ -64,16 +74,23 @@ export async function POST(req: NextRequest) {
     // 1. Snapshot each item into item_period_status
     for (const item of items) {
       const notesCount = Array.isArray(item.notes) ? item.notes.length : 0;
-      const attCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
+      const attCount   = Array.isArray(item.attachments) ? item.attachments.length : 0;
       await sql`
-        INSERT INTO item_period_status (deal_id, period_id, item_id, status, priority, owner_id, blocked_reason, notes_count, attachments_count)
-        VALUES (${dealId}, ${periodId}, ${item.item_id}, ${item.status}, ${item.priority}, ${item.owner_id}, ${item.blocked_reason}, ${notesCount}, ${attCount})
+        INSERT INTO item_period_status (
+          deal_id, period_id, item_id, status, priority,
+          owner_id, blocked_reason, notes_count, attachments_count
+        )
+        VALUES (
+          ${dealId}, ${periodId}, ${item.item_id}, ${item.status},
+          ${item.priority}, ${item.owner_id}, ${item.blocked_reason},
+          ${notesCount}, ${attCount}
+        )
         ON CONFLICT (deal_id, period_id, item_id) DO UPDATE SET
-          status = EXCLUDED.status,
-          priority = EXCLUDED.priority,
-          owner_id = EXCLUDED.owner_id,
-          blocked_reason = EXCLUDED.blocked_reason,
-          notes_count = EXCLUDED.notes_count,
+          status            = EXCLUDED.status,
+          priority          = EXCLUDED.priority,
+          owner_id          = EXCLUDED.owner_id,
+          blocked_reason    = EXCLUDED.blocked_reason,
+          notes_count       = EXCLUDED.notes_count,
           attachments_count = EXCLUDED.attachments_count
       `;
     }
@@ -88,12 +105,14 @@ export async function POST(req: NextRequest) {
     const wsRags: Record<string, "red" | "amber" | "green"> = {};
 
     for (const [ws, wsItems] of Object.entries(wsMap)) {
-      const total = wsItems.length;
-      const completed = wsItems.filter((i: any) => i.status === "complete").length;
-      const blocked = wsItems.filter((i: any) => i.status === "blocked").length;
+      const total      = wsItems.length;
+      const completed  = wsItems.filter((i: any) => i.status === "complete").length;
+      const blocked    = wsItems.filter((i: any) => i.status === "blocked").length;
       const inProgress = wsItems.filter((i: any) => i.status === "in_progress").length;
-      const pastDue = wsItems.filter((i: any) => i.milestone_date && i.milestone_date < todayStr && i.status !== "complete").length;
-      const notStarted = wsItems.filter((i: any) => i.status === "not_started").length;
+      const pastDue    = wsItems.filter(
+        (i: any) => i.milestone_date && i.milestone_date < todayStr && i.status !== "complete"
+      ).length;
+      const notStarted  = wsItems.filter((i: any) => i.status === "not_started").length;
       const pctComplete = total ? Math.round((completed / total) * 100) : 0;
 
       const rag = computeWorkstreamRAG({ total, completed, blocked, pastDue });
@@ -106,26 +125,29 @@ export async function POST(req: NextRequest) {
         VALUES (${dealId}, ${periodId}, 'workstream', ${ws}, ${rag}, ${JSON.stringify(metrics)})
         ON CONFLICT (deal_id, period_id, level, row_key) DO UPDATE SET
           computed_rag = EXCLUDED.computed_rag,
-          metrics = EXCLUDED.metrics,
-          updated_at = now()
+          metrics      = EXCLUDED.metrics,
+          updated_at   = now()
       `;
     }
 
     // 3. Compute track-level cells
     const trackRags: Record<string, ("red" | "amber" | "green")[]> = {};
-    const trackMetrics: Record<string, { total: number; completed: number; blocked: number; greenWs: number; amberWs: number; redWs: number }> = {};
+    const trackMetrics: Record<
+      string,
+      { total: number; completed: number; blocked: number; greenWs: number; amberWs: number; redWs: number }
+    > = {};
 
     for (const [ws, rag] of Object.entries(wsRags)) {
       const track = WORKSTREAM_TRACK_MAP[ws] || "Other";
       if (!trackRags[track]) {
-        trackRags[track] = [];
+        trackRags[track]   = [];
         trackMetrics[track] = { total: 0, completed: 0, blocked: 0, greenWs: 0, amberWs: 0, redWs: 0 };
       }
       trackRags[track].push(rag);
       const wsItems = wsMap[ws] || [];
-      trackMetrics[track].total += wsItems.length;
+      trackMetrics[track].total     += wsItems.length;
       trackMetrics[track].completed += wsItems.filter((i: any) => i.status === "complete").length;
-      trackMetrics[track].blocked += wsItems.filter((i: any) => i.status === "blocked").length;
+      trackMetrics[track].blocked   += wsItems.filter((i: any) => i.status === "blocked").length;
       if (rag === "green") trackMetrics[track].greenWs++;
       else if (rag === "amber") trackMetrics[track].amberWs++;
       else trackMetrics[track].redWs++;
@@ -136,31 +158,33 @@ export async function POST(req: NextRequest) {
       if (!trackRags[track]) continue;
       const rag = computeTrackRAG(trackRags[track]);
       allTrackRags.push(rag);
-      const m = trackMetrics[track];
+      const m           = trackMetrics[track];
       const pctComplete = m.total ? Math.round((m.completed / m.total) * 100) : 0;
-      const metrics = { ...m, pctComplete, totalWs: trackRags[track].length };
+      const metrics     = { ...m, pctComplete, totalWs: trackRags[track].length };
 
       await sql`
         INSERT INTO bowler_cells (deal_id, period_id, level, row_key, computed_rag, metrics)
         VALUES (${dealId}, ${periodId}, 'track', ${track}, ${rag}, ${JSON.stringify(metrics)})
         ON CONFLICT (deal_id, period_id, level, row_key) DO UPDATE SET
           computed_rag = EXCLUDED.computed_rag,
-          metrics = EXCLUDED.metrics,
-          updated_at = now()
+          metrics      = EXCLUDED.metrics,
+          updated_at   = now()
       `;
     }
 
     // 4. Compute program-level cell
     const programRag = computeProgramRAG(allTrackRags);
     const programMetrics = {
-      totalItems: items.length,
-      completed: items.filter((i: any) => i.status === "complete").length,
-      blocked: items.filter((i: any) => i.status === "blocked").length,
-      pctComplete: items.length ? Math.round((items.filter((i: any) => i.status === "complete").length / items.length) * 100) : 0,
-      totalWs: Object.keys(wsMap).length,
-      greenWs: Object.values(wsRags).filter(r => r === "green").length,
-      amberWs: Object.values(wsRags).filter(r => r === "amber").length,
-      redWs: Object.values(wsRags).filter(r => r === "red").length,
+      totalItems:  items.length,
+      completed:   items.filter((i: any) => i.status === "complete").length,
+      blocked:     items.filter((i: any) => i.status === "blocked").length,
+      pctComplete: items.length
+        ? Math.round((items.filter((i: any) => i.status === "complete").length / items.length) * 100)
+        : 0,
+      totalWs:  Object.keys(wsMap).length,
+      greenWs:  Object.values(wsRags).filter((r) => r === "green").length,
+      amberWs:  Object.values(wsRags).filter((r) => r === "amber").length,
+      redWs:    Object.values(wsRags).filter((r) => r === "red").length,
     };
 
     await sql`
@@ -168,8 +192,8 @@ export async function POST(req: NextRequest) {
       VALUES (${dealId}, ${periodId}, 'program', NULL, ${programRag}, ${JSON.stringify(programMetrics)})
       ON CONFLICT (deal_id, period_id, level, row_key) DO UPDATE SET
         computed_rag = EXCLUDED.computed_rag,
-        metrics = EXCLUDED.metrics,
-        updated_at = now()
+        metrics      = EXCLUDED.metrics,
+        updated_at   = now()
     `;
 
     return NextResponse.json({
@@ -186,17 +210,34 @@ export async function POST(req: NextRequest) {
 }
 
 // PUT: Update a bowler cell (override RAG, add narrative, etc.)
+// dealId is required to route the write to the correct branch.
 export async function PUT(req: NextRequest) {
   try {
-    const { cellId, overrideRag, overrideBy, narrative, keyRisks, nextSteps, highlightedItems, authorId } = await req.json();
+    const {
+      cellId, dealId,
+      overrideRag, overrideBy,
+      narrative, keyRisks, nextSteps, highlightedItems, authorId,
+    } = await req.json();
+
     if (!cellId) return NextResponse.json({ error: "cellId required" }, { status: 400 });
 
-    const updates: string[] = [];
+    // Use branch connection when dealId is provided; fall back to main
+    const sql = dealId ? await getSqlForDeal(dealId) : getMainSql();
+
     if (overrideRag !== undefined) {
-      await sql`UPDATE bowler_cells SET override_rag = ${overrideRag}, override_by = ${overrideBy || null}, override_at = now(), updated_at = now() WHERE id = ${cellId}`;
+      await sql`
+        UPDATE bowler_cells
+        SET override_rag = ${overrideRag}, override_by = ${overrideBy || null},
+            override_at = now(), updated_at = now()
+        WHERE id = ${cellId}
+      `;
     }
     if (narrative !== undefined) {
-      await sql`UPDATE bowler_cells SET narrative = ${narrative}, author_id = ${authorId || null}, updated_at = now() WHERE id = ${cellId}`;
+      await sql`
+        UPDATE bowler_cells
+        SET narrative = ${narrative}, author_id = ${authorId || null}, updated_at = now()
+        WHERE id = ${cellId}
+      `;
     }
     if (keyRisks !== undefined) {
       await sql`UPDATE bowler_cells SET key_risks = ${keyRisks}, updated_at = now() WHERE id = ${cellId}`;
@@ -205,7 +246,11 @@ export async function PUT(req: NextRequest) {
       await sql`UPDATE bowler_cells SET next_steps = ${nextSteps}, updated_at = now() WHERE id = ${cellId}`;
     }
     if (highlightedItems !== undefined) {
-      await sql`UPDATE bowler_cells SET highlighted_items = ${JSON.stringify(highlightedItems)}, updated_at = now() WHERE id = ${cellId}`;
+      await sql`
+        UPDATE bowler_cells
+        SET highlighted_items = ${JSON.stringify(highlightedItems)}, updated_at = now()
+        WHERE id = ${cellId}
+      `;
     }
 
     const updated = await sql`SELECT * FROM bowler_cells WHERE id = ${cellId}`;

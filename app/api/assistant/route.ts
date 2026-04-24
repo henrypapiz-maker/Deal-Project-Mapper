@@ -7,6 +7,7 @@ import {
   buildStatusReportPrompt,
   buildRiskMemoPrompt,
   buildTaskReportPrompt,
+  buildMethodologyReportPrompt,
   buildCsvExport,
   assembleReportContext,
   formatContextForPrompt,
@@ -69,8 +70,8 @@ const TOOL_DEFINITION = {
             ownerId: { type: ["string", "null"], description: "assign_owner/bulk_assign_owner: person id or null" },
             docType: {
               type: "string",
-              enum: ["status_report", "risk_memo", "task_report", "csv_export"],
-              description: "synthesize_document: type of document to generate",
+              enum: ["status_report", "risk_memo", "task_report", "csv_export", "methodology_report"],
+              description: "synthesize_document: type of document to generate. methodology_report = Generation Intelligence methodology narrative explaining every engine decision.",
             },
             title: { type: "string", description: "synthesize_document: optional document title override" },
             skillName: { type: "string", description: "run_skill: exact name of the skill to execute" },
@@ -117,7 +118,7 @@ AVAILABLE ACTIONS:
 - bulk_assign_owner(itemIds[], ownerId): Assign many items to one person
 - draft_report(): Navigate to SteerCo tab and open Report Drafter
 - generate_snapshot(): Capture current progress as a new snapshot
-- synthesize_document(docType, title?): Generate and save a document. docType: status_report | risk_memo | task_report | csv_export
+- synthesize_document(docType, title?): Generate and save a document. docType: status_report | risk_memo | task_report | csv_export | methodology_report
 - run_skill(skillName): Execute a named multi-step workflow from the skill library
 
 RULES:
@@ -137,7 +138,7 @@ async function synthesizeDocument(
   dealId: string,
   docType: string,
   title?: string
-): Promise<{ content: string; resolvedTitle: string; format: "markdown" | "csv" }> {
+): Promise<{ content: string; resolvedTitle: string; format: "markdown" | "csv"; inputTokens: number; outputTokens: number }> {
   // Fetch deal data from DB for synthesis context
   const [dealRow] = await sql`SELECT * FROM deals WHERE id = ${dealId}`;
   if (!dealRow) throw new Error("Deal not found");
@@ -165,6 +166,12 @@ async function synthesizeDocument(
       buyerMaturity: dealRow.buyer_maturity,
       functionalScope: dealRow.functional_scope || [],
     },
+    // Generation intelligence fields (populated by 5-layer engine)
+    generationLog: dealRow.generation_log ?? [],
+    parameterSignals: (dealRow.generation_log as any[] | null)
+      ? undefined  // re-derived in report prompt from generationLog
+      : [],
+    mustHaveAlerts: [],  // derived at generation time; not persisted separately
     checklistItems: items.map((i: any) => ({
       id: i.id, itemId: i.item_id, workstream: i.workstream,
       section: i.section, description: i.description, phase: i.phase,
@@ -188,9 +195,38 @@ async function synthesizeDocument(
 
   if (docType === "csv_export") {
     const content = buildCsvExport(mockDeal);
-    return { content, resolvedTitle: title || `${dealRow.name} — Checklist Export`, format: "csv" };
+    return { content, resolvedTitle: title || `${dealRow.name} — Checklist Export`, format: "csv", inputTokens: 0, outputTokens: 0 };
   }
 
+  // ── Methodology report — uses full deal object directly (not assembleReportContext) ──
+  if (docType === "methodology_report") {
+    const prompt = buildMethodologyReportPrompt(mockDeal);
+    const mRes = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: CLAUDE_HEADERS(apiKey),
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 3000,
+        system:
+          "You are an M&A integration methodology writer. Generate the requested " +
+          "Generation Intelligence Report in clean, detailed markdown. Be specific and " +
+          "analytical — explain every engine decision with deal-specific context. " +
+          "Use tables and headings. Aim for comprehensive coverage of all log entries.",
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!mRes.ok) throw new Error("Methodology report synthesis failed");
+    const mData = await mRes.json();
+    return {
+      content: mData.content?.[0]?.text ?? "",
+      resolvedTitle: title || `${dealRow.name} — Generation Intelligence Report`,
+      format: "markdown",
+      inputTokens: mData.usage?.input_tokens ?? 0,
+      outputTokens: mData.usage?.output_tokens ?? 0,
+    };
+  }
+
+  // ── Standard report types ──────────────────────────────────────────────────
   const ctx = assembleReportContext(mockDeal, {});
 
   let promptFn: (c: typeof ctx) => string;
@@ -222,7 +258,13 @@ async function synthesizeDocument(
   const data = await res.json();
   const content = data.content?.[0]?.text ?? "";
 
-  return { content, resolvedTitle: title || defaultTitle, format: "markdown" };
+  return {
+    content,
+    resolvedTitle: title || defaultTitle,
+    format: "markdown",
+    inputTokens: data.usage?.input_tokens ?? 0,
+    outputTokens: data.usage?.output_tokens ?? 0,
+  };
 }
 
 async function expandSkill(
@@ -308,8 +350,23 @@ export async function POST(req: NextRequest) {
 
   const systemPrompt = buildSystemPrompt(appContext);
 
+  // ── Helper: fire-and-forget telemetry log ──────────────────────────────────
+  function logTelemetry(payload: {
+    callType: string; model: string; inputTokens: number; outputTokens: number;
+    latencyMs: number; actionsTaken: string[]; docType?: string;
+    status: "ok" | "error"; errorMsg?: string;
+  }) {
+    // Internal self-call — no await, errors are swallowed
+    fetch(new URL("/api/telemetry", req.url).toString(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dealId, ...payload }),
+    }).catch(() => {/* non-critical */});
+  }
+
   try {
     // First Claude call
+    const t0 = Date.now();
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: CLAUDE_HEADERS(apiKey),
@@ -324,11 +381,17 @@ export async function POST(req: NextRequest) {
     });
 
     if (!res.ok) {
-      console.error("Claude API error:", await res.text());
+      const errText = await res.text();
+      console.error("Claude API error:", errText);
+      logTelemetry({ callType: "assistant", model: "claude-sonnet-4-20250514", inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - t0, actionsTaken: [], status: "error", errorMsg: errText.slice(0, 200) });
       return NextResponse.json({ error: "api_error" }, { status: 502 });
     }
 
     const data = await res.json();
+    const latencyMs = Date.now() - t0;
+    const inputTokens  = data.usage?.input_tokens  ?? 0;
+    const outputTokens = data.usage?.output_tokens ?? 0;
+
     const content: Array<{ type: string; text?: string; input?: { actions: AppAction[] } }> =
       data.content ?? [];
 
@@ -339,10 +402,11 @@ export async function POST(req: NextRequest) {
     // Handle synthesize_document — second pass: synthesize content, convert to save_document
     const synthAction = actions.find((a) => a.type === "synthesize_document") as Extract<AppAction, { type: "synthesize_document" }> | undefined;
     if (synthAction && dealId) {
+      const st0 = Date.now();
       try {
-        const { content: docContent, resolvedTitle, format } = await synthesizeDocument(
-          apiKey, dealId, synthAction.docType, synthAction.title
-        );
+        const { content: docContent, resolvedTitle, format, inputTokens: sIn, outputTokens: sOut } =
+          await synthesizeDocument(apiKey, dealId, synthAction.docType, synthAction.title);
+        const synthLatency = Date.now() - st0;
         // Replace synthesize_document with save_document
         actions = actions.map((a) =>
           a.type === "synthesize_document"
@@ -350,10 +414,12 @@ export async function POST(req: NextRequest) {
             : a
         );
         reply += `\n\nGenerated: **${resolvedTitle}** (${format === "csv" ? "CSV" : "Markdown"}, ${docContent.split(/\s+/).length} words). Saving to documents…`;
+        logTelemetry({ callType: "synthesis", model: "claude-sonnet-4-20250514", inputTokens: sIn, outputTokens: sOut, latencyMs: synthLatency, actionsTaken: [], docType: synthAction.docType, status: "ok" });
       } catch (e) {
         console.error("Synthesis error:", e);
         actions = actions.filter((a) => a.type !== "synthesize_document");
         reply += "\n\n(Document synthesis failed — please try again.)";
+        logTelemetry({ callType: "synthesis", model: "claude-sonnet-4-20250514", inputTokens: 0, outputTokens: 0, latencyMs: Date.now() - st0, actionsTaken: [], docType: synthAction.docType, status: "error" });
       }
     }
 
@@ -382,6 +448,18 @@ export async function POST(req: NextRequest) {
         console.error("Permission check error:", e);
       }
     }
+
+    // Log main assistant call telemetry (fire-and-forget)
+    const finalActionTypes = actions.map((a) => a.type);
+    logTelemetry({
+      callType: "assistant",
+      model: "claude-sonnet-4-20250514",
+      inputTokens,
+      outputTokens,
+      latencyMs,
+      actionsTaken: finalActionTypes,
+      status: "ok",
+    });
 
     const response: AssistantResponse = { reply, actions };
     return NextResponse.json(response);

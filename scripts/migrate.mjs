@@ -57,7 +57,9 @@ async function migrate() {
     functional_scope JSONB DEFAULT '[]',
     status VARCHAR(20) DEFAULT 'pre_close',
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    neon_branch_id  VARCHAR(50),
+    neon_branch_url TEXT
   )`;
   console.log("✓ deals table");
 
@@ -283,6 +285,76 @@ async function migrate() {
 
   await sql`ALTER TABLE deals ADD COLUMN IF NOT EXISTS parent_profile_id UUID REFERENCES parent_profiles(id) ON DELETE SET NULL`;
   console.log("✓ deals.parent_profile_id FK column");
+
+  // ── Catalogue Review Engine: generation log + override ledger ──
+  await sql`ALTER TABLE deals ADD COLUMN IF NOT EXISTS generation_log JSONB`;
+  console.log("✓ deals.generation_log JSONB column");
+
+  await sql`CREATE TABLE IF NOT EXISTS override_log (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deal_id          UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    item_id          VARCHAR(10),
+    item_description TEXT,
+    workstream       VARCHAR(80),
+    override_type    VARCHAR(30),
+    previous_value   VARCHAR(100),
+    new_value        VARCHAR(100),
+    warning_shown    BOOLEAN DEFAULT FALSE,
+    override_reason  TEXT,
+    created_at       TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_override_deal ON override_log(deal_id, created_at DESC)`;
+  console.log("✓ override_log table");
+
+  // ── API Telemetry ───────────────────────────────────────────
+  await sql`CREATE TABLE IF NOT EXISTS api_telemetry (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    deal_id       UUID REFERENCES deals(id) ON DELETE SET NULL,
+    call_type     VARCHAR(30) NOT NULL,
+    model         VARCHAR(60),
+    input_tokens  INTEGER,
+    output_tokens INTEGER,
+    latency_ms    INTEGER,
+    actions_taken JSONB DEFAULT '[]',
+    doc_type      VARCHAR(30),
+    status        VARCHAR(10) DEFAULT 'ok',
+    error_msg     TEXT,
+    created_at    TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_telemetry_deal    ON api_telemetry(deal_id, created_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_telemetry_created ON api_telemetry(created_at DESC)`;
+  console.log("✓ api_telemetry table");
+
+  // ── Workstream context overrides on deals ───────────────────
+  await sql`ALTER TABLE deals ADD COLUMN IF NOT EXISTS workstream_overrides JSONB`;
+  console.log("✓ deals.workstream_overrides JSONB column");
+
+  // ── Master Catalogue (seeded by scripts/seed-catalogue.ts) ───────────────
+  await sql`CREATE TABLE IF NOT EXISTS master_catalogue (
+    item_id              VARCHAR(10) PRIMARY KEY,
+    workstream           VARCHAR(80) NOT NULL,
+    section              VARCHAR(150),
+    description          TEXT NOT NULL,
+    phase                VARCHAR(20) NOT NULL,
+    priority             priority_enum NOT NULL DEFAULT 'medium',
+    tsa_relevant         BOOLEAN DEFAULT FALSE,
+    cross_border_flag    BOOLEAN DEFAULT FALSE,
+    risk_indicators      JSONB DEFAULT '[]',
+    functional_area      VARCHAR(30),
+    dependencies         JSONB DEFAULT '[]',
+    node_id              VARCHAR(50) DEFAULT 'GENERAL',
+    capability_node      VARCHAR(50),
+    must_have            BOOLEAN DEFAULT FALSE,
+    must_have_reason     TEXT,
+    sector_affinity      JSONB DEFAULT '[]',
+    maturity_sensitive   BOOLEAN DEFAULT FALSE,
+    version              INTEGER DEFAULT 1,
+    updated_at           TIMESTAMPTZ DEFAULT NOW()
+  )`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_master_workstream ON master_catalogue(workstream)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_master_phase      ON master_catalogue(phase)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_master_must_have  ON master_catalogue(must_have) WHERE must_have = TRUE`;
+  console.log("✓ master_catalogue table");
 
   // Verify
   const tables = await sql`SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema IN ('public', 'config', 'audit', 'agents') ORDER BY table_schema, table_name`;

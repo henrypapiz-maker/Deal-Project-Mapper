@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
+import { getSqlForDeal } from "@/lib/db";
 import { generatePeriods } from "@/lib/bowler";
-
-const sql = neon(process.env.DATABASE_URL!);
 
 // POST: Generate reporting periods for a deal
 export async function POST(req: NextRequest) {
@@ -12,10 +10,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "dealId and closeDate required" }, { status: 400 });
     }
 
+    const sql = await getSqlForDeal(dealId);
+
     // Check if periods already exist
     const existing = await sql`SELECT COUNT(*) as cnt FROM reporting_periods WHERE deal_id = ${dealId}`;
     if (Number(existing[0].cnt) > 0) {
-      // Return existing periods
       const periods = await sql`SELECT * FROM reporting_periods WHERE deal_id = ${dealId} ORDER BY sequence_num`;
       return NextResponse.json({ periods, created: false });
     }
@@ -43,6 +42,7 @@ export async function GET(req: NextRequest) {
     const dealId = req.nextUrl.searchParams.get("dealId");
     if (!dealId) return NextResponse.json({ error: "dealId required" }, { status: 400 });
 
+    const sql = await getSqlForDeal(dealId);
     const periods = await sql`SELECT * FROM reporting_periods WHERE deal_id = ${dealId} ORDER BY sequence_num`;
     return NextResponse.json({ periods });
   } catch (e: any) {

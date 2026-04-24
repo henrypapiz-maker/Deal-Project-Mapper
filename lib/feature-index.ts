@@ -10,7 +10,7 @@ APP TABS — what lives where:
 | risks        | Risk register (8 auto-detected categories + manual), dependency matrix, dependency type linking |
 | timeline     | Phase milestones (Pre-Close→Day 1→Day 30→60→90→Year 1), per-workstream phase breakdown |
 | steerco      | 10-section narrative drafter, executive summary, pressure test, slide deck generator, snapshots |
-| admin        | Deal settings, team permissions, export/import JSON, audit log, API status test |
+| admin        | Deal settings, team permissions, export/import JSON, audit log, API status test, Neon branch operations (Section J: branch status, cold-start guidance, schema migration procedures, write-back protocol) |
 | agent        | Role permissions matrix, prompt library, named skills, synthesized documents |
 
 CHECKLIST FILTER VALUES:

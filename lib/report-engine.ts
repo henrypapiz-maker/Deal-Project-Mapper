@@ -1370,6 +1370,127 @@ Deal Context:
 ${contextText}`;
 }
 
+// ============================================================
+// Methodology Report — Generation Intelligence narrative
+// ============================================================
+export function buildMethodologyReportPrompt(deal: import("./types").GeneratedDeal): string {
+  const { intake, generationLog = [], parameterSignals = [], mustHaveAlerts = [], checklistItems } = deal;
+
+  // ── Derive workstream-level summary from generationLog ─────────────────────
+  const layers = ["filtering", "priority", "parent_gap", "sector", "timeline"] as const;
+  const layerLabels: Record<string, string> = {
+    filtering: "Layer 1 — Enhanced Filtering",
+    priority:  "Layer 2 — Priority Calibration",
+    parent_gap: "Layer 3 — Parent Profile Gap Analysis",
+    sector:    "Layer 4 — Sector Overlay",
+    timeline:  "Layer 5 — Timeline Adjustment",
+  };
+
+  const naCount     = checklistItems.filter(i => i.status === "na").length;
+  const activeCount = checklistItems.filter(i => i.status !== "na").length;
+  const overriddenCount = generationLog.filter(e => e.layer === "priority")
+    .reduce((sum, e) => sum + e.itemsAffected.length, 0);
+  const phaseAdjCount = generationLog.filter(e => e.layer === "timeline")
+    .reduce((sum, e) => sum + e.itemsAffected.length, 0);
+
+  // ── Build structured context blocks for each section ───────────────────────
+  const signalTable = parameterSignals.length
+    ? parameterSignals.map(s =>
+        `| ${s.parameter} | ${s.value} | ${s.signal.toUpperCase()} | ${s.description} |`
+      ).join("\n")
+    : "_No parameter signals recorded._";
+
+  const layerBlocks = layers.map(layerId => {
+    const entries = generationLog.filter(e => e.layer === layerId);
+    if (!entries.length) return `### ${layerLabels[layerId]}\n_No rules fired for this layer._`;
+    return `### ${layerLabels[layerId]}\n` + entries.map(e =>
+      `**Rule:** \`${e.rule}\`  \n**Parameter:** ${e.parameter}  \n**Items affected:** ${e.itemsAffected.length}  \n**Reasoning:** ${e.reasoning}`
+    ).join("\n\n");
+  }).join("\n\n---\n\n");
+
+  const mustHaveBlock = mustHaveAlerts.length
+    ? mustHaveAlerts.map(a => `- **${a.itemId}**: ${a.description}  \n  _${a.reason}_`).join("\n")
+    : "_No must-have items in this deal's scope._";
+
+  const parentBlock = deal.parentProfile
+    ? `- Acquirer: ${deal.parentProfile.orgName} (${deal.parentProfile.orgType ?? "—"})
+- Parent GAAP: ${deal.parentProfile.parentGaap ?? "not specified"}
+- Parent ERP: ${deal.parentProfile.parentErp ?? "not specified"}
+- Buyer maturity: ${deal.parentProfile.buyerMaturity ?? "not specified"}
+- IMO structure: ${deal.parentProfile.imoStructure ?? "not specified"}`
+    : "_No parent profile linked to this deal._";
+
+  return `You are an M&A integration methodology expert writing a formal Generation Intelligence Report.
+
+This report explains every decision the DealMapper catalogue review engine made when generating the integration checklist for this deal. It is written for PMO leads and senior advisors who need to understand why items were included, excluded, elevated, or timeline-adjusted.
+
+Generate a structured markdown document (~1,200–1,500 words) using the exact section structure below. Be specific: cite item counts, rule names, and parameter values. Write in professional advisory tone.
+
+---
+
+## DEAL CONTEXT
+- Deal: **${intake.dealName}**
+- Structure: ${intake.dealStructure} | Model: ${intake.integrationModel} | TSA: ${intake.tsaRequired}
+- Close date: ${intake.closeDate} | Sector: ${intake.industrySector || "Not specified"}
+- Target GAAP: ${intake.targetGaap} | Target ERP: ${intake.targetErp}
+- Buyer maturity: ${intake.buyerMaturity} | Target entities: ${intake.targetEntities}
+- Cross-border: ${intake.crossBorder ? `Yes (${intake.jurisdictions?.join(", ")})` : "No"}
+- Deal value: ${intake.dealValueRange}
+
+## GENERATION SUMMARY
+- Total active items: **${activeCount}**
+- Items excluded (N/A): **${naCount}**
+- Priority adjustments applied: **${overriddenCount}**
+- Timeline adjustments applied: **${phaseAdjCount}**
+- Must-have items protected: **${mustHaveAlerts.length}**
+- Parameter signals detected: **${parameterSignals.length}**
+
+## PARENT PROFILE
+${parentBlock}
+
+## PARAMETER SIGNALS (all signals that shaped this checklist)
+| Parameter | Value | Signal | Description |
+|---|---|---|---|
+${signalTable}
+
+## LAYER-BY-LAYER DECISIONS (verbatim from generation log)
+${layerBlocks}
+
+## MUST-HAVE ITEMS PROTECTED
+${mustHaveBlock}
+
+---
+
+INSTRUCTIONS:
+Write the following sections as flowing professional narrative, drawing on all of the above data:
+
+# ${intake.dealName} — Generation Intelligence Methodology Report
+
+## Section 1 — Executive Signal Summary
+Summarise the 3-5 most impactful signals and their combined effect on the checklist shape.
+
+## Section 2 — Filtering Decisions
+Explain which items were excluded and why, citing rules from Layer 1 data above.
+
+## Section 3 — Priority Adaptations
+Explain priority elevations and reductions from Layer 2 data. Call out the carve-out TSA fix if applicable.
+
+## Section 4 — Parent Profile Gap Analysis
+Explain any GAAP delta, ERP delta, or maturity-driven adaptations from Layer 3 data.
+
+## Section 5 — Sector Overlay
+Explain sector-specific activations from Layer 4. If no sector was specified, note this.
+
+## Section 6 — Timeline Adjustments
+Explain all phase/milestone shifts from Layer 5. Quantify the day-count changes.
+
+## Section 7 — Must-Have Protection Summary
+List the must-have items, explain why they are protected, and note any overrides (if the deal has any override log entries).
+
+## Section 8 — Methodology Confidence & Recommended Review Points
+Rate confidence in the generation output (High / Medium / Needs Review), list 2-3 specific parameters the PMO lead should validate before proceeding, and flag any combinations that warrant a human cross-check.`;
+}
+
 export function buildCsvExport(deal: import("./types").GeneratedDeal): string {
   const header = "itemId,workstream,section,description,phase,priority,status,owner,milestoneDate,tsaRelevant,blocked";
   const rows = deal.checklistItems.map((i) => {

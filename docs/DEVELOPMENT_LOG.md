@@ -626,3 +626,177 @@ type DependencyType =
 ---
 
 *Generated April 1, 2026. Last commit: `e4b2c6e`.*
+
+---
+
+## 13. Phase 3 Session Log — April 2026
+
+**Summary:** Item ID prefix canonicalization across 469 catalogue items + Neon DB per-deal branch isolation (Control Plane / Data Plane architecture).
+
+---
+
+### 13.1 Item ID Prefix Canonicalization
+
+**Problem:** `lib/checklist-master.ts` used shared legacy prefixes that spanned multiple workstreams:
+- `FIN-` (304 items) covered 7 Finance workstreams
+- `IT-` (47 items) covered 6 IT sub-workstreams
+- `CGV-` (83 items) covered Controls + Governance
+- `INT-` (35 items) should have been `IMO-`
+
+**Pre-validation caught 5 bugs** in user-proposed migration scripts before execution:
+1. Script targeted `data/master-catalogue.txt` (generated snapshot) — not source of truth
+2. Regex `^([A-Z]+-\d{4})\s+(.+?)\s{2,}` didn't match actual TS object format
+3. `'Financial Reporting & Consol.'` abbreviated — never matches actual workstream string
+4. Import `CATALOGUE_METADATA` — export doesn't exist; correct: `MUST_HAVE_ITEM_IDS`, `WORKSTREAM_CANONICAL_CODES`
+5. `meta.mustHaveReason` — wrong property; correct: `entry.reason`
+
+**Rename map (469 items):**
+
+| Old | New | Workstream | Count |
+|-----|-----|-----------|-------|
+| `FIN-` | `TSA-` | TSA | 70 |
+| `FIN-` | `OFN-` | Operational Finance | 70 |
+| `FIN-` | `TRS-` | Treasury | 39 |
+| `FIN-` | `TAX-` | Income Tax | 37 |
+| `FIN-` | `FPA-` | FP&A | 34 |
+| `FIN-` | `FRC-` | Financial Reporting & Consolidation | 27 |
+| `FIN-` | `TCA-` | Technical Accounting | 27 |
+| `IT-` | `ITG-` | IT Strategy & Governance | 23 |
+| `IT-` | `ITE-` | IT > Enterprise Systems | 8 |
+| `IT-` | `ITI-` | IT > Infrastructure | 5 |
+| `IT-` | `ITD-` | IT > Data & Analytics | 4 |
+| `IT-` | `ITV-` | IT > IT Vendor Management | 4 |
+| `IT-` | `ITC-` | IT > Client-Facing & Digital | 3 |
+| `CGV-` | `CTL-` | Controls | 69 |
+| `CGV-` | `GRC-` | Governance & Compliance | 14 |
+| `INT-` | `IMO-` | Integration Management | 35 |
+
+**Files modified:** `lib/checklist-master.ts` (469 itemId values + all dependency arrays), `lib/catalogue-metadata.ts` (60 MUST_HAVE_ITEM_IDS keys)
+
+**New artefacts:**
+- `scripts/migrate-prefixes.mjs` — one-time rewrite script (since deleted)
+- `scripts/validate-catalogue.ts` — permanent 5-rule linter
+- `package.json` → `"validate:catalogue": "tsx scripts/validate-catalogue.ts"`
+
+**Verification passed:**
+- `npx tsc --noEmit` → 0 errors
+- `npm run validate:catalogue` → 633 items, 26 unique prefixes, 60 must-haves, ✅ Catalogue is clean
+- `npm run seed` → 632 rows, 60 must-haves in Neon DB, ✅ Catalogue seed complete
+
+---
+
+### 13.2 Phase 3 — Neon DB Branching Per Deal
+
+**Architecture (Control Plane / Data Plane):**
+```
+main branch  →  master_catalogue (seeded baseline)
+              +  deals table (registry + branch URL lookup)
+              +  parent_profiles, agents.*
+
+deal branch  →  checklist_items, risk_alerts, milestones,
+              +  team_members, progress_snapshots, saved_filters
+              +  override_log, bowler tables, steerco_narratives
+              +  reporting_periods, view_preferences, audit.status_history
+```
+
+Every new deal forks main at creation time, inheriting the canonical catalogue snapshot with full data isolation.
+
+**New files:**
+
+| File | Purpose |
+|------|---------|
+| `lib/neon-branch.ts` | Neon Management API wrapper: `createDealBranch`, `deleteDealBranch`, `isBranchingEnabled`, `warmBranchConnection` |
+| `lib/db.ts` | SQL client factory: `getMainSql()`, `getSqlForDeal(dealId)` |
+| `scripts/migrate-add-branch-columns.mjs` | One-time DDL: adds `neon_branch_id VARCHAR(50)` and `neon_branch_url TEXT` to `deals` |
+
+**Updated routes (7 files):** `api/deals`, `api/deals/[id]/overrides`, `api/bowler`, `api/steerco`, `api/periods`, `api/views` — all use `getSqlForDeal(dealId)` for per-deal connection routing.
+
+**`deals` table schema change:**
+```sql
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS neon_branch_id  VARCHAR(50);
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS neon_branch_url TEXT;
+```
+
+**Backward compatibility:** 17 pre-existing deals have `neon_branch_url = NULL` → `getSqlForDeal` falls back to `DATABASE_URL` (main). Zero downtime migration.
+
+**Branch lifecycle:**
+- `POST /api/deals` (new deal) → `createDealBranch(dealId)` → store `branchId`/`branchUrl` on main → write all deal data to branch
+- `POST /api/deals` (re-save) → look up `branchUrl` from main → update header on main, write children to branch
+- `GET /api/deals?id=` → look up `branchUrl` from main → load full deal from branch
+- `DELETE /api/deals` → look up `branchId` → `deleteDealBranch(branchId)` → delete row from main (no orphaned compute)
+
+**Env vars (`.env.local`):**
+```
+NEON_API_KEY=     # console.neon.tech → Account Settings → API keys
+NEON_PROJECT_ID=  # your project → Settings → General → Project ID
+```
+Both blank by default — app runs in backward-compatible (main-only) mode until configured.
+
+---
+
+### 13.3 Red-Team Fixes
+
+**Fix 1 — Cold Start (UX):**
+`lib/neon-branch.ts` → `createDealBranch` now passes `suspend_timeout_seconds: 3600` in the endpoint config. Branch compute stays warm for 1 hour after last connection (up from Neon's default 5 min), eliminating cold-start latency during a normal working session.
+
+Added `warmBranchConnection(branchUrl)` helper for proactive pre-warming (fire-and-forget, errors swallowed).
+
+**Fix 2 — Schema Migration Propagation:**
+`scripts/migrate-branches.mjs` — scatter-gather DDL runner. Queries main for all `neon_branch_url IS NOT NULL` deals, connects to each branch, applies `MIGRATION_SQL` env var via `.unsafe()`, reports per-branch pass/fail.
+
+```bash
+MIGRATION_SQL="ALTER TABLE checklist_items ADD COLUMN IF NOT EXISTS esg_score INT" \
+npm run migrate:branches
+```
+
+Exits with code 1 if any branch fails (CI-safe).
+
+**Fix 3 — Write-Back Protocol:**
+`app/api/catalogue/promote/route.ts`:
+- `GET ?dealId=` → lists checklist items in the deal branch that are absent from `master_catalogue` (net-new / custom PMO items)
+- `POST { dealId, itemId }` → promotes item into `master_catalogue` on main; derives `capability_node` from `WORKSTREAM_CAPABILITY_NODES`; returns 409 if already exists
+
+---
+
+### 13.4 In-App Documentation
+
+**Admin Tab → Section J — Neon Branch Operations** (`components/dashboard/Dashboard.tsx`):
+- J1: Live branch status tiles (Branching Enabled, NEON_API_KEY, NEON_PROJECT_ID, Branch ID, Storage type) — fetched on demand via `GET /api/admin/db-status`
+- J2: Architecture callout (Control Plane / Data Plane explanation)
+- J3: Cold start warning callout with suspend_timeout detail
+- J4: Schema migration instructions with inline code block
+- J5: Write-back protocol with API endpoint reference
+- J6: Setup checklist with exact navigation paths for both env vars
+
+**HelpDrawer `case "admin":`** added (`components/dashboard/HelpDrawer.tsx`) — sections A–I index, branch ops summary, schema migration warning.
+
+**`lib/feature-index.ts`** — admin tab description updated to reference Section J.
+
+**New API route:** `app/api/admin/db-status` — returns branch config status without exposing `neon_branch_url` (credential-safe).
+
+---
+
+### 13.5 UX Considerations Backlog (Phase 4)
+
+| ID | Issue | Priority |
+|----|-------|---------|
+| UX-01 | No user feedback during branch provisioning (~2–5 s on new deal save) | High |
+| UX-02 | Silent branch-creation failure — deal lands on main with no warning | High |
+| UX-03 | Cold-start skeleton state for deal load (first request on idle branch) | Medium |
+| UX-04 | `is_branched` badge in deal portfolio list | Medium |
+| UX-05 | Write-back UI — "Promote to Catalogue ↑" action on custom checklist items | Medium |
+| UX-06 | Admin UI button to trigger `migrate:branches` without CLI | Low |
+| UX-07 | Branch cost indicator tooltip (compute billing awareness) | Low |
+
+---
+
+### 13.6 Version Summary
+
+| Version | Changes |
+|---------|---------|
+| v0.7.1 | Item ID prefix canonicalization — 469 items renamed to workstream-canonical codes |
+| v0.7.2 | Phase 3 — Neon DB branching per deal (Control Plane / Data Plane architecture) |
+| v0.7.3 | Red-team fixes — cold start, scatter-gather migrations, write-back protocol |
+| v0.7.4 | In-app Admin documentation — Section J, HelpDrawer admin case, db-status API |
+
+*Session completed April 23, 2026.*

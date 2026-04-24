@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { neon } from "@neondatabase/serverless";
-
-const sql = neon(process.env.DATABASE_URL!);
+import { getSqlForDeal } from "@/lib/db";
 
 // GET: Fetch narratives for a deal (optionally filtered by period)
 export async function GET(req: NextRequest) {
@@ -10,6 +8,7 @@ export async function GET(req: NextRequest) {
     const periodId = req.nextUrl.searchParams.get("periodId");
     if (!dealId) return NextResponse.json({ error: "dealId required" }, { status: 400 });
 
+    const sql = await getSqlForDeal(dealId);
     const narratives = periodId
       ? await sql`SELECT * FROM steerco_narratives WHERE deal_id = ${dealId} AND period_id = ${periodId} ORDER BY created_at DESC`
       : await sql`SELECT * FROM steerco_narratives WHERE deal_id = ${dealId} ORDER BY created_at DESC`;
@@ -34,6 +33,7 @@ export async function POST(req: NextRequest) {
 
     if (!dealId) return NextResponse.json({ error: "dealId required" }, { status: 400 });
 
+    const sql = await getSqlForDeal(dealId);
     const result = await sql`
       INSERT INTO steerco_narratives (
         deal_id, period_id, period_label,
@@ -49,20 +49,20 @@ export async function POST(req: NextRequest) {
         ${pctComplete || null}, ${authorId || null}, ${status || 'draft'}
       )
       ON CONFLICT (deal_id, period_id) DO UPDATE SET
-        overall_status = EXCLUDED.overall_status,
-        key_issues = EXCLUDED.key_issues,
-        key_delays = EXCLUDED.key_delays,
-        key_findings = EXCLUDED.key_findings,
-        material_impacts = EXCLUDED.material_impacts,
-        material_dependencies = EXCLUDED.material_dependencies,
-        material_operational_impacts = EXCLUDED.material_operational_impacts,
-        key_decisions_escalations = EXCLUDED.key_decisions_escalations,
-        financial_impacts = EXCLUDED.financial_impacts,
-        overall_budget = EXCLUDED.overall_budget,
-        pct_complete = EXCLUDED.pct_complete,
-        author_id = EXCLUDED.author_id,
-        status = EXCLUDED.status,
-        updated_at = now()
+        overall_status                 = EXCLUDED.overall_status,
+        key_issues                     = EXCLUDED.key_issues,
+        key_delays                     = EXCLUDED.key_delays,
+        key_findings                   = EXCLUDED.key_findings,
+        material_impacts               = EXCLUDED.material_impacts,
+        material_dependencies          = EXCLUDED.material_dependencies,
+        material_operational_impacts   = EXCLUDED.material_operational_impacts,
+        key_decisions_escalations      = EXCLUDED.key_decisions_escalations,
+        financial_impacts              = EXCLUDED.financial_impacts,
+        overall_budget                 = EXCLUDED.overall_budget,
+        pct_complete                   = EXCLUDED.pct_complete,
+        author_id                      = EXCLUDED.author_id,
+        status                         = EXCLUDED.status,
+        updated_at                     = now()
       RETURNING *
     `;
 

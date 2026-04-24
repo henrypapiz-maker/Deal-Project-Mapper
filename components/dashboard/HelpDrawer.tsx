@@ -275,6 +275,55 @@ export default function HelpDrawer({ activeTab, onClose }: HelpDrawerProps) {
           </>
         );
 
+      case "admin":
+        return (
+          <>
+            <Section title="Purpose">
+              <p style={{ fontSize: 10, lineHeight: 1.6, margin: 0, color: C.text }}>
+                Deal settings, team permissions, audit log, and infrastructure management.
+                Sections A–D are for all users. Section J is for DevOps and database administrators.
+              </p>
+            </Section>
+            <Section title="Sections A–I">
+              <FuncList items={[
+                "A — Deal Settings: name, status, close date",
+                "B — Users & Permissions: role assignments per team member",
+                "C — Database Management: force save, JSON export / import",
+                "D — Audit Log: last 50 field-change events",
+                "E — Generation Intelligence: 5-layer decision tree breakdown",
+                "F — Workstream Context: PMO notes, priority tier adjustments",
+                "G — Override Log: must-have item deviations",
+                "H — API Telemetry: Claude API call history and token costs",
+                "I — System Info: app version, DB connectivity, localStorage usage",
+              ]} />
+            </Section>
+            <Section title="Section J — Neon Branch Operations">
+              <Callout type="info">
+                Each new deal gets its own isolated Neon database branch forked from the main branch at creation time.
+                Main holds the master catalogue and deal registry. All deal-specific data lives on the branch.
+              </Callout>
+              <FuncList items={[
+                "Refresh Status — live check of branch config and this deal's branch ID",
+                "Architecture — explanation of Control Plane / Data Plane isolation model",
+                "Cold Start — what to expect on first open after idle period",
+                "Schema Migrations — how to run ALTER TABLE across all active branches",
+                "Write-Back — promote custom PMO tasks to the shared master catalogue",
+                "Setup Checklist — where to get NEON_API_KEY and NEON_PROJECT_ID",
+              ]} />
+            </Section>
+            <Section title="Key Warnings">
+              <Callout type="warning">
+                Schema migrations must be applied to main AND all active deal branches.
+                Run npm run migrate:branches after any ALTER TABLE on main.
+              </Callout>
+              <Callout type="tip">
+                Branch endpoints stay warm for 1 hour after last use. The first request
+                on a Monday morning may take 1–3 s (cold start) — this is normal.
+              </Callout>
+            </Section>
+          </>
+        );
+
       default:
         return (
           <>

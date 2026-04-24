@@ -6,7 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "validate": "tsx scripts/eval-checkpoints.ts",
+    "migrate": "node scripts/migrate.mjs",
+    "seed": "tsx scripts/seed-catalogue.ts",
+    "seed:dry": "tsx scripts/seed-catalogue.ts --dry-run",
+    "validate:catalogue": "tsx scripts/validate-catalogue.ts",
+    "migrate:branch-cols": "node scripts/migrate-add-branch-columns.mjs",
+    "migrate:branches": "node scripts/migrate-branches.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",
@@ -26,6 +34,7 @@
     "eslint-config-next": "^16.1.6",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

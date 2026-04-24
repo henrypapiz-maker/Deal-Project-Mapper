@@ -188,7 +188,7 @@ const FUNCTION_OPTIONS: { code: string; label: string }[] = [
 const PRESET_FUNCTION_CODES = new Set([...FUNCTION_OPTIONS.map(f => f.code), "all"]);
 
 interface Props {
-  onSubmit: (intake: DealIntake) => void;
+  onSubmit: (intake: DealIntake, parentProfile?: ParentProfile) => void;
 }
 
 const EMPTY_INTAKE: DealIntake = {
@@ -411,7 +411,7 @@ export default function IntakeForm({ onSubmit }: Props) {
   }
 
   function handleSubmit() {
-    onSubmit(form);
+    onSubmit(form, selectedProfile ?? undefined);
   }
 
   const tierLabels       = ["Core Deal Info", "Context & Complexity", "Advanced Configuration"];

@@ -1,5 +1,6 @@
 import type {
   DealIntake,
+  ParentProfile,
   ChecklistItem,
   RiskAlert,
   GeneratedDeal,
@@ -10,12 +11,13 @@ import type {
   Workstream,
   RiskCategory,
   RiskSeverity,
+  GenerationLogEntry,
 } from "./types";
 import {
   MASTER_CHECKLIST,
-  filterByDealContext,
   WORKSTREAM_PHASES,
 } from "./checklist-master";
+import { reviewCatalogue } from "./catalogue-review";
 
 // ============================================================
 // Simple ID generator (no external uuid dep required)
@@ -161,38 +163,52 @@ const RISK_RULES: RiskRule[] = [
 ];
 
 // ============================================================
-// Priority overlay: certain deal structures elevate priorities
+// N/A reason builder — reverse-maps generationLog filtering layer
 // ============================================================
-function adjustPriority(
-  basePriority: Priority,
-  itemId: string,
-  intake: DealIntake
-): Priority {
-  // Carve-out: elevate TSA items to critical
-  if (
-    intake.dealStructure === "carve_out" &&
-    itemId.startsWith("FRC-00") &&
-    parseInt(itemId.replace("FRC-0", "")) <= 70
-  ) {
-    return "critical";
+function buildNaReasonMap(log: GenerationLogEntry[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const entry of log) {
+    if (entry.layer === "filtering") {
+      for (const itemId of entry.itemsAffected) {
+        if (!map.has(itemId)) map.set(itemId, entry.reasoning);
+      }
+    }
   }
-  // Standalone model: deprioritize full integration items
-  if (intake.integrationModel === "standalone" && basePriority === "critical") {
-    return "high";
-  }
-  return basePriority;
+  return map;
 }
 
 // ============================================================
 // Core Decision Tree: DealIntake → GeneratedDeal
 // ============================================================
-export function generateDeal(intake: DealIntake): GeneratedDeal {
-  const naItemIds = new Set(filterByDealContext(intake));
+export function generateDeal(
+  intake: DealIntake,
+  parentProfile?: ParentProfile,
+): GeneratedDeal {
+  // Run the 5-layer catalogue review engine
+  const reviewResult = reviewCatalogue(intake, parentProfile);
+  const {
+    naItemIds,
+    priorityOverrides,
+    phaseAdjustments,
+    generationLog,
+    mustHaveAlerts,
+    parameterSignals,
+  } = reviewResult;
+
+  // Build per-item N/A reason strings from the generation log
+  const naReasons = buildNaReasonMap(generationLog);
 
   // 1. Instantiate checklist items from master
   const checklistItems: ChecklistItem[] = MASTER_CHECKLIST.map((master) => {
     const isNa = naItemIds.has(master.itemId);
-    const adjustedPriority = adjustPriority(master.priority, master.itemId, intake);
+
+    // Apply priority override from review engine; fall back to master priority
+    const adjustedPriority: Priority =
+      priorityOverrides.get(master.itemId) ?? master.priority;
+
+    // Apply phase-level timeline adjustment (days offset from close date)
+    const baseOffset = PHASE_OFFSETS[master.phase];
+    const phaseOffset = phaseAdjustments.get(master.itemId) ?? 0;
 
     return {
       id: generateId(),
@@ -202,7 +218,7 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
       description: master.description,
       phase: master.phase,
       milestoneDate: intake.closeDate
-        ? addDays(intake.closeDate, PHASE_OFFSETS[master.phase])
+        ? addDays(intake.closeDate, baseOffset + phaseOffset)
         : undefined,
       priority: adjustedPriority,
       status: isNa ? "na" : "not_started",
@@ -211,9 +227,7 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
       crossBorderFlag: master.crossBorderFlag,
       riskIndicators: master.riskIndicators,
       naJustification: isNa
-        ? master.tsaRelevant
-          ? "TSA not required for this deal"
-          : "Cross-border items not applicable — domestic deal"
+        ? (naReasons.get(master.itemId) ?? "Excluded based on deal parameters")
         : undefined,
       notes: [],
     };
@@ -271,10 +285,14 @@ export function generateDeal(intake: DealIntake): GeneratedDeal {
 
   return {
     intake,
+    parentProfile,
     checklistItems,
     riskAlerts,
     workstreamSummary,
     milestones,
+    generationLog,
+    mustHaveAlerts,
+    parameterSignals,
     generatedAt: new Date().toISOString(),
     people: [],
     progressSnapshots: [],

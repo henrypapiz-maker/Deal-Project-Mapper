@@ -39,42 +39,48 @@ export type RiskCategory =
 
 export type Phase = "pre_close" | "day_1" | "day_30" | "day_60" | "day_90" | "year_1";
 
-// ── Workstream taxonomy (v4) ─────────────────────────────────
-// Finance Track
-// Controls & Governance Track
-// IT Track  (parent + 5 sub-workstreams; prefix "IT > " denotes sub-workstream)
-// Other Track
-// Removed: "Cybersecurity & Data Privacy" → Controls / IT Strategy & Governance
-//          "Cybersecurity & Risk"          → IT Strategy & Governance
-//          "IT Organization & Talent"      → IT Strategy & Governance
-//          "IT General Controls (ITGC)"    → IT Strategy & Governance
-//          "IT Financial Mgmt & Synergies" → IT Strategy & Governance
+// ── Workstream taxonomy (v5) ─────────────────────────────────
+// Display order: Revenue → Operational → People/Legal → Finance → Controls/IT → ESG → Separation
+// Each workstream has a canonical 3-letter code (see WORKSTREAM_CANONICAL_CODES in catalogue-metadata.ts)
+// IT sub-workstreams use "IT > " prefix; each maps to a canonical ITx code.
+// Removed in v4: "Cybersecurity & Data Privacy" → Controls / IT Strategy & Governance
+//                "IT Organization & Talent"      → IT Strategy & Governance
+//                "IT General Controls (ITGC)"    → IT Strategy & Governance
 export type Workstream =
-  // Finance Track
-  | "TSA"                              // was "TSA Assessment & Exit"
-  | "Technical Accounting"             // NEW — split from Consolidation
-  | "Financial Reporting & Consolidation" // was "Consolidation & Reporting"
-  | "FP&A"                             // was "FP&A & Baselining"
-  | "Operational Finance"              // was "Operational Accounting"
-  | "Income Tax"                       // was "Income Tax & Compliance"
-  | "Treasury"                         // was "Treasury & Banking"
-  // Controls & Governance Track
-  | "Controls"                         // was part of "Internal Controls & SOX"
-  | "Governance & Compliance"          // NEW — split from Internal Controls
-  // IT Track
-  | "IT Strategy & Governance"         // consolidates IT Governance, IT Org, ITGC, IT Financial
-  | "IT > Enterprise Systems"          // was "Enterprise Applications"
-  | "IT > Infrastructure"              // was "Infrastructure & Cloud"
-  | "IT > Data & Analytics"            // was "Data Management & Analytics"
-  | "IT > IT Vendor Management"        // was "Vendor & Third-Party Mgmt"
-  | "IT > Client-Facing & Digital"     // was "Client-Facing Tech & Product"
-  // Other Track
-  | "ESG"                              // was "ESG & Sustainability"
-  | "Integration Management"           // was "Integration Budget & PMO"
-  | "Facilities"                       // was "Facilities & Real Estate"
-  | "Human Resources"                  // was "HR & Workforce Integration"
-  | "Legal"                            // was "Legal & Contract Transition"
-  | "Communications";                  // was "Communications & Change Management"
+  // ── Revenue Track (GTM · PRD) ────────────────────────────────────────────
+  | "Go-To-Market"                     // GTM — Sales, Marketing, Customer Success
+  | "Product & R&D"                    // PRD — Product roadmap, engineering, clinical
+  // ── Operational Track (SCO · CAP · FAC · IMO) ───────────────────────────
+  | "Supply Chain & Ops"               // SCO — Supply chain, procurement ops, mfg
+  | "Capital Projects"                 // CAP — In-flight capex, permits, lender consent
+  | "Facilities"                       // FAC — Real estate, leases, physical security
+  | "Integration Management"           // IMO — Programme governance, RAID, SteerCo
+  // ── People & Legal Track (HR · LGL · COM) ───────────────────────────────
+  | "Human Resources"                  // HR  — Workforce, payroll, org design, mobility
+  | "Legal"                            // LGL — Contracts, antitrust, litigation, IP
+  | "Communications"                   // COM — Employee, customer, media, regulatory
+  // ── Finance Track (TRS · OFN · FPA · FRC · TCA · TAX · TSA) ───────────
+  | "Treasury"                         // TRS — Debt covenants, cash, FX, earn-outs
+  | "Operational Finance"              // OFN — AP/AR, payroll ops, fixed assets, OpEx
+  | "FP&A"                             // FPA — Management reporting, synergy tracking
+  | "Financial Reporting & Consolidation" // FRC — COA, consolidation, SEC filings
+  | "Technical Accounting"             // TCA — PPA, ASC 805, goodwill, leases (ASC 842)
+  | "Income Tax"                       // TAX — Entity registration, consolidated group
+  | "TSA"                              // TSA — Transition service agreement (exit-focused)
+  // ── Controls & Governance Track (CTL · GRC) ─────────────────────────────
+  | "Controls"                         // CTL — SOX scoping, ITGC, internal audit
+  | "Governance & Compliance"          // GRC — Data sovereignty, privacy, breach protocol
+  // ── IT Track (ITG · ITE · ITI · ITD · ITV · ITC) ────────────────────────
+  | "IT Strategy & Governance"         // ITG — IT strategy, security governance, ITGC
+  | "IT > Enterprise Systems"          // ITE — ERP, CRM, HRIS, email/collab migration
+  | "IT > Infrastructure"              // ITI — Cloud, on-prem, DR/BCP
+  | "IT > Data & Analytics"            // ITD — Data architecture, MDM, BI platforms
+  | "IT > IT Vendor Management"        // ITV — Vendor risk, contracts, outsourcing
+  | "IT > Client-Facing & Digital"     // ITC — Portals, product tech, APIs, digital
+  // ── Sustainability (ESG) ─────────────────────────────────────────────────
+  | "ESG"                              // ESG — Environmental, social, governance
+  // ── Conditional Track (SEP — active when dealStructure = carve_out) ─────
+  | "Carve-Out / Separation";          // SEP — Separation management, data extraction
 
 export type WorkstreamCode =
   // Finance Track
@@ -100,6 +106,9 @@ export type FunctionalArea =
   | "facilities"
   | "operations"
   | "communications"
+  | "commercial"     // Go-To-Market, Sales, Marketing
+  | "product"        // Product & R&D
+  | "separation"     // Carve-Out / Separation
   | "all";
 
 // ============================================================
@@ -343,10 +352,22 @@ export interface ChangeEvent {
 // ============================================================
 // Generated Deal (result of decision tree)
 // ============================================================
+// ── Workstream-level context override (PMO-managed, persists across sessions) ─
+export interface WorkstreamContextOverride {
+  notes?: string;           // Free-text deal-specific context for this workstream
+  priorityBump?: "elevate" | "reduce" | null; // Shift all items +1 / -1 tier
+  reactivateNa?: boolean;   // Re-activate items N/A'd by the engine
+  reactivatedAt?: string;   // Timestamp when bulk-reactivated
+  notesUpdatedAt?: string;  // Timestamp of last notes edit
+}
+
 export interface GeneratedDeal {
   id?: string; // DB-assigned UUID (populated after first successful save)
   intake: DealIntake;
   parentProfile?: ParentProfile; // Linked acquirer profile (denormalized for offline use)
+  generationLog?: GenerationLogEntry[];   // Audit trail from catalogue review engine
+  mustHaveAlerts?: MustHaveAlert[];       // Items with adversarial guards
+  parameterSignals?: ParameterSignal[];   // Signal summary for Generation Intelligence panel
   checklistItems: ChecklistItem[];
   riskAlerts: RiskAlert[];
   workstreamSummary: WorkstreamSummary[];
@@ -357,6 +378,7 @@ export interface GeneratedDeal {
   savedFilters: SavedFilter[];
   changeLog: ChangeEvent[];
   ragOverrides?: Record<string, "red" | "amber" | "green">; // persistent RAG overrides keyed by workstream name
+  workstreamOverrides?: Record<string, WorkstreamContextOverride>; // PMO workstream-level context
 }
 
 export interface WorkstreamSummary {
@@ -372,6 +394,30 @@ export interface Milestone {
   label: string;
   date: string;
   daysFromClose: number;
+}
+
+// ============================================================
+// Catalogue Review Engine — Generation Intelligence Types
+// ============================================================
+export interface GenerationLogEntry {
+  layer: "filtering" | "priority" | "parent_gap" | "sector" | "timeline";
+  rule: string;           // e.g. "carve_out_tsa_elevation"
+  parameter: string;      // e.g. "dealStructure=carve_out"
+  itemsAffected: string[]; // itemIds
+  reasoning: string;      // human-readable for methodology report
+}
+
+export interface MustHaveAlert {
+  itemId: string;
+  description: string;
+  reason: string;         // advisory message shown to PMO when N/A-ing this item
+}
+
+export interface ParameterSignal {
+  parameter: string;
+  value: string;
+  signal: "elevate" | "reduce" | "exclude" | "extend" | "compress" | "activate";
+  description: string;
 }
 
 // ============================================================

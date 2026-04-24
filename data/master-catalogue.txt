@@ -1,0 +1,625 @@
+# DealMapper — Master Catalogue Index
+# ──────────────────────────────────────────────────────────────────────────────
+# Presentation order: Revenue → Operational → People/Legal → Finance → Controls/IT → ESG → Separation
+# Format: ITEM-ID | CODE | WORKSTREAM | SECTION | PHASE | PRI | FLAGS | NODE
+# Flags:  * = Must-Have   T = TSA-Shadow (active when tsaRequired=yes)   X = Cross-Border
+# Generated: 2026-04-23 | Total: 632 items | Must-Haves: 60
+# ──────────────────────────────────────────────────────────────────────────────
+# Canonical workstream codes:
+#   GTM=Go-To-Market  PRD=Product & R&D
+#   SCO=Supply Chain & Ops  CAP=Capital Projects  FAC=Facilities  IMO=Integration Mgmt
+#   HR=Human Resources  LGL=Legal  COM=Communications
+#   TRS=Treasury  OFN=Operational Finance  FPA=FP&A
+#   FRC=Financial Reporting & Consolidation  TCA=Technical Accounting
+#   TAX=Income Tax  TSA=TSA
+#   CTL=Controls  GRC=Governance & Compliance
+#   ITG=IT Strategy & Governance  ITE=IT > Enterprise Systems
+#   ITI=IT > Infrastructure  ITD=IT > Data & Analytics
+#   ITV=IT > IT Vendor Management  ITC=IT > Client-Facing & Digital
+#   ESG=ESG  SEP=Carve-Out / Separation
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REVENUE TRACK — GTM · PRD
+# Focus: customer base, pipeline, brand, pricing, product roadmap, IP, clinical
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [GTM] Go-To-Market — 28 items (GTM-0600–GTM-0626 + GTM-0718 TSA-shadow) ──
+
+# Sales Integration
+GTM-0600 | GTM | Go-To-Market | Sales Integration          | day_1  | critical | *   |
+GTM-0601 | GTM | Go-To-Market | Sales Integration          | day_1  | high     |     |
+GTM-0602 | GTM | Go-To-Market | Sales Integration          | day_30 | critical | * X |
+GTM-0603 | GTM | Go-To-Market | Sales Integration          | day_1  | high     |     |
+GTM-0604 | GTM | Go-To-Market | Sales Integration          | day_30 | high     |     |
+GTM-0605 | GTM | Go-To-Market | Sales Integration          | day_1  | high     |   X |
+GTM-0606 | GTM | Go-To-Market | Sales Integration          | day_60 | medium   |     |
+GTM-0607 | GTM | Go-To-Market | Sales Integration          | day_30 | high     |     |
+GTM-0608 | GTM | Go-To-Market | Sales Integration          | day_60 | medium   |     |
+GTM-0609 | GTM | Go-To-Market | Sales Integration          | day_60 | high     |     |
+GTM-0610 | GTM | Go-To-Market | Sales Integration          | day_30 | medium   |     |
+GTM-0611 | GTM | Go-To-Market | Sales Integration          | day_60 | critical | *   |
+GTM-0612 | GTM | Go-To-Market | Sales Integration          | day_90 | high     |     |
+GTM-0613 | GTM | Go-To-Market | Sales Integration          | day_30 | critical |     |
+GTM-0614 | GTM | Go-To-Market | Sales Integration          | day_60 | high     |     |
+# Marketing Integration
+GTM-0615 | GTM | Go-To-Market | Marketing Integration      | day_30 | critical | *   |
+GTM-0616 | GTM | Go-To-Market | Marketing Integration      | day_30 | high     |     |
+GTM-0617 | GTM | Go-To-Market | Marketing Integration      | day_60 | medium   |     |
+GTM-0618 | GTM | Go-To-Market | Marketing Integration      | day_30 | medium   |     |
+GTM-0619 | GTM | Go-To-Market | Marketing Integration      | day_60 | low      |     |
+GTM-0620 | GTM | Go-To-Market | Marketing Integration      | day_30 | high     |     |
+GTM-0621 | GTM | Go-To-Market | Marketing Integration      | day_60 | medium   |     |
+# Customer Success
+GTM-0622 | GTM | Go-To-Market | Customer Success           | day_30 | critical | *   |
+GTM-0623 | GTM | Go-To-Market | Customer Success           | day_1  | critical |     |
+GTM-0624 | GTM | Go-To-Market | Customer Success           | day_60 | high     |     |
+GTM-0625 | GTM | Go-To-Market | Customer Success           | day_60 | medium   |     |
+GTM-0626 | GTM | Go-To-Market | Customer Success           | day_30 | high     |     |
+# TSA-Shadow
+GTM-0718 | GTM | Go-To-Market | TSA Commercial Operations  | day_90 | critical | * T |
+
+
+# ── [PRD] Product & R&D — 11 items (PRD-0638–PRD-0648) ──────────────────────
+
+# IP & Source Code
+PRD-0638 | PRD | Product & R&D | IP & Source Code           | day_1  | critical |     |
+PRD-0639 | PRD | Product & R&D | IP & Source Code           | day_1  | critical |     |
+PRD-0646 | PRD | Product & R&D | IP & Source Code           | day_30 | high     |   X |
+# Engineering Organization
+PRD-0640 | PRD | Product & R&D | Engineering Organization   | day_30 | high     |     |
+PRD-0643 | PRD | Product & R&D | Engineering Organization   | day_30 | high     |     |
+PRD-0644 | PRD | Product & R&D | Engineering Organization   | day_60 | high     |     |
+# Product Strategy & Roadmap
+PRD-0641 | PRD | Product & R&D | Product Strategy           | day_60 | critical | *   |
+PRD-0642 | PRD | Product & R&D | Product Strategy           | day_90 | high     |     |
+PRD-0645 | PRD | Product & R&D | Product Strategy           | day_90 | medium   |     |
+PRD-0647 | PRD | Product & R&D | Product Strategy           | day_60 | medium   |     |
+# Clinical & Regulated R&D
+PRD-0648 | PRD | Product & R&D | Clinical & Regulated R&D  | day_90 | critical | * X |
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OPERATIONAL TRACK — SCO · CAP · FAC · IMO
+# Focus: supply chain, manufacturing, real estate, capex, programme governance
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [SCO] Supply Chain & Ops — 12 items (SCO-0627–SCO-0637 + SCO-0721) ───────
+
+# Trade & Regulatory Compliance
+SCO-0627 | SCO | Supply Chain & Ops | Trade Compliance          | day_1  | critical | * X |
+# Supplier Management
+SCO-0628 | SCO | Supply Chain & Ops | Supplier Management       | day_30 | high     |     |
+SCO-0629 | SCO | Supply Chain & Ops | Supplier Quality          | day_60 | critical | *   |
+SCO-0630 | SCO | Supply Chain & Ops | Supplier Management       | day_30 | high     |     |
+# Logistics & Distribution
+SCO-0631 | SCO | Supply Chain & Ops | Logistics & Distribution  | day_60 | medium   |     |
+SCO-0632 | SCO | Supply Chain & Ops | Logistics & Distribution  | day_60 | high     |     |
+# Inventory & Materials
+SCO-0633 | SCO | Supply Chain & Ops | Inventory Management      | day_30 | high     |     |
+SCO-0634 | SCO | Supply Chain & Ops | Inventory Management      | day_90 | medium   |     |
+SCO-0635 | SCO | Supply Chain & Ops | Inventory Management      | day_90 | medium   |     |
+# Manufacturing Footprint
+SCO-0636 | SCO | Supply Chain & Ops | Manufacturing Footprint   | year_1 | critical | *   |
+SCO-0637 | SCO | Supply Chain & Ops | Manufacturing Footprint   | day_90 | high     |     |
+# TSA-Shadow
+SCO-0721 | SCO | Supply Chain & Ops | TSA Procurement Ops       | day_30 | critical | * T |
+
+
+# ── [CAP] Capital Projects — 8 items (CAP-0688–CAP-0695) ─────────────────────
+
+CAP-0688 | CAP | Capital Projects | Project Inventory         | day_1  | high     |     |
+CAP-0689 | CAP | Capital Projects | Project Inventory         | day_30 | high     |     |
+CAP-0690 | CAP | Capital Projects | Contracts & Permits       | day_30 | high     |     |
+CAP-0691 | CAP | Capital Projects | Contracts & Permits       | day_30 | high     |   X |
+CAP-0692 | CAP | Capital Projects | Contracts & Permits       | day_1  | high     |     |
+CAP-0693 | CAP | Capital Projects | Lender & Governance       | day_1  | critical |     |
+CAP-0694 | CAP | Capital Projects | Lender & Governance       | day_30 | critical | *   |
+CAP-0695 | CAP | Capital Projects | Lender & Governance       | day_60 | high     |     |
+
+
+# ── [FAC] Facilities — 13 items (FAC-0426–FAC-0438) ──────────────────────────
+
+FAC-0426 | FAC | Facilities | Lease Review               | day_30 | high     |     |
+FAC-0427 | FAC | Facilities | Lease Review               | day_30 | high     |     |
+FAC-0428 | FAC | Facilities | Office Consolidation       | day_60 | medium   |     |
+FAC-0429 | FAC | Facilities | Physical Security          | day_1  | high     |     |
+FAC-0430 | FAC | Facilities | Physical Security          | day_30 | high     |     |
+FAC-0431 | FAC | Facilities | Access Cards & Badges      | day_1  | critical |     |
+FAC-0432 | FAC | Facilities | Mailroom & Logistics       | day_1  | high     |     |
+FAC-0433 | FAC | Facilities | Signage & Branding         | day_30 | medium   |     |
+FAC-0434 | FAC | Facilities | Environmental Compliance   | day_30 | high     |     |
+FAC-0435 | FAC | Facilities | Space Planning             | day_60 | medium   |     |
+FAC-0436 | FAC | Facilities | Capital Projects           | day_30 | medium   |     |
+FAC-0437 | FAC | Facilities | Lease Negotiation          | day_60 | medium   |     |
+FAC-0438 | FAC | Facilities | Subleasing                 | day_90 | low      |     |
+
+
+# ── [IMO] Integration Management — 35 items (INT-0391–INT-0425) ──────────────
+
+# IMO Setup & Governance
+INT-0391 | IMO | Integration Management | IMO Setup              | day_1  | critical | * |
+INT-0392 | IMO | Integration Management | IMO Setup              | day_1  | critical | * |
+INT-0393 | IMO | Integration Management | Integration Planning   | day_1  | critical |   |
+INT-0394 | IMO | Integration Management | SteerCo Reporting      | day_1  | critical |   |
+INT-0395 | IMO | Integration Management | Integration Planning   | day_1  | high     |   |
+INT-0396 | IMO | Integration Management | Integration Planning   | day_1  | high     |   |
+INT-0397 | IMO | Integration Management | Risk Management        | day_1  | critical | * |
+INT-0398 | IMO | Integration Management | Risk Management        | day_1  | high     |   |
+INT-0399 | IMO | Integration Management | Budget Management      | day_1  | high     |   |
+INT-0400 | IMO | Integration Management | Stakeholder Management | day_1  | high     |   |
+# Value Capture & Metrics
+INT-0415 | IMO | Integration Management | Value Capture          | day_1  | critical |   |
+INT-0416 | IMO | Integration Management | Value Capture          | day_30 | high     |   |
+INT-0417 | IMO | Integration Management | Value Capture          | day_30 | high     |   |
+INT-0418 | IMO | Integration Management | Integration Metrics    | day_1  | high     |   |
+INT-0419 | IMO | Integration Management | Integration Metrics    | day_30 | medium   |   |
+# Governance Escalation & Resource
+INT-0420 | IMO | Integration Management | Lessons Learned        | day_60 | low      |   |
+INT-0421 | IMO | Integration Management | Lessons Learned        | year_1 | low      |   |
+INT-0422 | IMO | Integration Management | Governance Escalation  | day_1  | critical |   |
+INT-0423 | IMO | Integration Management | Governance Escalation  | day_1  | high     |   |
+INT-0424 | IMO | Integration Management | Resource Planning      | day_1  | high     |   |
+INT-0425 | IMO | Integration Management | Resource Planning      | day_1  | medium   |   |
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PEOPLE & LEGAL TRACK — HR · LGL · COM
+# Focus: workforce, org design, labor relations, contracts, litigation, brand
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [HR] Human Resources — 22 items (HR-0439–HR-0529 + HR-0653–HR-0663 + HR-0715/HR-0717) ──
+
+# Core Workforce Continuity
+HR-0439 | HR  | Human Resources | Payroll Transition         | day_1     | critical | *   |
+HR-0440 | HR  | Human Resources | Culture Integration        | day_30    | high     |     |
+HR-0441 | HR  | Human Resources | Retention Programs         | day_1     | critical |     |
+HR-0442 | HR  | Human Resources | HRIS Migration             | day_60    | high     |     |
+HR-0443 | HR  | Human Resources | HR Day 1 Readiness         | day_1     | critical | *   |
+HR-0526 | HR  | Human Resources | Payroll Tax                | day_1     | critical |     |
+HR-0527 | HR  | Human Resources | Benefits Enrollment        | day_30    | high     |     |
+HR-0528 | HR  | Human Resources | Workers Compensation       | day_1     | high     |     |
+HR-0529 | HR  | Human Resources | Stock-Based Compensation   | day_1     | critical |     |
+# Labor Relations & Org Design
+HR-0653 | HR  | Human Resources | Labor Relations            | pre_close | critical | * X |
+HR-0654 | HR  | Human Resources | Labor Relations            | pre_close | high     |   X |
+HR-0655 | HR  | Human Resources | Org Design & Leadership    | day_1     | critical | *   |
+HR-0656 | HR  | Human Resources | Org Design & Leadership    | day_30    | high     |     |
+HR-0657 | HR  | Human Resources | Org Design & Leadership    | day_30    | high     |     |
+HR-0658 | HR  | Human Resources | Org Design & Leadership    | day_30    | high     |   X |
+HR-0659 | HR  | Human Resources | Compliance & Benefits      | day_30    | high     |     |
+HR-0660 | HR  | Human Resources | Compliance & Benefits      | day_30    | medium   |     |
+HR-0661 | HR  | Human Resources | Compliance & Benefits      | day_1     | high     |     |
+HR-0662 | HR  | Human Resources | Compliance & Benefits      | day_90    | high     |     |
+# Global Mobility
+HR-0663 | HR  | Human Resources | Global Mobility            | day_30    | critical | * X |
+# TSA-Shadow
+HR-0715 | HR  | Human Resources | TSA HR Obligations         | day_1     | critical | * T X |
+HR-0717 | HR  | Human Resources | TSA HR Obligations         | day_90    | critical | * T   |
+
+
+# ── [LGL] Legal — 30 items (LGL-0490–LGL-0507 + LGL-0671–LGL-0687 + LGL-0724) ──
+
+# Core Contract & Corporate Transition
+LGL-0490 | LGL | Legal | Contract Novation                  | day_1     | critical | *   |
+LGL-0491 | LGL | Legal | Contract Novation                  | day_1     | critical |     |
+LGL-0492 | LGL | Legal | Contract Novation                  | day_1     | critical |     |
+LGL-0493 | LGL | Legal | Contract Novation                  | day_1     | critical |     |
+LGL-0494 | LGL | Legal | IP & Intangible Transfer           | day_1     | critical |   X |
+LGL-0495 | LGL | Legal | IP & Intangible Transfer           | day_1     | high     |     |
+LGL-0496 | LGL | Legal | Corporate Governance               | day_1     | critical | *   |
+LGL-0497 | LGL | Legal | Corporate Governance               | day_1     | critical |     |
+LGL-0498 | LGL | Legal | Material Contract Consent          | day_1     | critical |     |
+LGL-0499 | LGL | Legal | Material Contract Consent          | day_1     | critical |     |
+LGL-0500 | LGL | Legal | Restrictive Covenants              | day_30    | high     |     |
+LGL-0501 | LGL | Legal | Regulatory Licensing               | day_1     | critical | * X |
+LGL-0502 | LGL | Legal | Regulatory Licensing               | day_1     | high     |     |
+LGL-0503 | LGL | Legal | Warranty & Indemnity               | day_30    | high     |     |
+LGL-0504 | LGL | Legal | Warranty & Indemnity               | day_30    | high     |     |
+LGL-0505 | LGL | Legal | Deal Mechanics                     | day_1     | high     |     |
+LGL-0506 | LGL | Legal | Deal Mechanics                     | day_30    | high     |     |
+LGL-0507 | LGL | Legal | Deal Mechanics                     | day_30    | high     |     |
+# Antitrust, Environmental & Litigation
+LGL-0671 | LGL | Legal | Antitrust & Regulatory Approvals   | pre_close | critical | * X |
+LGL-0672 | LGL | Legal | Antitrust & Regulatory Approvals   | pre_close | critical |   X |
+LGL-0673 | LGL | Legal | Antitrust & Regulatory Approvals   | pre_close | high     |   X |
+LGL-0674 | LGL | Legal | Antitrust & Regulatory Approvals   | day_1     | high     |     |
+LGL-0675 | LGL | Legal | Environmental & Product Liability  | day_30    | high     |     |
+LGL-0676 | LGL | Legal | Environmental & Product Liability  | day_30    | high     |     |
+LGL-0677 | LGL | Legal | Environmental & Product Liability  | day_30    | high     |     |
+LGL-0678 | LGL | Legal | Environmental & Product Liability  | day_1     | critical |   X |
+LGL-0685 | LGL | Legal | Litigation & Claims                | day_1     | critical | * X |
+LGL-0686 | LGL | Legal | Litigation & Claims                | day_30    | high     |     |
+LGL-0687 | LGL | Legal | Litigation & Claims                | day_1     | high     |     |
+# TSA-Shadow
+LGL-0724 | LGL | Legal | TSA Legal Obligations              | pre_close | critical | * T X |
+
+
+# ── [COM] Communications — 11 items (COM-0508–COM-0519) ──────────────────────
+
+# Employee Communications
+COM-0508 | COM | Communications | Employee Communications     | day_1  | critical |   |
+COM-0509 | COM | Communications | Employee Communications     | day_1  | high     |   |
+COM-0519 | COM | Communications | Employee Communications     | day_30 | medium   |   |
+# External Communications
+COM-0510 | COM | Communications | External Communications     | day_1  | critical | X |
+COM-0511 | COM | Communications | External Communications     | day_1  | high     |   |
+COM-0512 | COM | Communications | External Communications     | day_1  | high     | X |
+COM-0516 | COM | Communications | External Communications     | day_1  | high     |   |
+# Brand Strategy
+COM-0513 | COM | Communications | Brand Strategy              | day_30 | high     |   |
+COM-0514 | COM | Communications | Brand Strategy              | day_1  | high     |   |
+COM-0515 | COM | Communications | Brand Strategy              | day_1  | medium   |   |
+# Regulatory Notifications
+COM-0518 | COM | Communications | Regulatory Notifications    | day_1  | critical | X |
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FINANCE TRACK — TRS · OFN · FPA · FRC · TCA · TAX · TSA
+# Focus: debt, cash, earn-outs, AP/AR, payroll, reporting, PPA, tax, TSA
+# Note: All Finance items carry FIN-xxxx prefix (sequential, cross-workstream).
+#       Canonical 3-letter code identifies workstream at-a-glance in this index.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [TRS] Treasury — 39 items + FIN-0679–FIN-0684 ────────────────────────────
+
+# Debt & Capital Structure (new)
+FIN-0679 | TRS | Treasury | Debt & Capital Structure       | day_1  | critical | *   |
+FIN-0680 | TRS | Treasury | Debt & Capital Structure       | day_1  | high     |     |
+# Contingent Consideration (new)
+FIN-0681 | TRS | Treasury | Contingent Consideration       | day_60 | critical | *   |
+FIN-0682 | TRS | Treasury | Contingent Consideration       | day_60 | high     |     |
+# Cash Management (new)
+FIN-0683 | TRS | Treasury | Cash Management                | day_60 | medium   |     |
+FIN-0684 | TRS | Treasury | Cash Management                | day_30 | high     |   X |
+# (FIN-0207–FIN-0319: core treasury banking, cash pooling, hedging, insurance — 39 items)
+
+
+# ── [OFN] Operational Finance — 70 items (FIN-0123–FIN-0190+) ────────────────
+
+# AP/AR Cutoff & Banking
+FIN-0123 | OFN | Operational Finance | AP/AR Cutoff               | day_1  | critical |   |
+FIN-0124 | OFN | Operational Finance | AP/AR Cutoff               | day_1  | high     |   |
+FIN-0125 | OFN | Operational Finance | Banking                    | day_1  | critical |   |
+FIN-0126 | OFN | Operational Finance | Banking                    | day_1  | critical |   |
+FIN-0127 | OFN | Operational Finance | Payroll                    | day_1  | critical |   |
+FIN-0128 | OFN | Operational Finance | Payroll                    | day_30 | high     |   |
+FIN-0129 | OFN | Operational Finance | Accounts Payable           | day_1  | high     |   |
+FIN-0130 | OFN | Operational Finance | Accounts Receivable        | day_1  | high     |   |
+# Fixed Assets
+FIN-0131 | OFN | Operational Finance | Fixed Assets               | day_1  | critical |   |
+FIN-0132 | OFN | Operational Finance | Fixed Assets               | day_30 | high     |   |
+FIN-0133 | OFN | Operational Finance | Fixed Assets               | day_30 | critical |   |
+FIN-0134 | OFN | Operational Finance | Fixed Assets               | day_60 | high     |   |
+FIN-0135 | OFN | Operational Finance | Fixed Assets               | day_60 | medium   |   |
+# Inventory
+FIN-0136 | OFN | Operational Finance | Inventory                  | day_1  | critical |   |
+FIN-0137 | OFN | Operational Finance | Inventory                  | day_30 | high     |   |
+FIN-0138 | OFN | Operational Finance | Inventory                  | day_30 | high     |   |
+FIN-0139 | OFN | Operational Finance | Inventory                  | day_60 | high     |   |
+FIN-0140 | OFN | Operational Finance | Inventory                  | day_90 | high     |   |
+# Lease Administration
+FIN-0141 | OFN | Operational Finance | Lease Administration       | day_1  | critical |   |
+FIN-0142 | OFN | Operational Finance | Lease Administration       | day_30 | critical |   |
+FIN-0143 | OFN | Operational Finance | Lease Administration       | day_30 | high     |   |
+FIN-0144 | OFN | Operational Finance | Lease Administration       | day_1  | high     |   |
+FIN-0145 | OFN | Operational Finance | Lease Administration       | day_60 | medium   |   |
+# Revenue Operations
+FIN-0146 | OFN | Operational Finance | Revenue Operations         | day_1  | critical |   |
+FIN-0147 | OFN | Operational Finance | Revenue Operations         | day_30 | high     |   |
+FIN-0148 | OFN | Operational Finance | Revenue Operations         | day_30 | high     |   |
+FIN-0149 | OFN | Operational Finance | Revenue Operations         | day_30 | critical |   |
+FIN-0150 | OFN | Operational Finance | Revenue Operations         | day_90 | high     |   |
+FIN-0151 | OFN | Operational Finance | Cost Accounting            | day_1  | high     |   |
+# TSA-Shadow
+FIN-0708 | OFN | Operational Finance | TSA Cash Operations        | day_1  | critical | * T |
+# (FIN-0152–FIN-0190: additional OpFin items — cost accounting, intercompany, etc.)
+
+
+# ── [FPA] FP&A — 33 items (FIN-0096–FIN-0099 + FIN-0517 etc.) ───────────────
+
+FIN-0096 | FPA | FP&A | Management Reporting               | day_60 | high     |   |
+FIN-0097 | FPA | FP&A | Management Reporting               | day_30 | medium   |   |
+FIN-0098 | FPA | FP&A | Management Reporting               | day_60 | high     |   |
+FIN-0099 | FPA | FP&A | Management Reporting               | day_30 | high     |   |
+FIN-0517 | FPA | FP&A | Stakeholder Management             | day_1  | critical |   |
+FIN-0523 | FPA | FP&A | Equity Compensation Modeling       | day_1  | critical |   |
+# (remaining FP&A items: synergy tracking, budget templates, flash reporting)
+
+
+# ── [FRC] Financial Reporting & Consolidation — 27 items (FIN-0071–FIN-0122+) ─
+
+# Chart of Accounts & Consolidation
+FIN-0071 | FRC | Financial Reporting & Consolidation | Chart of Accounts       | day_1  | critical | * |
+FIN-0072 | FRC | Financial Reporting & Consolidation | Chart of Accounts       | day_1  | high     |   |
+FIN-0073 | FRC | Financial Reporting & Consolidation | Chart of Accounts       | day_30 | high     |   |
+FIN-0074 | FRC | Financial Reporting & Consolidation | GAAP Conversion         | day_1  | critical |   |
+FIN-0075 | FRC | Financial Reporting & Consolidation | GAAP Conversion         | day_30 | high     |   |
+FIN-0076 | FRC | Financial Reporting & Consolidation | First Close             | day_30 | critical |   |
+FIN-0077 | FRC | Financial Reporting & Consolidation | Statutory Reporting     | day_1  | high     | X |
+FIN-0078 | FRC | Financial Reporting & Consolidation | Statutory Reporting     | day_1  | critical | X |
+FIN-0079 | FRC | Financial Reporting & Consolidation | Reporting Calendar      | day_1  | high     |   |
+FIN-0080 | FRC | Financial Reporting & Consolidation | Intercompany            | day_30 | high     |   |
+# External Audit
+FIN-0100 | FRC | Financial Reporting & Consolidation | External Audit          | day_1  | critical |   |
+FIN-0101 | FRC | Financial Reporting & Consolidation | External Audit          | day_30 | high     |   |
+FIN-0102 | FRC | Financial Reporting & Consolidation | External Audit          | day_30 | high     |   |
+FIN-0103 | FRC | Financial Reporting & Consolidation | External Audit          | day_60 | high     |   |
+FIN-0104 | FRC | Financial Reporting & Consolidation | External Audit          | day_90 | high     |   |
+# SEC Filings
+FIN-0105 | FRC | Financial Reporting & Consolidation | SEC Filings             | day_1  | critical |   |
+FIN-0106 | FRC | Financial Reporting & Consolidation | SEC Filings             | day_60 | critical |   |
+FIN-0107 | FRC | Financial Reporting & Consolidation | SEC Filings             | day_60 | critical |   |
+FIN-0108 | FRC | Financial Reporting & Consolidation | SEC Filings             | day_90 | critical |   |
+FIN-0109 | FRC | Financial Reporting & Consolidation | SEC Filings             | day_90 | high     |   |
+# Currency Translation
+FIN-0110 | FRC | Financial Reporting & Consolidation | Currency Translation    | day_1  | high     | X |
+FIN-0111 | FRC | Financial Reporting & Consolidation | Currency Translation    | day_30 | high     | X |
+FIN-0112 | FRC | Financial Reporting & Consolidation | Currency Translation    | day_60 | medium   | X |
+FIN-0113 | FRC | Financial Reporting & Consolidation | Currency Translation    | day_30 | medium   | X |
+# Segment Reporting & Consolidation System
+FIN-0094 | FRC | Financial Reporting & Consolidation | Segment Reporting       | day_90 | high     |   |
+FIN-0121 | FRC | Financial Reporting & Consolidation | Consolidation System    | day_1  | critical |   |
+FIN-0122 | FRC | Financial Reporting & Consolidation | Consolidation System    | day_60 | critical | X |
+
+
+# ── [TCA] Technical Accounting — 27 items (FIN-0081–FIN-0093 + FIN-0114–FIN-0120 + FIN-0520+) ──
+
+# Purchase Price Allocation & Goodwill
+FIN-0081 | TCA | Technical Accounting | Purchase Accounting       | day_1  | critical |   |
+FIN-0082 | TCA | Technical Accounting | Purchase Accounting       | day_30 | critical |   |
+FIN-0083 | TCA | Technical Accounting | Purchase Accounting       | day_30 | critical |   |
+FIN-0084 | TCA | Technical Accounting | Purchase Accounting       | year_1 | critical |   |
+FIN-0085 | TCA | Technical Accounting | Purchase Accounting       | day_60 | high     |   |
+FIN-0086 | TCA | Technical Accounting | Goodwill & Impairment     | day_30 | critical |   |
+FIN-0087 | TCA | Technical Accounting | Goodwill & Impairment     | day_60 | high     |   |
+FIN-0088 | TCA | Technical Accounting | Goodwill & Impairment     | year_1 | high     |   |
+FIN-0089 | TCA | Technical Accounting | Goodwill & Impairment     | year_1 | high     |   |
+FIN-0090 | TCA | Technical Accounting | Goodwill & Impairment     | year_1 | medium   |   |
+# Segment Reporting
+FIN-0091 | TCA | Technical Accounting | Segment Reporting         | day_30 | critical |   |
+FIN-0092 | TCA | Technical Accounting | Segment Reporting         | day_60 | high     |   |
+FIN-0093 | TCA | Technical Accounting | Segment Reporting         | day_60 | high     |   |
+# Lease Accounting (ASC 842)
+FIN-0114 | TCA | Technical Accounting | Lease Accounting (ASC 842)| day_1  | high     |   |
+FIN-0115 | TCA | Technical Accounting | Lease Accounting (ASC 842)| day_30 | critical |   |
+FIN-0116 | TCA | Technical Accounting | Lease Accounting (ASC 842)| day_60 | high     |   |
+FIN-0117 | TCA | Technical Accounting | Lease Accounting (ASC 842)| day_60 | medium   |   |
+# Revenue Recognition (ASC 606)
+FIN-0118 | TCA | Technical Accounting | Revenue Recognition (606) | day_1  | critical |   |
+FIN-0119 | TCA | Technical Accounting | Revenue Recognition (606) | day_30 | high     |   |
+FIN-0120 | TCA | Technical Accounting | Revenue Recognition (606) | day_30 | high     |   |
+# Contingent Consideration, Working Capital, Pension, SBC
+FIN-0520 | TCA | Technical Accounting | Contingent Consideration  | day_30 | critical |   |
+FIN-0521 | TCA | Technical Accounting | Working Capital           | day_60 | critical |   |
+FIN-0522 | TCA | Technical Accounting | Pension & OPEB            | day_30 | high     |   |
+FIN-0523 | TCA | Technical Accounting | Stock-Based Compensation  | day_1  | critical |   |
+FIN-0524 | TCA | Technical Accounting | Stock-Based Compensation  | day_30 | high     |   |
+
+
+# ── [TAX] Income Tax — 37 items (FIN-0170–FIN-0206 + FIN-0706 TSA-shadow) ────
+
+FIN-0170 | TAX | Income Tax | Entity Tax Registration        | day_1  | critical | *   |
+FIN-0171 | TAX | Income Tax | Consolidated Tax Group         | day_1  | critical | *   |
+# (FIN-0172–FIN-0206: income tax compliance, deferred tax, transfer pricing — 35 items)
+FIN-0706 | TAX | Income Tax | TSA Tax Obligations            | day_1  | critical | * T X |
+
+
+# ── [TSA] TSA — 70 items (FIN-0001–FIN-0070) ─────────────────────────────────
+
+# TSA Identification & Governance
+FIN-0001 | TSA | TSA | TSA Identification            | day_1  | critical | *   |
+FIN-0002 | TSA | TSA | TSA Identification            | day_1  | high     |     |
+FIN-0003 | TSA | TSA | TSA Pricing                   | day_1  | high     |     |
+FIN-0004 | TSA | TSA | TSA Exit Planning             | day_1  | critical | *   |
+FIN-0005 | TSA | TSA | TSA Exit Planning             | day_30 | critical | *   |
+FIN-0006 | TSA | TSA | TSA Governance                | day_1  | high     |     |
+FIN-0007 | TSA | TSA | TSA Governance                | day_30 | medium   |     |
+FIN-0008 | TSA | TSA | IT TSA                        | day_1  | critical | *   |
+FIN-0009 | TSA | TSA | IT TSA                        | day_1  | critical | *   |
+FIN-0010 | TSA | TSA | Finance TSA                   | day_1  | critical | *   |
+FIN-0011 | TSA | TSA | Finance TSA                   | day_1  | high     |     |
+FIN-0012 | TSA | TSA | TSA Stranded Cost             | day_60 | high     |     |
+FIN-0013 | TSA | TSA | Cross-Border TSA              | day_1  | high     |   X |
+FIN-0014 | TSA | TSA | TSA Exit Planning             | day_30 | critical | *   |
+FIN-0015 | TSA | TSA | HR TSA                        | day_1  | critical | *   |
+FIN-0016 | TSA | TSA | HR TSA                        | day_1  | high     |     |
+FIN-0017 | TSA | TSA | HR TSA                        | day_1  | high     |     |
+FIN-0018 | TSA | TSA | HR TSA                        | day_30 | critical |     |
+FIN-0019 | TSA | TSA | HR TSA                        | day_30 | high     |   X |
+FIN-0020 | TSA | TSA | HR TSA                        | day_60 | critical |     |
+FIN-0021 | TSA | TSA | HR TSA                        | day_90 | critical |     |
+FIN-0022 | TSA | TSA | Legal TSA                     | day_1  | high     |     |
+FIN-0023 | TSA | TSA | Legal TSA                     | day_1  | high     |   X |
+FIN-0024 | TSA | TSA | Legal TSA                     | day_1  | high     |     |
+FIN-0025 | TSA | TSA | Legal TSA                     | day_30 | medium   |     |
+FIN-0026 | TSA | TSA | Legal TSA                     | day_60 | high     |     |
+FIN-0027 | TSA | TSA | Legal TSA                     | day_30 | critical |   X |
+FIN-0028 | TSA | TSA | Procurement TSA               | day_1  | high     |     |
+FIN-0029 | TSA | TSA | Procurement TSA               | day_1  | high     |     |
+FIN-0030 | TSA | TSA | Procurement TSA               | day_1  | medium   |     |
+FIN-0031 | TSA | TSA | Procurement TSA               | day_30 | high     |     |
+FIN-0032 | TSA | TSA | Procurement TSA               | day_30 | high     |   X |
+FIN-0033 | TSA | TSA | Procurement TSA               | day_60 | high     |     |
+FIN-0034 | TSA | TSA | TSA Performance Monitoring    | day_1  | high     |     |
+FIN-0035 | TSA | TSA | TSA Performance Monitoring    | day_30 | high     |     |
+FIN-0036 | TSA | TSA | TSA Performance Monitoring    | day_30 | medium   |     |
+FIN-0037 | TSA | TSA | TSA Performance Monitoring    | day_90 | medium   |     |
+FIN-0038 | TSA | TSA | TSA Performance Monitoring    | day_60 | high     |     |
+FIN-0039 | TSA | TSA | TSA Performance Monitoring    | day_90 | medium   |     |
+FIN-0040 | TSA | TSA | TSA Dispute Resolution        | day_1  | high     |     |
+FIN-0041 | TSA | TSA | TSA Dispute Resolution        | day_30 | medium   |     |
+FIN-0042 | TSA | TSA | TSA Dispute Resolution        | day_30 | medium   |     |
+FIN-0043 | TSA | TSA | TSA Dispute Resolution        | day_30 | high     |   X |
+FIN-0044 | TSA | TSA | TSA Dispute Resolution        | day_60 | medium   |     |
+FIN-0045 | TSA | TSA | TSA Transition Readiness      | day_30 | critical | *   |
+FIN-0046 | TSA | TSA | TSA Transition Readiness      | day_30 | critical | *   |
+FIN-0047 | TSA | TSA | TSA Transition Readiness      | day_60 | high     |     |
+FIN-0048 | TSA | TSA | TSA Transition Readiness      | day_60 | critical | *   |
+FIN-0049 | TSA | TSA | TSA Transition Readiness      | day_60 | high     |     |
+FIN-0050 | TSA | TSA | TSA Transition Readiness      | day_90 | critical | *   |
+FIN-0051 | TSA | TSA | TSA Transition Readiness      | year_1 | medium   |     |
+FIN-0052 | TSA | TSA | TSA Cost Allocation           | day_1  | high     |     |
+FIN-0053 | TSA | TSA | TSA Cost Allocation           | day_30 | high     |     |
+FIN-0054 | TSA | TSA | TSA Cost Allocation           | day_30 | high     |     |
+FIN-0055 | TSA | TSA | TSA Cost Allocation           | day_30 | high     |   X |
+FIN-0056 | TSA | TSA | TSA Cost Allocation           | day_30 | medium   |     |
+FIN-0057 | TSA | TSA | TSA Cost Allocation           | day_30 | medium   |     |
+FIN-0058 | TSA | TSA | TSA Cost Allocation           | day_60 | high     |     |
+FIN-0059 | TSA | TSA | TSA Renewal/Extension         | day_30 | high     |     |
+FIN-0060 | TSA | TSA | TSA Renewal/Extension         | day_30 | high     |     |
+FIN-0061 | TSA | TSA | TSA Renewal/Extension         | day_60 | high     |     |
+FIN-0062 | TSA | TSA | TSA Renewal/Extension         | day_90 | critical |     |
+FIN-0063 | TSA | TSA | TSA Renewal/Extension         | day_90 | high     |     |
+FIN-0064 | TSA | TSA | TSA Renewal/Extension         | year_1 | low      |     |
+FIN-0065 | TSA | TSA | TSA Stranded Cost             | day_60 | high     |     |
+FIN-0066 | TSA | TSA | TSA Stranded Cost             | day_90 | high     |     |
+FIN-0067 | TSA | TSA | Cross-Border TSA              | day_30 | high     |   X |
+FIN-0068 | TSA | TSA | Cross-Border TSA              | day_30 | high     |   X |
+FIN-0069 | TSA | TSA | Cross-Border TSA              | day_90 | critical |   X |
+FIN-0070 | TSA | TSA | TSA Governance                | year_1 | medium   |     |
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONTROLS & GOVERNANCE TRACK — CTL · GRC
+# Focus: SOX, ITGC, internal audit, data sovereignty, privacy, breach protocol
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [CTL] Controls — 69 items (CGV-0191 series) ──────────────────────────────
+
+CGV-0192 | CTL | Controls | SOX Scoping                    | day_30 | critical | * |
+CGV-0195 | CTL | Controls | ITGC Gap Assessment            | day_60 | high     | * |
+# (CGV-0191 through ~CGV-0345: full controls workstream — SOX, ITGC, internal audit)
+
+
+# ── [GRC] Governance & Compliance — 14 items (CGV-0346 + CGV-0703–CGV-0705) ──
+
+CGV-0346 | GRC | Governance & Compliance | Privileged Access Remediation  | day_60 | critical | *   |
+# Data Sovereignty & Privacy (new)
+CGV-0703 | GRC | Governance & Compliance | Data Sovereignty & Localization | day_30 | critical | * X |
+CGV-0704 | GRC | Governance & Compliance | Data Sovereignty & Localization | day_1  | critical |   X |
+CGV-0705 | GRC | Governance & Compliance | Data Sovereignty & Localization | day_30 | high     |   X |
+# (remaining GRC items: CGV-0347–CGV-0390 — governance framework, compliance calendar)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# IT TRACK — ITG · ITE · ITI · ITD · ITV · ITC
+# Focus: IT strategy, ERP/CRM migration, cloud, data governance, vendors, digital
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [ITG] IT Strategy & Governance — 23 items (IT-0444–IT-0452, IT-0469–IT-0478, IT-0486–IT-0489) ──
+
+IT-0444 | ITG | IT Strategy & Governance | IT Strategic Alignment        | day_1  | critical |   |
+IT-0445 | ITG | IT Strategy & Governance | IT Strategic Alignment        | day_1  | high     |   |
+IT-0446 | ITG | IT Strategy & Governance | IT Governance Framework       | day_30 | high     |   |
+IT-0447 | ITG | IT Strategy & Governance | IT Policy & Standards         | day_30 | medium   |   |
+IT-0448 | ITG | IT Strategy & Governance | IT Governance Framework       | day_30 | high     |   |
+IT-0449 | ITG | IT Strategy & Governance | IT Org Structure & Leadership | day_1  | high     |   |
+IT-0450 | ITG | IT Strategy & Governance | IT Org Structure & Leadership | day_1  | critical |   |
+IT-0451 | ITG | IT Strategy & Governance | IT Talent & Retention         | day_30 | high     |   |
+IT-0452 | ITG | IT Strategy & Governance | IT Staffing Model             | day_30 | medium   |   |
+IT-0469 | ITG | IT Strategy & Governance | Security Governance           | day_1  | critical |   |
+IT-0470 | ITG | IT Strategy & Governance | Security Governance           | day_30 | high     |   |
+IT-0471 | ITG | IT Strategy & Governance | Security Operations           | day_60 | high     |   |
+IT-0472 | ITG | IT Strategy & Governance | Security Operations           | day_30 | critical |   |
+IT-0473 | ITG | IT Strategy & Governance | Data Protection & Privacy     | day_30 | high     | X |
+IT-0474 | ITG | IT Strategy & Governance | Access Controls               | day_30 | critical |   |
+IT-0475 | ITG | IT Strategy & Governance | Access Controls               | day_30 | high     |   |
+IT-0476 | ITG | IT Strategy & Governance | Change Management             | day_60 | high     |   |
+IT-0477 | ITG | IT Strategy & Governance | IT Operations Controls        | day_60 | medium   |   |
+IT-0478 | ITG | IT Strategy & Governance | SDLC / Program Dev            | day_60 | medium   |   |
+IT-0486 | ITG | IT Strategy & Governance | IT Spend & Budget Analysis    | day_30 | high     |   |
+IT-0487 | ITG | IT Strategy & Governance | License & Subscription Mgmt   | day_60 | high     |   |
+IT-0488 | ITG | IT Strategy & Governance | Synergy Identification        | day_60 | critical |   |
+IT-0489 | ITG | IT Strategy & Governance | Integration Cost Estimation   | day_60 | high     |   |
+
+
+# ── [ITE] IT > Enterprise Systems — 8 items (IT-0453–IT-0459 + IT-0710 TSA-shadow) ──
+
+IT-0453 | ITE | IT > Enterprise Systems | Core Business Applications  | day_1  | critical |     |
+IT-0454 | ITE | IT > Enterprise Systems | Core Business Applications  | day_30 | critical |     |
+IT-0455 | ITE | IT > Enterprise Systems | Core Business Applications  | day_30 | high     |     |
+IT-0456 | ITE | IT > Enterprise Systems | Industry-Specific Platforms | day_30 | high     |     |
+IT-0457 | ITE | IT > Enterprise Systems | Collaboration & Productivity | day_1  | critical | *   |
+IT-0458 | ITE | IT > Enterprise Systems | Collaboration & Productivity | day_60 | medium   |     |
+IT-0459 | ITE | IT > Enterprise Systems | Workflow & Automation       | day_60 | medium   |     |
+IT-0710 | ITE | IT > Enterprise Systems | TSA Data Segregation        | day_1  | critical | * T |
+
+
+# ── [ITI] IT > Infrastructure — 5 items (IT-0460–IT-0464) ───────────────────
+
+IT-0460 | ITI | IT > Infrastructure | Cloud Services & Strategy    | day_1  | critical | * |
+IT-0461 | ITI | IT > Infrastructure | Cloud Services & Strategy    | day_30 | high     |   |
+IT-0462 | ITI | IT > Infrastructure | On-Premises Infrastructure   | day_30 | high     |   |
+IT-0463 | ITI | IT > Infrastructure | IT Operations & ITSM         | day_60 | medium   |   |
+IT-0464 | ITI | IT > Infrastructure | DR & Business Continuity     | day_30 | high     |   |
+
+
+# ── [ITD] IT > Data & Analytics — 4 items (IT-0465–IT-0468) ─────────────────
+
+IT-0465 | ITD | IT > Data & Analytics | Data Architecture & Governance | day_30 | high   |   |
+IT-0466 | ITD | IT > Data & Analytics | Data Architecture & Governance | day_60 | high   |   |
+IT-0467 | ITD | IT > Data & Analytics | Analytics & BI                 | day_60 | medium |   |
+IT-0468 | ITD | IT > Data & Analytics | Data Lifecycle Management      | day_60 | medium | X |
+
+
+# ── [ITV] IT > IT Vendor Management — 4 items (IT-0479–IT-0482) ─────────────
+
+IT-0479 | ITV | IT > IT Vendor Management | Vendor Governance & Risk  | day_30 | high   |   |
+IT-0480 | ITV | IT > IT Vendor Management | Vendor Governance & Risk  | day_30 | high   |   |
+IT-0481 | ITV | IT > IT Vendor Management | Contract Management       | day_60 | high   |   |
+IT-0482 | ITV | IT > IT Vendor Management | Outsourcing & Managed Svc | day_60 | medium |   |
+
+
+# ── [ITC] IT > Client-Facing & Digital — 3 items (IT-0483–IT-0485) ──────────
+
+IT-0483 | ITC | IT > Client-Facing & Digital | Digital Products & Platforms | day_1  | high     |   |
+IT-0484 | ITC | IT > Client-Facing & Digital | Product Engineering          | day_30 | high     |   |
+IT-0485 | ITC | IT > Client-Facing & Digital | Client Data & Privacy        | day_30 | critical | X |
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SUSTAINABILITY — ESG
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [ESG] ESG — 22 items (ESG-0369–ESG-0390) ─────────────────────────────────
+# (Full ESG items: sustainability reporting, environmental permits, social impact)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONDITIONAL TRACK — SEP  (active when dealStructure = carve_out)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── [SEP] Carve-Out / Separation — 7 items (SEP-0696–SEP-0702) ───────────────
+
+SEP-0696 | SEP | Carve-Out / Separation | Separation Management    | day_1  | critical |   T |
+SEP-0697 | SEP | Carve-Out / Separation | Separation Management    | day_1  | critical |   T |
+SEP-0698 | SEP | Carve-Out / Separation | Separation Management    | day_30 | critical |     |
+SEP-0699 | SEP | Carve-Out / Separation | Data Separation          | day_60 | critical | * T X |
+SEP-0700 | SEP | Carve-Out / Separation | Data Separation          | day_60 | critical |   T |
+SEP-0701 | SEP | Carve-Out / Separation | Legal Entity Separation  | day_30 | critical |   X |
+SEP-0702 | SEP | Carve-Out / Separation | Stranded Cost Elimination| day_90 | high     |     |
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUMMARY — Revenue → Operational → People/Legal → Finance → Controls/IT
+# ─────────────────────────────────────────────────────────────────────────────
+# Revenue Track:      GTM  28  |  PRD  11                         = 39 items
+# Operational Track:  SCO  12  |  CAP   8  |  FAC 13  |  IMO 35  = 68 items
+# People & Legal:     HR   22  |  LGL  30  |  COM 11              = 63 items
+# Finance Track:      TRS  39  |  OFN  70  |  FPA 33
+#                     FRC  27  |  TCA  27  |  TAX 37  |  TSA 70   = 303 items
+# Controls & Gov:     CTL  69  |  GRC  14                         = 83 items
+# IT Track:           ITG  23  |  ITE   8  |  ITI  5
+#                     ITD   4  |  ITV   4  |  ITC  3              = 47 items
+# Sustainability:     ESG  22                                      = 22 items
+# Conditional:        SEP   7                                      =  7 items
+# ─────────────────────────────────────────────────────────────────────────────
+# TOTAL: 632 items | Must-Haves (*): 60 | TSA-Shadow (T): 8 | Cross-Border (X): 89
+#
+# Note on Finance item IDs: All Finance workstream items use the FIN-xxxx prefix
+# (sequential, cross-workstream). The canonical code column (TRS/OFN/FPA/FRC/TCA/TAX/TSA)
+# is the authoritative workstream identifier for assignment and display purposes.
+# Revenue, Ops, People, IT, Controls, and Separation workstreams each have their own
+# dedicated prefix (GTM/PRD/SCO/CAP/FAC/INT/HR/LGL/COM/IT/CGV/ESG/SEP).

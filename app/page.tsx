@@ -18,18 +18,77 @@ export default function Home() {
   const [portfolioSearch, setPortfolioSearch] = useState("");
   const [portfolioSort, setPortfolioSort] = useState("newest");
   const [portfolioPage, setPortfolioPage] = useState(1);
+  const [adminMode, setAdminMode] = useState(false);
+  const [selectedDeals, setSelectedDeals] = useState<Set<string>>(new Set());
+  const [showArchived, setShowArchived] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [bulkWorking, setBulkWorking] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [lastSavedAt, setLastSavedAt] = useState<string | undefined>(undefined);
 
   // Fetch all deals from DB for multi-deal support
-  async function fetchDeals() {
+  async function fetchDeals(includeArchived = false) {
     setLoadingDeals(true);
     try {
-      const res = await fetch("/api/deals");
+      const url = includeArchived ? "/api/deals?includeArchived=true" : "/api/deals";
+      const res = await fetch(url);
       const data = await res.json();
       setDealsList(data.deals || []);
     } catch { setDealsList([]); }
     finally { setLoadingDeals(false); }
+  }
+
+  async function archiveDeal(id: string) {
+    await fetch(`/api/deals?id=${id}&action=archive`, { method: "PATCH" });
+    fetchDeals(showArchived);
+    setSelectedDeals(prev => { const n = new Set(prev); n.delete(id); return n; });
+  }
+
+  async function unarchiveDeal(id: string) {
+    await fetch(`/api/deals?id=${id}&action=unarchive`, { method: "PATCH" });
+    fetchDeals(showArchived);
+  }
+
+  async function deleteDeal(id: string) {
+    await fetch(`/api/deals?id=${id}`, { method: "DELETE" });
+    setConfirmDeleteId(null);
+    fetchDeals(showArchived);
+    setSelectedDeals(prev => { const n = new Set(prev); n.delete(id); return n; });
+  }
+
+  async function exportDeal(id: string, name: string) {
+    try {
+      const res = await fetch(`/api/deals?id=${id}`);
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name.replace(/[^a-z0-9]/gi, "-").toLowerCase()}-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { /* silently fail */ }
+  }
+
+  async function bulkArchive() {
+    setBulkWorking(true);
+    for (const id of selectedDeals) {
+      await fetch(`/api/deals?id=${id}&action=archive`, { method: "PATCH" });
+    }
+    setSelectedDeals(new Set());
+    setBulkWorking(false);
+    fetchDeals(showArchived);
+  }
+
+  async function bulkDelete() {
+    if (!window.confirm(`Permanently delete ${selectedDeals.size} deal(s)? This cannot be undone.`)) return;
+    setBulkWorking(true);
+    for (const id of selectedDeals) {
+      await fetch(`/api/deals?id=${id}`, { method: "DELETE" });
+    }
+    setSelectedDeals(new Set());
+    setBulkWorking(false);
+    fetchDeals(showArchived);
   }
 
   // Load a specific deal from DB by ID
@@ -560,158 +619,274 @@ export default function Home() {
 
   // Multi-deal list view
   if (appState === "deals") {
+    const statusColors: Record<string, string> = { active: "#10B981", pre_close: "#F59E0B", complete: "#3B82F6", archived: "#64748B" };
+    const filtered = dealsList
+      .filter((d: any) => !portfolioSearch || d.name?.toLowerCase().includes(portfolioSearch.toLowerCase()))
+      .sort((a: any, b: any) => {
+        if (portfolioSort === "name_asc") return (a.name || "").localeCompare(b.name || "");
+        if (portfolioSort === "name_desc") return (b.name || "").localeCompare(a.name || "");
+        if (portfolioSort === "oldest") return (a.created_at || "").localeCompare(b.created_at || "");
+        return (b.created_at || "").localeCompare(a.created_at || "");
+      });
+    const PAGE_SIZE = 10;
+    const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+    const paged = filtered.slice((portfolioPage - 1) * PAGE_SIZE, portfolioPage * PAGE_SIZE);
+    const allPageSelected = paged.length > 0 && paged.every((d: any) => selectedDeals.has(d.id));
+
     return (
       <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #0C1222 0%, #162036 40%, #0F1B2D 100%)", color: "#F1F5F9", padding: 32 }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
+        <div style={{
+          maxWidth: 900, margin: "0 auto",
+          border: adminMode ? "1px solid rgba(245,158,11,0.3)" : "none",
+          borderRadius: adminMode ? 14 : 0,
+          padding: adminMode ? 20 : 0,
+        }}>
+
+          {/* ── Header ── */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24 }}>
             <div>
-              <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 4 }}>Deal Portfolio</h1>
-              <p style={{ fontSize: 12, color: "#94A3B8" }}>{dealsList.length} deals in database</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Deal Portfolio</h1>
+                {adminMode && (
+                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, padding: "2px 8px", borderRadius: 4, background: "rgba(245,158,11,0.15)", color: "#F59E0B", border: "1px solid rgba(245,158,11,0.4)" }}>
+                    ADMIN MODE
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize: 12, color: "#94A3B8", margin: 0 }}>
+                {dealsList.length} deal{dealsList.length !== 1 ? "s" : ""}{showArchived ? " (including archived)" : ""}
+              </p>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button onClick={() => setAppState("intake")} style={{
-                padding: "10px 24px", borderRadius: 8, border: "none",
+                padding: "10px 20px", borderRadius: 8, border: "none",
                 background: "linear-gradient(135deg, #2563EB, #3B82F6)",
                 color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
               }}>+ New Deal</button>
               {hasSaved && (
-                <button onClick={() => {
-                  const saved = loadDeal();
-                  if (saved) { setDeal(saved); setAppState("dashboard"); }
-                }} style={{
-                  padding: "10px 24px", borderRadius: 8, border: "1px solid rgba(59, 130, 246, 0.4)",
+                <button onClick={() => { const saved = loadDeal(); if (saved) { setDeal(saved); setAppState("dashboard"); } }} style={{
+                  padding: "10px 20px", borderRadius: 8, border: "1px solid rgba(59,130,246,0.4)",
                   background: "transparent", color: "#3B82F6", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
-                }}>Resume Local Draft</button>
+                }}>Resume Draft</button>
               )}
+              <button
+                onClick={() => {
+                  const next = !adminMode;
+                  setAdminMode(next);
+                  setSelectedDeals(new Set());
+                  if (!next) { setShowArchived(false); fetchDeals(false); }
+                }}
+                style={{
+                  padding: "10px 16px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                  border: `1px solid ${adminMode ? "rgba(245,158,11,0.6)" : "rgba(51,65,85,0.6)"}`,
+                  background: adminMode ? "rgba(245,158,11,0.12)" : "transparent",
+                  color: adminMode ? "#F59E0B" : "#64748B",
+                }}
+              >
+                {adminMode ? "✓ Admin" : "Admin"}
+              </button>
             </div>
           </div>
 
-          {/* BUG-10: Search + Sort controls */}
-          {!loadingDeals && dealsList.length > 0 && (
-            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 12 }}>
-              <input
-                type="text"
-                placeholder="Search deals by name..."
-                value={portfolioSearch}
-                onChange={e => setPortfolioSearch(e.target.value)}
+          {/* ── Search + Sort + Admin toggles ── */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
+            <input
+              type="text"
+              placeholder="Search deals by name..."
+              value={portfolioSearch}
+              onChange={e => setPortfolioSearch(e.target.value)}
+              style={{
+                flex: 1, minWidth: 160, padding: "8px 14px", borderRadius: 6, fontSize: 12,
+                background: "rgba(30,41,59,0.7)", border: "1px solid rgba(51,65,85,0.5)",
+                color: "#F8FAFC", fontFamily: "inherit", outline: "none",
+              }}
+            />
+            <select value={portfolioSort} onChange={e => setPortfolioSort(e.target.value)} style={{
+              padding: "8px 12px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+              background: "rgba(30,41,59,0.7)", border: "1px solid rgba(51,65,85,0.5)",
+              color: "#94A3B8", fontFamily: "inherit", cursor: "pointer",
+            }}>
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="name_asc">Name A→Z</option>
+              <option value="name_desc">Name Z→A</option>
+            </select>
+            {adminMode && (
+              <button
+                onClick={() => { const next = !showArchived; setShowArchived(next); fetchDeals(next); }}
                 style={{
-                  flex: 1, padding: "8px 14px", borderRadius: 6, fontSize: 12,
-                  background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
-                  color: "#F8FAFC", fontFamily: "inherit",
+                  padding: "8px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                  border: `1px solid ${showArchived ? "rgba(100,116,139,0.6)" : "rgba(51,65,85,0.5)"}`,
+                  background: showArchived ? "rgba(100,116,139,0.15)" : "transparent",
+                  color: showArchived ? "#94A3B8" : "#64748B",
                 }}
-              />
-              <select value={portfolioSort} onChange={e => setPortfolioSort(e.target.value)} style={{
-                padding: "8px 12px", borderRadius: 6, fontSize: 11, fontWeight: 600,
-                background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
-                color: "#94A3B8", fontFamily: "inherit", cursor: "pointer",
-              }}>
-                <option value="newest">Newest First</option>
-                <option value="oldest">Oldest First</option>
-                <option value="name_asc">Name A→Z</option>
-                <option value="name_desc">Name Z→A</option>
-              </select>
+              >
+                {showArchived ? "✓ Archived" : "Show Archived"}
+              </button>
+            )}
+          </div>
+
+          {/* ── Bulk action bar ── */}
+          {adminMode && selectedDeals.size > 0 && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10, marginBottom: 10,
+              padding: "10px 16px", borderRadius: 8,
+              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)",
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#F59E0B", flex: 1 }}>
+                {selectedDeals.size} deal{selectedDeals.size !== 1 ? "s" : ""} selected
+              </span>
+              <button onClick={bulkArchive} disabled={bulkWorking} style={{
+                padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                border: "1px solid rgba(245,158,11,0.5)", background: "rgba(245,158,11,0.12)", color: "#F59E0B",
+                opacity: bulkWorking ? 0.5 : 1,
+              }}>{bulkWorking ? "Working…" : "Archive Selected"}</button>
+              <button onClick={bulkDelete} disabled={bulkWorking} style={{
+                padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                border: "1px solid rgba(239,68,68,0.5)", background: "rgba(239,68,68,0.10)", color: "#EF4444",
+                opacity: bulkWorking ? 0.5 : 1,
+              }}>{bulkWorking ? "Working…" : "Delete Selected"}</button>
+              <button onClick={() => setSelectedDeals(new Set())} style={{
+                padding: "5px 10px", borderRadius: 6, fontSize: 11, cursor: "pointer",
+                border: "1px solid rgba(51,65,85,0.5)", background: "transparent", color: "#64748B",
+              }}>Clear</button>
             </div>
           )}
 
           {loadingDeals && <div style={{ textAlign: "center", color: "#64748B", padding: 40 }}>Loading deals...</div>}
 
           {!loadingDeals && dealsList.length === 0 && (
-            <div style={{ textAlign: "center", padding: 60, borderRadius: 12, background: "rgba(30, 41, 59, 0.5)", border: "1px solid rgba(51, 65, 85, 0.5)" }}>
+            <div style={{ textAlign: "center", padding: 60, borderRadius: 12, background: "rgba(30,41,59,0.5)", border: "1px solid rgba(51,65,85,0.5)" }}>
               <div style={{ fontSize: 14, color: "#94A3B8", marginBottom: 12 }}>No deals in database yet</div>
               <div style={{ fontSize: 11, color: "#64748B" }}>Create a new deal to get started, or resume your local draft.</div>
             </div>
           )}
 
-          {dealsList.length > 0 && (() => {
-            // BUG-10/11: Filter, sort, and paginate
-            let filtered = dealsList.filter((d: any) =>
-              !portfolioSearch || d.name?.toLowerCase().includes(portfolioSearch.toLowerCase())
-            );
-            filtered.sort((a: any, b: any) => {
-              if (portfolioSort === "name_asc") return (a.name || "").localeCompare(b.name || "");
-              if (portfolioSort === "name_desc") return (b.name || "").localeCompare(a.name || "");
-              if (portfolioSort === "oldest") return (a.created_at || "").localeCompare(b.created_at || "");
-              return (b.created_at || "").localeCompare(a.created_at || ""); // newest
-            });
-            const PAGE_SIZE = 10;
-            const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-            const paged = filtered.slice((portfolioPage - 1) * PAGE_SIZE, portfolioPage * PAGE_SIZE);
-
-            return (
-              <>
-                <div style={{ fontSize: 10, color: "#64748B", marginBottom: 8 }}>
-                  Showing {paged.length} of {filtered.length} deals{portfolioSearch ? ` matching "${portfolioSearch}"` : ""}
+          {dealsList.length > 0 && (
+            <>
+              {/* Select-all row */}
+              {adminMode && paged.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, paddingLeft: 4 }}>
+                  <input type="checkbox" checked={allPageSelected} onChange={() => {
+                    if (allPageSelected) {
+                      setSelectedDeals(prev => { const n = new Set(prev); paged.forEach((d: any) => n.delete(d.id)); return n; });
+                    } else {
+                      setSelectedDeals(prev => { const n = new Set(prev); paged.forEach((d: any) => n.add(d.id)); return n; });
+                    }
+                  }} style={{ cursor: "pointer" }} />
+                  <span style={{ fontSize: 10, color: "#64748B" }}>Select all on this page</span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {paged.map((d: any) => {
-                    const statusColors: Record<string, string> = { active: "#10B981", pre_close: "#F59E0B", complete: "#3B82F6", archived: "#64748B" };
-                    return (
-                      <div key={d.id} onClick={() => loadDealFromDb(d.id)} style={{
-                        padding: "16px 20px", borderRadius: 10,
-                        background: "rgba(30, 41, 59, 0.7)", border: "1px solid rgba(51, 65, 85, 0.5)",
-                        cursor: "pointer", transition: "all 0.15s",
-                        display: "flex", justifyContent: "space-between", alignItems: "center",
-                      }}
-                        onMouseEnter={e => (e.currentTarget.style.borderColor = "#3B82F6")}
-                        onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(51, 65, 85, 0.5)")}
+              )}
+              <div style={{ fontSize: 10, color: "#64748B", marginBottom: 8 }}>
+                Showing {paged.length} of {filtered.length} deal{filtered.length !== 1 ? "s" : ""}{portfolioSearch ? ` matching "${portfolioSearch}"` : ""}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {paged.map((d: any) => {
+                  const isArchived = d.status === "archived";
+                  const isSelected = selectedDeals.has(d.id);
+                  const isConfirmingDelete = confirmDeleteId === d.id;
+                  return (
+                    <div key={d.id} style={{
+                      padding: "14px 18px", borderRadius: 10,
+                      background: isArchived ? "rgba(20,28,44,0.7)" : "rgba(30,41,59,0.7)",
+                      border: `1px solid ${isSelected ? "rgba(245,158,11,0.5)" : isArchived ? "rgba(51,65,85,0.3)" : "rgba(51,65,85,0.5)"}`,
+                      opacity: isArchived ? 0.78 : 1,
+                      display: "flex", alignItems: "center", gap: 10,
+                    }}>
+                      {adminMode && (
+                        <input type="checkbox" checked={isSelected} onClick={e => e.stopPropagation()} onChange={() => {
+                          setSelectedDeals(prev => { const n = new Set(prev); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n; });
+                        }} style={{ cursor: "pointer", flexShrink: 0 }} />
+                      )}
+                      <div
+                        onClick={() => !isArchived && loadDealFromDb(d.id)}
+                        style={{ flex: 1, cursor: isArchived ? "default" : "pointer" }}
                       >
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: "#F8FAFC", marginBottom: 4 }}>{d.name}</div>
-                          <div style={{ display: "flex", gap: 16, fontSize: 10, color: "#94A3B8" }}>
-                            <span>{d.deal_structure?.replace(/_/g, " ")}</span>
-                            <span>{d.integration_model?.replace(/_/g, " ")}</span>
-                            <span>Close: {d.close_date ? new Date(d.close_date).toLocaleDateString() : "—"}</span>
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                          <span style={{
-                            fontSize: 9, fontWeight: 600, padding: "3px 10px", borderRadius: 4,
-                            background: (statusColors[d.status] || "#64748B") + "22",
-                            color: statusColors[d.status] || "#64748B",
-                            textTransform: "uppercase",
-                          }}>{d.status || "active"}</span>
-                          {/* BUG-15: Better open label */}
-                          <button onClick={(e) => { e.stopPropagation(); loadDealFromDb(d.id); }} style={{
-                            padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(59,130,246,0.3)",
-                            background: "transparent", color: "#3B82F6", fontSize: 9, fontWeight: 600,
-                            cursor: "pointer",
-                          }}>Open →</button>
-                          <button onClick={async (e) => {
-                            e.stopPropagation();
-                            if (!window.confirm(`Delete "${d.name}"? This cannot be undone.`)) return;
-                            try {
-                              await fetch(`/api/deals?id=${d.id}`, { method: "DELETE" });
-                              fetchDeals();
-                            } catch {}
-                          }} style={{
-                            padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.3)",
-                            background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 600,
-                            cursor: "pointer",
-                          }}>Delete</button>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: isArchived ? "#64748B" : "#F8FAFC", marginBottom: 3 }}>{d.name}</div>
+                        <div style={{ display: "flex", gap: 14, fontSize: 10, color: "#64748B" }}>
+                          <span>{d.deal_structure?.replace(/_/g, " ")}</span>
+                          <span>{d.integration_model?.replace(/_/g, " ")}</span>
+                          <span>Close: {d.close_date ? new Date(d.close_date).toLocaleDateString() : "—"}</span>
+                          {isArchived && d.archived_at && <span>Archived: {new Date(d.archived_at).toLocaleDateString()}</span>}
                         </div>
                       </div>
-                    );
-                  })}
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                        <span style={{
+                          fontSize: 9, fontWeight: 600, padding: "3px 8px", borderRadius: 4,
+                          background: (statusColors[d.status] || "#64748B") + "22",
+                          color: statusColors[d.status] || "#64748B",
+                          textTransform: "uppercase",
+                        }}>{d.status || "active"}</span>
+
+                        {!isArchived && (
+                          <button onClick={(e) => { e.stopPropagation(); loadDealFromDb(d.id); }} style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(59,130,246,0.3)",
+                            background: "transparent", color: "#3B82F6", fontSize: 9, fontWeight: 600, cursor: "pointer",
+                          }}>Open →</button>
+                        )}
+
+                        {adminMode && !isArchived && (
+                          <button onClick={(e) => { e.stopPropagation(); archiveDeal(d.id); }} style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(245,158,11,0.4)",
+                            background: "transparent", color: "#F59E0B", fontSize: 9, fontWeight: 600, cursor: "pointer",
+                          }}>Archive</button>
+                        )}
+
+                        {adminMode && isArchived && (
+                          <button onClick={(e) => { e.stopPropagation(); unarchiveDeal(d.id); }} style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(100,116,139,0.5)",
+                            background: "transparent", color: "#94A3B8", fontSize: 9, fontWeight: 600, cursor: "pointer",
+                          }}>Unarchive</button>
+                        )}
+
+                        {adminMode && (
+                          <button onClick={(e) => { e.stopPropagation(); exportDeal(d.id, d.name); }} style={{
+                            padding: "3px 10px", borderRadius: 4, border: "1px solid rgba(16,185,129,0.4)",
+                            background: "transparent", color: "#10B981", fontSize: 9, fontWeight: 600, cursor: "pointer",
+                          }}>Export ↓</button>
+                        )}
+
+                        {adminMode && (isConfirmingDelete ? (
+                          <span style={{ display: "flex", gap: 4 }}>
+                            <button onClick={(e) => { e.stopPropagation(); deleteDeal(d.id); }} style={{
+                              padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.7)",
+                              background: "rgba(239,68,68,0.15)", color: "#EF4444", fontSize: 9, fontWeight: 700, cursor: "pointer",
+                            }}>Confirm ✓</button>
+                            <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(null); }} style={{
+                              padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(51,65,85,0.5)",
+                              background: "transparent", color: "#64748B", fontSize: 9, cursor: "pointer",
+                            }}>Cancel</button>
+                          </span>
+                        ) : (
+                          <button onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(d.id); }} style={{
+                            padding: "3px 8px", borderRadius: 4, border: "1px solid rgba(239,68,68,0.3)",
+                            background: "transparent", color: "#EF4444", fontSize: 9, fontWeight: 600, cursor: "pointer",
+                          }}>Delete</button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {totalPages > 1 && (
+                <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+                  <button disabled={portfolioPage <= 1} onClick={() => setPortfolioPage(p => p - 1)} style={{
+                    padding: "4px 12px", borderRadius: 4, border: "1px solid rgba(51,65,85,0.5)",
+                    background: "transparent", color: portfolioPage <= 1 ? "#334155" : "#94A3B8",
+                    fontSize: 10, cursor: portfolioPage <= 1 ? "default" : "pointer",
+                  }}>← Prev</button>
+                  <span style={{ fontSize: 10, color: "#64748B", lineHeight: "28px" }}>Page {portfolioPage} of {totalPages}</span>
+                  <button disabled={portfolioPage >= totalPages} onClick={() => setPortfolioPage(p => p + 1)} style={{
+                    padding: "4px 12px", borderRadius: 4, border: "1px solid rgba(51,65,85,0.5)",
+                    background: "transparent", color: portfolioPage >= totalPages ? "#334155" : "#94A3B8",
+                    fontSize: 10, cursor: portfolioPage >= totalPages ? "default" : "pointer",
+                  }}>Next →</button>
                 </div>
-                {/* BUG-11: Pagination */}
-                {totalPages > 1 && (
-                  <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
-                    <button disabled={portfolioPage <= 1} onClick={() => setPortfolioPage(p => p - 1)} style={{
-                      padding: "4px 12px", borderRadius: 4, border: "1px solid rgba(51,65,85,0.5)",
-                      background: "transparent", color: portfolioPage <= 1 ? "#334155" : "#94A3B8",
-                      fontSize: 10, cursor: portfolioPage <= 1 ? "default" : "pointer",
-                    }}>← Prev</button>
-                    <span style={{ fontSize: 10, color: "#64748B", lineHeight: "28px" }}>Page {portfolioPage} of {totalPages}</span>
-                    <button disabled={portfolioPage >= totalPages} onClick={() => setPortfolioPage(p => p + 1)} style={{
-                      padding: "4px 12px", borderRadius: 4, border: "1px solid rgba(51,65,85,0.5)",
-                      background: "transparent", color: portfolioPage >= totalPages ? "#334155" : "#94A3B8",
-                      fontSize: 10, cursor: portfolioPage >= totalPages ? "default" : "pointer",
-                    }}>Next →</button>
-                  </div>
-                )}
-              </>
-            );
-          })()}
+              )}
+            </>
+          )}
 
           <button onClick={() => setAppState("landing")} style={{
             display: "block", margin: "24px auto 0", fontSize: 11, color: "#64748B",

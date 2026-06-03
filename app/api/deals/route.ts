@@ -360,16 +360,62 @@ export async function GET(request: Request) {
       });
     } else {
       // ── List all deals ─────────────────────────────────────────
-      const rows = await sql`
-        SELECT id, name, deal_structure, integration_model,
-               close_date, status, created_at
-        FROM deals
-        ORDER BY created_at DESC
-      `;
+      const { searchParams: listParams } = new URL(request.url);
+      const includeArchived = listParams.get("includeArchived") === "true";
+      const rows = includeArchived
+        ? await sql`
+            SELECT id, name, deal_structure, integration_model,
+                   close_date, status, archived_at, created_at
+            FROM deals
+            ORDER BY created_at DESC
+          `
+        : await sql`
+            SELECT id, name, deal_structure, integration_model,
+                   close_date, status, archived_at, created_at
+            FROM deals
+            WHERE status != 'archived' OR status IS NULL
+            ORDER BY created_at DESC
+          `;
       return NextResponse.json({ deals: rows });
     }
   } catch (error: any) {
     console.error("Load deal error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// PATCH: Archive or unarchive a deal
+export async function PATCH(request: Request) {
+  try {
+    const sql = getSql();
+    if (!sql) return NextResponse.json({ error: "Database not configured" }, { status: 500 });
+
+    const { searchParams } = new URL(request.url);
+    const dealId = searchParams.get("id");
+    const action = searchParams.get("action");
+    if (!dealId) return NextResponse.json({ error: "id parameter required" }, { status: 400 });
+
+    if (action === "archive") {
+      await sql`
+        UPDATE deals
+        SET status = 'archived', archived_at = NOW(), updated_at = NOW()
+        WHERE id = ${dealId}
+      `;
+      return NextResponse.json({ success: true, action: "archived", id: dealId });
+    }
+
+    if (action === "unarchive") {
+      await sql`
+        UPDATE deals
+        SET status = 'active', archived_at = NULL, updated_at = NOW()
+        WHERE id = ${dealId}
+      `;
+      return NextResponse.json({ success: true, action: "unarchived", id: dealId });
+    }
+
+    return NextResponse.json({ error: "Unknown action. Use action=archive or action=unarchive" }, { status: 400 });
+  } catch (error: any) {
+    console.error("Patch deal error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

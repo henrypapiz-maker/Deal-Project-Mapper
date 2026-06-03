@@ -23,6 +23,11 @@ const C = {
 interface SeedPrompt {
   name: string;
   text: string;
+  role?: string;
+  contextSource?: string[];
+  outputFormat?: string;
+  exampleOutput?: string;
+  reasoningSteps?: string[];
 }
 
 interface FieldDef {
@@ -47,6 +52,31 @@ interface Prompt {
   category: string | null;
   isGlobal: boolean;
   createdAt: string;
+  role?: string | null;
+  contextSource?: string[] | null;
+  outputFormat?: string | null;
+  exampleOutput?: string | null;
+  reasoningSteps?: string[] | null;
+}
+
+const CONTEXT_SOURCE_OPTIONS = [
+  "All deal data", "Checklist items", "Risk alerts",
+  "Milestones", "Team members", "Progress snapshots", "Intake fields",
+];
+const OUTPUT_FORMAT_OPTIONS = [
+  "Executive Memo", "Markdown Table", "Bullet List",
+  "JSON", "Narrative Prose", "Risk Matrix", "Action Items",
+];
+
+function assemblePromptText(p: Prompt | SeedPrompt): string {
+  let out = "";
+  if (p.role) out += `${p.role}\n\n`;
+  out += p.text;
+  if (p.reasoningSteps?.length) {
+    out += "\n\nApproach this step-by-step:";
+    p.reasoningSteps.forEach((step, i) => { out += `\n${i + 1}. ${step}`; });
+  }
+  return out.trim();
 }
 
 // ─── All known field-category IDs (used to identify "uncategorized") ─────────
@@ -73,6 +103,17 @@ const SECTION_DEFS: TierDef[] = [
           {
             name: "Full status summary",
             text: "What is the current overall integration status? Summarize completion percentage, workstream RAG breakdown, top blockers, and any critical items requiring immediate attention.",
+            role: "You are an experienced M&A Integration Director with 15+ years of PE-backed transaction experience. Speak with authority, clarity, and a bias toward action.",
+            contextSource: ["All deal data", "Checklist items", "Risk alerts", "Milestones"],
+            outputFormat: "Executive Memo",
+            exampleOutput: "Integration is 47% complete across 24 workstreams. Finance (62%) and IT (38%) are the leading and lagging workstreams respectively. Three critical blockers require SteerCo attention this week: (1) ERP cutover date unconfirmed, (2) TSA exit plan for Finance not yet signed off, (3) two Day-1 legal entity filings at risk. Recommended: escalate IT governance decision by Thursday.",
+            reasoningSteps: [
+              "Calculate overall completion % from checklist item statuses",
+              "Identify RAG status per workstream — flag any RED workstreams",
+              "List the top 3 blockers with deal impact and owner",
+              "Note any items past their milestone date",
+              "Close with one forward-looking recommendation for SteerCo",
+            ],
           },
           {
             name: "Executive one-pager",
@@ -101,6 +142,16 @@ const SECTION_DEFS: TierDef[] = [
           {
             name: "Day 1 risks by structure",
             text: "What are the most common Day 1 risks for our transaction type? Are there any structure-specific issues currently unaddressed in our checklist?",
+            role: "You are a seasoned M&A integration risk advisor. Your analysis is concise, deal-specific, and directly actionable.",
+            contextSource: ["Checklist items", "Risk alerts", "Intake fields"],
+            outputFormat: "Risk Matrix",
+            reasoningSteps: [
+              "Identify the deal structure from intake data",
+              "List the 3–5 highest-probability Day 1 risks for this structure type",
+              "Cross-reference against current checklist — flag any unaddressed items",
+              "Assign a severity (Critical / High / Medium) to each risk",
+              "Recommend the single most important mitigation action",
+            ],
           },
           {
             name: "Regulatory & compliance flags",
@@ -225,6 +276,15 @@ const SECTION_DEFS: TierDef[] = [
           {
             name: "TSA full status summary",
             text: "Summarise all TSA-related checklist items and their current status. What percentage is complete and what is blocked or overdue?",
+            contextSource: ["Checklist items", "Milestones", "Risk alerts"],
+            outputFormat: "Bullet List",
+            reasoningSteps: [
+              "Filter checklist items flagged as TSA-relevant",
+              "Calculate % complete, % blocked, % not started",
+              "List the top 3 blocked or overdue TSA items with owner and due date",
+              "Identify the nearest TSA exit milestone and its readiness status",
+              "Flag any TSA items that could delay the overall close or Day 1",
+            ],
           },
           {
             name: "TSA exit milestones",
@@ -313,6 +373,17 @@ const SECTION_DEFS: TierDef[] = [
           {
             name: "Technical Accounting status",
             text: "What are the key Technical Accounting items we need to track for GAAP alignment? Show me their current status, owner, and phase.",
+            role: "You are a Big-4 Technical Accounting partner specializing in M&A purchase accounting and GAAP conversion for complex cross-border transactions.",
+            contextSource: ["Checklist items", "Intake fields", "Risk alerts"],
+            outputFormat: "Markdown Table",
+            exampleOutput: "| Item | Status | Owner | Phase | Risk |\n|---|---|---|---|---|\n| Purchase Price Allocation | In Progress | CFO | Pre-Close | High |\n| Fair Value Adjustments | Not Started | Controller | Day 30 | Critical |\n| Goodwill Impairment Policy | Complete | Controller | Pre-Close | Low |",
+            reasoningSteps: [
+              "Identify the target GAAP standard from intake data",
+              "Filter checklist for Technical Accounting and GAAP-related items",
+              "Group by status: Complete / In Progress / Not Started / Blocked",
+              "Flag any Critical or High priority items not yet started",
+              "Highlight GAAP conversion risk if target is non-US GAAP",
+            ],
           },
           {
             name: "Financial Reporting & Consolidation",
@@ -446,9 +517,15 @@ export default function PromptLibraryPanel({ dealId }: Props) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formCategory, setFormCategory] = useState("");
-  const [form, setForm] = useState({ name: "", text: "", category: "" });
+  const [form, setForm] = useState({
+    name: "", text: "", category: "",
+    role: "", contextSource: [] as string[], outputFormat: "",
+    exampleOutput: "", reasoningSteps: [] as string[],
+  });
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedExample, setExpandedExample] = useState<string | null>(null);
 
   // Tier expand/collapse  (all open by default except nothing collapsed)
   const [collapsedTiers, setCollapsedTiers] = useState<Set<string>>(new Set());
@@ -464,7 +541,12 @@ export default function PromptLibraryPanel({ dealId }: Props) {
       setPrompts(
         (d.prompts ?? []).map((p: any) => ({
           id: p.id, name: p.name, text: p.text,
-          category: p.category, isGlobal: p.is_global, createdAt: p.created_at,
+          category: p.category ?? null, isGlobal: p.isGlobal ?? p.is_global, createdAt: p.createdAt ?? p.created_at,
+          role: p.role ?? null,
+          contextSource: p.contextSource ?? null,
+          outputFormat: p.outputFormat ?? null,
+          exampleOutput: p.exampleOutput ?? null,
+          reasoningSteps: p.reasoningSteps ?? null,
         }))
       );
     } catch {
@@ -475,35 +557,50 @@ export default function PromptLibraryPanel({ dealId }: Props) {
   }
 
   function openAdd(categoryId: string) {
-    setForm({ name: "", text: "", category: categoryId });
+    setForm({ name: "", text: "", category: categoryId, role: "", contextSource: [], outputFormat: "", exampleOutput: "", reasoningSteps: [] });
     setFormCategory(categoryId);
     setEditingId(null);
+    setShowAdvanced(false);
     setShowForm(true);
     setTimeout(() => document.getElementById("prompt-form-name")?.focus(), 80);
   }
 
   function openEdit(p: Prompt) {
-    setForm({ name: p.name, text: p.text, category: p.category ?? "" });
+    setForm({
+      name: p.name, text: p.text, category: p.category ?? "",
+      role: p.role ?? "", contextSource: p.contextSource ?? [],
+      outputFormat: p.outputFormat ?? "", exampleOutput: p.exampleOutput ?? "",
+      reasoningSteps: p.reasoningSteps ?? [],
+    });
     setFormCategory(p.category ?? "");
     setEditingId(p.id);
+    setShowAdvanced(!!(p.role || p.contextSource?.length || p.outputFormat || p.exampleOutput || p.reasoningSteps?.length));
     setShowForm(true);
   }
 
   async function save() {
     if (!form.name.trim() || !form.text.trim()) return;
     setSaving(true);
+    const payload = {
+      name: form.name, text: form.text, category: form.category || null,
+      role: form.role.trim() || null,
+      contextSource: form.contextSource.length ? form.contextSource : null,
+      outputFormat: form.outputFormat || null,
+      exampleOutput: form.exampleOutput.trim() || null,
+      reasoningSteps: form.reasoningSteps.filter(s => s.trim()).length ? form.reasoningSteps.filter(s => s.trim()) : null,
+    };
     try {
       if (editingId) {
         await fetch("/api/agent/prompts", {
           method: "PATCH",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id: editingId, name: form.name, text: form.text, category: form.category || null }),
+          body: JSON.stringify({ id: editingId, ...payload }),
         });
       } else {
         await fetch("/api/agent/prompts", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ name: form.name, text: form.text, category: form.category || null, isGlobal: !dealId, dealId: dealId ?? null }),
+          body: JSON.stringify({ ...payload, isGlobal: !dealId, dealId: dealId ?? null }),
         });
       }
       setShowForm(false);
@@ -529,8 +626,8 @@ export default function PromptLibraryPanel({ dealId }: Props) {
     }
   }
 
-  function usePrompt(text: string) {
-    setPendingPrompt(text);
+  function usePrompt(p: Prompt | SeedPrompt) {
+    setPendingPrompt(assemblePromptText(p));
     setPanelOpen(true);
   }
 
@@ -614,10 +711,101 @@ export default function PromptLibraryPanel({ dealId }: Props) {
             <textarea
               value={form.text}
               onChange={(e) => setForm(f => ({ ...f, text: e.target.value }))}
-              placeholder="Full prompt text…"
+              placeholder="Core prompt instructions…"
               rows={4}
               style={{ ...inputStyle, resize: "vertical" }}
             />
+
+            {/* Advanced section toggle */}
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(a => !a)}
+              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: C.textMuted, display: "flex", alignItems: "center", gap: 5, padding: 0, alignSelf: "flex-start" }}
+            >
+              <span>{showAdvanced ? "▾" : "▸"}</span>
+              {showAdvanced ? "Hide advanced" : "▼ Advanced — Role · Context · Format · Reasoning"}
+            </button>
+
+            {showAdvanced && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12, borderRadius: 8, background: C.bg + "88", border: `1px solid ${C.border}55` }}>
+                {/* Role */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.purple, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.8 }}>🎭 Role / AI Persona</div>
+                  <textarea
+                    value={form.role}
+                    onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
+                    placeholder="You are a senior M&A Integration Director with 15+ years of PE-backed transaction experience…"
+                    rows={2}
+                    style={{ ...inputStyle, resize: "vertical", fontSize: 11 }}
+                  />
+                </div>
+                {/* Context sources */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.accent, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>📋 Context Sources</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {CONTEXT_SOURCE_OPTIONS.map(opt => {
+                      const active = form.contextSource.includes(opt);
+                      return (
+                        <button key={opt} type="button" onClick={() => setForm(f => ({
+                          ...f,
+                          contextSource: active ? f.contextSource.filter(s => s !== opt) : [...f.contextSource, opt],
+                        }))} style={{
+                          padding: "4px 10px", borderRadius: 12, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                          border: `1px solid ${active ? C.accent : C.border}`,
+                          background: active ? C.accent + "22" : "transparent",
+                          color: active ? C.accent : C.textMuted,
+                        }}>{opt}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {/* Output format */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.teal, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.8 }}>📄 Output Format</div>
+                  <select
+                    value={form.outputFormat}
+                    onChange={e => setForm(f => ({ ...f, outputFormat: e.target.value }))}
+                    style={{ ...inputStyle, fontSize: 11 }}
+                  >
+                    <option value="">Select output format…</option>
+                    {OUTPUT_FORMAT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </div>
+                {/* Reasoning steps */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.warning, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.8 }}>🔢 Reasoning Steps</div>
+                  {form.reasoningSteps.map((step, i) => (
+                    <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center" }}>
+                      <span style={{ fontSize: 10, color: C.textMuted, width: 18, flexShrink: 0 }}>{i + 1}.</span>
+                      <input
+                        value={step}
+                        onChange={e => setForm(f => ({ ...f, reasoningSteps: f.reasoningSteps.map((s, j) => j === i ? e.target.value : s) }))}
+                        placeholder={`Step ${i + 1}…`}
+                        style={{ ...inputStyle, flex: 1, fontSize: 11 }}
+                      />
+                      <button type="button" onClick={() => setForm(f => ({ ...f, reasoningSteps: f.reasoningSteps.filter((_, j) => j !== i) }))}
+                        style={{ background: "none", border: "none", color: C.danger, cursor: "pointer", fontSize: 14, padding: "0 4px" }}>×</button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setForm(f => ({ ...f, reasoningSteps: [...f.reasoningSteps, ""] }))}
+                    style={{ fontSize: 10, color: C.accent, background: "none", border: `1px dashed ${C.accent}55`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+                    + Add step
+                  </button>
+                </div>
+                {/* Example output */}
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.success, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.8 }}>✦ Example Output (reference only — not injected)</div>
+                  <textarea
+                    value={form.exampleOutput}
+                    onChange={e => setForm(f => ({ ...f, exampleOutput: e.target.value }))}
+                    placeholder="Example: Integration is 47% complete across 24 workstreams. Finance (62%) is leading…"
+                    rows={3}
+                    style={{ ...inputStyle, resize: "vertical", fontSize: 11 }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={save} disabled={saving || !form.name.trim() || !form.text.trim()}
                 style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontSize: 12, fontWeight: 600, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.7 : 1 }}>
@@ -713,7 +901,7 @@ function FieldContainer({
   field: FieldDef;
   tierAccent: string;
   userPrompts: Prompt[];
-  onUse: (text: string) => void;
+  onUse: (p: Prompt | SeedPrompt) => void;
   onAdd: () => void;
   onEdit: (p: Prompt) => void;
   onDelete: (id: string) => void;
@@ -759,7 +947,13 @@ function FieldContainer({
           {field.seeds.map((s, i) => (
             <PromptCard
               key={`seed-${i}`}
-              prompt={{ id: `seed-${field.id}-${i}`, name: s.name, text: s.text, category: field.id, isGlobal: true, createdAt: "" }}
+              prompt={{
+                id: `seed-${field.id}-${i}`, name: s.name, text: s.text,
+                category: field.id, isGlobal: true, createdAt: "",
+                role: s.role, contextSource: s.contextSource,
+                outputFormat: s.outputFormat, exampleOutput: s.exampleOutput,
+                reasoningSteps: s.reasoningSteps,
+              }}
               isSeed
               accent={tierAccent}
               onUse={onUse}
@@ -808,81 +1002,131 @@ function PromptCard({
   isSeed?: boolean;
   isUser?: boolean;
   accent: string;
-  onUse: (text: string) => void;
+  onUse: (p: Prompt | SeedPrompt) => void;
   onEdit?: (p: Prompt) => void;
   onDelete?: (id: string) => void;
   deletingId: string | null;
 }) {
+  const [exampleOpen, setExampleOpen] = useState(false);
+  const hasAdvanced = !!(prompt.role || prompt.contextSource?.length || prompt.outputFormat || prompt.reasoningSteps?.length || prompt.exampleOutput);
+
   return (
     <div style={{
       padding: "10px 12px", borderRadius: 8,
       background: isSeed ? accent + "08" : C.deepBg,
       border: `1px solid ${isSeed ? accent + "22" : C.border + "88"}`,
-      display: "flex", gap: 10, alignItems: "flex-start",
     }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 5 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: isSeed ? C.textMuted : C.text }}>
-            {prompt.name}
-          </span>
-          {isSeed && (
-            <span style={{
-              fontSize: 9, padding: "1px 6px", borderRadius: 8,
-              background: accent + "22", color: accent, fontWeight: 700, letterSpacing: 0.3,
-            }}>
-              SUGGESTED
-            </span>
-          )}
-          {isUser && (
-            <span style={{
-              fontSize: 9, padding: "1px 6px", borderRadius: 8,
-              background: C.success + "22", color: C.success, fontWeight: 700, letterSpacing: 0.3,
-            }}>
-              CUSTOM
-            </span>
-          )}
-        </div>
-        {/* Full prompt text — always visible */}
-        <div style={{
-          fontSize: 12, color: C.text, lineHeight: 1.55,
-          whiteSpace: "pre-wrap", wordBreak: "break-word",
-          background: isSeed ? "transparent" : accent + "08",
-          borderRadius: isSeed ? 0 : 6,
-          padding: isSeed ? 0 : "6px 8px",
-        }}>
-          {prompt.text}
-        </div>
-      </div>
+      {/* Header row: name + type badges */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: isSeed ? C.textMuted : C.text }}>{prompt.name}</span>
+            {isSeed && (
+              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: accent + "22", color: accent, fontWeight: 700, letterSpacing: 0.3 }}>SUGGESTED</span>
+            )}
+            {isUser && (
+              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: C.success + "22", color: C.success, fontWeight: 700, letterSpacing: 0.3 }}>CUSTOM</span>
+            )}
+            {prompt.outputFormat && (
+              <span style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: C.teal + "22", color: C.teal, fontWeight: 600 }}>📄 {prompt.outputFormat}</span>
+            )}
+          </div>
 
-      {/* Action buttons */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
-        <button
-          onClick={() => onUse(prompt.text)}
-          style={{
-            padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.success}`,
-            background: `${C.success}22`, color: C.success, fontSize: 11, fontWeight: 700,
-            cursor: "pointer", whiteSpace: "nowrap",
-          }}
-        >
-          Use →
-        </button>
-        {isUser && onEdit && onDelete && (
-          <>
-            <button
-              onClick={() => onEdit(prompt)}
-              style={{ padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 10, cursor: "pointer" }}
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => onDelete(prompt.id)}
-              disabled={deletingId === prompt.id}
-              style={{ padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.danger}44`, background: "transparent", color: C.danger, fontSize: 10, cursor: "pointer", opacity: deletingId === prompt.id ? 0.5 : 1 }}
-            >
-              ×
-            </button>
-          </>
-        )}
+          {/* Role */}
+          {prompt.role && (
+            <div style={{ fontSize: 10, color: C.purple, marginBottom: 5, fontStyle: "italic", lineHeight: 1.4 }}>
+              🎭 {prompt.role.length > 120 ? prompt.role.slice(0, 120) + "…" : prompt.role}
+            </div>
+          )}
+
+          {/* Context source chips */}
+          {prompt.contextSource && prompt.contextSource.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 6 }}>
+              {prompt.contextSource.map(s => (
+                <span key={s} style={{ fontSize: 9, padding: "2px 7px", borderRadius: 10, background: C.accent + "18", color: C.accent, fontWeight: 600 }}>
+                  {s}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Core prompt text */}
+          <div style={{
+            fontSize: 12, color: C.text, lineHeight: 1.55,
+            whiteSpace: "pre-wrap", wordBreak: "break-word",
+            background: isSeed ? "transparent" : accent + "08",
+            borderRadius: isSeed ? 0 : 6,
+            padding: isSeed ? 0 : "6px 8px",
+            marginBottom: hasAdvanced ? 8 : 0,
+          }}>
+            {prompt.text}
+          </div>
+
+          {/* Reasoning steps */}
+          {prompt.reasoningSteps && prompt.reasoningSteps.length > 0 && (
+            <div style={{ marginBottom: 6 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.warning, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.6 }}>Step-by-step:</div>
+              <ol style={{ margin: 0, paddingLeft: 18 }}>
+                {prompt.reasoningSteps.map((step, i) => (
+                  <li key={i} style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5, marginBottom: 2 }}>{step}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {/* Example output — collapsible */}
+          {prompt.exampleOutput && (
+            <div>
+              <button
+                onClick={() => setExampleOpen(o => !o)}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: C.success, padding: 0, display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}
+              >
+                <span>{exampleOpen ? "▾" : "▸"}</span> Example output
+              </button>
+              {exampleOpen && (
+                <div style={{
+                  fontSize: 11, color: C.textMuted, lineHeight: 1.5,
+                  padding: "8px 10px", borderRadius: 6,
+                  background: C.success + "08", border: `1px solid ${C.success}22`,
+                  whiteSpace: "pre-wrap", wordBreak: "break-word",
+                }}>
+                  {prompt.exampleOutput}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
+          <button
+            onClick={() => onUse(prompt)}
+            style={{
+              padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.success}`,
+              background: `${C.success}22`, color: C.success, fontSize: 11, fontWeight: 700,
+              cursor: "pointer", whiteSpace: "nowrap",
+            }}
+          >
+            Use →
+          </button>
+          {isUser && onEdit && onDelete && (
+            <>
+              <button
+                onClick={() => onEdit(prompt)}
+                style={{ padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 10, cursor: "pointer" }}
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => onDelete(prompt.id)}
+                disabled={deletingId === prompt.id}
+                style={{ padding: "4px 10px", borderRadius: 7, border: `1px solid ${C.danger}44`, background: "transparent", color: C.danger, fontSize: 10, cursor: "pointer", opacity: deletingId === prompt.id ? 0.5 : 1 }}
+              >
+                ×
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

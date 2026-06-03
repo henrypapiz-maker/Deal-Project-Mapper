@@ -1,9 +1,11 @@
 import type { Workstream, Phase, Priority, RiskCategory, FunctionalArea } from "./types";
 
 // ============================================================
-// Master Checklist Template — 531 items (full production set)
-// Finance Finance & Operational: 443 items Operational: 484 items (FIN-0001 through HR-0443)
-// IT Integration Taxonomy v3: 46 items (IT-0444 through IT-0489)
+// Master Checklist Template — 530 items (full production set)
+// FIN: 296 · CGV: 80 · IT: 46 · INT: 35 · ESG: 22 · LGL: 18
+// FAC: 13 · COM: 11 · HR: 9 (IDs: FIN-0001 through FIN-0530)
+// Note: commercials/compliance/regulatory functional areas are UI-only;
+// checklist items for these areas are a planned backlog item (P0).
 // ============================================================
 
 export interface MasterItem {

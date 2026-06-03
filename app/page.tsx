@@ -593,7 +593,7 @@ export default function Home() {
             Generating Integration Plan…
           </div>
           <div style={{ fontSize: 12, color: "#94A3B8", maxWidth: 380, lineHeight: 1.6 }}>
-            Running decision tree · Scanning for risks · Configuring 531-item checklist across 24 workstreams
+            Running decision tree · Scanning for risks · Configuring 530-item checklist across 24 workstreams
           </div>
           <div style={{ marginTop: 24, display: "flex", gap: 6, justifyContent: "center" }}>
             {[0, 1, 2].map((i) => (
@@ -934,13 +934,13 @@ export default function Home() {
         </h1>
         <p style={{ fontSize: 15, color: "#94A3B8", lineHeight: 1.8, marginBottom: 40, maxWidth: 540, margin: "0 auto 40px", fontWeight: 400 }}>
           Configure your deal across 4 tiers — org context, deal identity, complexity scope, and AI tuning.
-          Receive a fully scoped integration program: 531-item checklist, 8-category risk engine, and Claude AI guidance across 15 functional areas.
+          Receive a fully scoped integration program: 530-item checklist, 8-category risk engine, and Claude AI guidance across 15 functional areas.
         </p>
 
         {/* Feature Pills */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginBottom: 44 }}>
           {[
-            { label: "531-Item Checklist",     icon: "☐", color: "#60A5FA" },
+            { label: "530-Item Checklist",     icon: "☐", color: "#60A5FA" },
             { label: "15 Functional Areas",    icon: "◈", color: "#60A5FA" },
             { label: "8-Category Risk Engine", icon: "⚡", color: "#F59E0B" },
             { label: "Claude AI Guidance",     icon: "✦", color: "#A78BFA" },
@@ -1007,7 +1007,7 @@ export default function Home() {
           <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16, fontWeight: 600 }}>How it works</div>
           {[
             ["01", "Tier 0 org profile sets acquirer context — GAAP, ERP, IMO structure, buyer maturity — persisted across all deals"],
-            ["02", "Decision tree maps 4-tier intake across 15 functional areas to 531 checklist items"],
+            ["02", "Decision tree maps 4-tier intake across 15 functional areas to 530 checklist items"],
             ["03", "Risk scanner runs 8 detection rules across 24 workstreams; milestones auto-calculated from close date"],
             ["04", "Structured Prompt Library with role, context, format and reasoning injects targeted AI guidance per workstream"],
           ].map(([num, text]) => (

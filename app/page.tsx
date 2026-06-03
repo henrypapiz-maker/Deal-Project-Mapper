@@ -932,27 +932,29 @@ export default function Home() {
         <h1 style={{ fontSize: 38, fontWeight: 800, color: "#F8FAFC", marginBottom: 16, lineHeight: 1.15, letterSpacing: -0.5 }}>
           M&A Integration Engine
         </h1>
-        <p style={{ fontSize: 15, color: "#94A3B8", lineHeight: 1.8, marginBottom: 40, maxWidth: 520, margin: "0 auto 40px", fontWeight: 400 }}>
-          Configure your deal profile across 3 tiers. Receive a fully scoped integration program —
-          risk assessment, 24-workstream checklist with priority override, and Claude AI guidance.
+        <p style={{ fontSize: 15, color: "#94A3B8", lineHeight: 1.8, marginBottom: 40, maxWidth: 540, margin: "0 auto 40px", fontWeight: 400 }}>
+          Configure your deal across 4 tiers — org context, deal identity, complexity scope, and AI tuning.
+          Receive a fully scoped integration program: 531-item checklist, 8-category risk engine, and Claude AI guidance across 15 functional areas.
         </p>
 
         {/* Feature Pills */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "center", marginBottom: 44 }}>
           {[
-            { label: "531-Item Checklist", icon: "\u2610" },
-            { label: "8-Category Risk Engine", icon: "\u26A1" },
-            { label: "Claude AI Guidance", icon: "\u2726" },
-            { label: "24 Workstreams", icon: "\u25CE" },
-            { label: "5-Phase Timeline", icon: "\u25B8" },
-            { label: "10 IT Domains", icon: "\u2B21" },
+            { label: "531-Item Checklist",     icon: "☐", color: "#60A5FA" },
+            { label: "15 Functional Areas",    icon: "◈", color: "#60A5FA" },
+            { label: "8-Category Risk Engine", icon: "⚡", color: "#F59E0B" },
+            { label: "Claude AI Guidance",     icon: "✦", color: "#A78BFA" },
+            { label: "24 Workstreams",         icon: "◎", color: "#60A5FA" },
+            { label: "4-Tier Intake Wizard",   icon: "▸", color: "#10B981" },
+            { label: "5-Phase Timeline",       icon: "⬡", color: "#60A5FA" },
+            { label: "Admin Deal Management",  icon: "◆", color: "#F59E0B" },
           ].map((f) => (
             <span key={f.label} style={{
               padding: "6px 14px", borderRadius: 24, fontSize: 11, fontWeight: 500,
               background: "rgba(30, 41, 59, 0.7)", color: "#CBD5E1",
               border: "1px solid rgba(51, 65, 85, 0.6)",
               display: "flex", alignItems: "center", gap: 6,
-            }}><span style={{ color: "#60A5FA", fontSize: 10 }}>{f.icon}</span> {f.label}</span>
+            }}><span style={{ color: f.color, fontSize: 10 }}>{f.icon}</span> {f.label}</span>
           ))}
         </div>
 
@@ -1004,10 +1006,10 @@ export default function Home() {
         }}>
           <div style={{ fontSize: 10, color: "#64748B", textTransform: "uppercase", letterSpacing: 2, marginBottom: 16, fontWeight: 600 }}>How it works</div>
           {[
-            ["01", "Decision tree maps 13 intake fields across 3 tiers to 531 checklist items"],
-            ["02", "Risk scanner runs 8 detection rules across 24 workstreams"],
-            ["03", "Functional scope filters IT + Finance items; milestones auto-calculated"],
-            ["04", "Claude AI generates contextual guidance per item with priority override"],
+            ["01", "Tier 0 org profile sets acquirer context — GAAP, ERP, IMO structure, buyer maturity — persisted across all deals"],
+            ["02", "Decision tree maps 4-tier intake across 15 functional areas to 531 checklist items"],
+            ["03", "Risk scanner runs 8 detection rules across 24 workstreams; milestones auto-calculated from close date"],
+            ["04", "Structured Prompt Library with role, context, format and reasoning injects targeted AI guidance per workstream"],
           ].map(([num, text]) => (
             <div key={num} style={{ display: "flex", gap: 14, marginBottom: 12, alignItems: "flex-start" }}>
               <span style={{
@@ -1020,7 +1022,7 @@ export default function Home() {
         </div>
 
         <div style={{ marginTop: 24, fontSize: 10, color: "#334155", letterSpacing: 0.5 }}>
-          DealMapper v0.6.0 · M&A Integration Engine · April 2026
+          DealMapper v0.7.2 · M&A Integration Engine · June 2026
         </div>
       </div>
     </div>

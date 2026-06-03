@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { DealIntake, DealStructure, IntegrationModel, TsaRequired, FunctionalArea, ParentProfile, OrgType, ImoStructure } from "@/lib/types";
 
 const COLORS = {
@@ -184,8 +184,29 @@ const FUNCTION_OPTIONS: { code: string; label: string }[] = [
   { code: "controls",       label: "Controls & Governance" },
   { code: "fpa",            label: "FP&A" },
   { code: "operations",     label: "Operations" },
+  { code: "commercials",    label: "Commercial & Contracts" },
+  { code: "compliance",     label: "Compliance & Ethics" },
+  { code: "regulatory",     label: "Regulatory & Gov. Affairs" },
 ];
 const PRESET_FUNCTION_CODES = new Set([...FUNCTION_OPTIONS.map(f => f.code), "all"]);
+
+const FUNCTION_WORKSTREAM_COUNTS: Record<string, { count: number; keyAreas: string }> = {
+  finance:        { count: 14, keyAreas: "Close, Reporting, AP/AR, Consolidation" },
+  tax:            { count: 8,  keyAreas: "Tax Provision, Transfer Pricing, Compliance" },
+  treasury:       { count: 6,  keyAreas: "Cash Management, Banking, FX" },
+  it:             { count: 10, keyAreas: "Governance, Enterprise Apps, Infrastructure, ITGC" },
+  hr:             { count: 9,  keyAreas: "HRIS, Benefits, Payroll, Org Design" },
+  legal:          { count: 7,  keyAreas: "Entity Rationalization, IP, Contracts" },
+  communications: { count: 4,  keyAreas: "Internal Comms, External, Branding" },
+  facilities:     { count: 5,  keyAreas: "Leases, Shared Services, Real Estate" },
+  esg:            { count: 4,  keyAreas: "Reporting, Sustainability, D&I" },
+  controls:       { count: 6,  keyAreas: "SOX, ITGC, Policies, Audit" },
+  fpa:            { count: 5,  keyAreas: "Budgeting, Forecasting, Reporting" },
+  operations:     { count: 8,  keyAreas: "Supply Chain, Manufacturing, QA" },
+  commercials:    { count: 7,  keyAreas: "Contracts, Earn-outs, Supplier Re-papering, Revenue Recognition" },
+  compliance:     { count: 6,  keyAreas: "Code of Conduct, Whistleblower, Ethics Training, Regulatory Programs" },
+  regulatory:     { count: 5,  keyAreas: "Antitrust Clearance, Licenses & Permits, Government Relations" },
+};
 
 interface Props {
   onSubmit: (intake: DealIntake) => void;
@@ -227,6 +248,9 @@ export default function IntakeForm({ onSubmit }: Props) {
   const [gaapOtherMode, setGaapOtherMode] = useState(false);
   const [customGaapText, setCustomGaapText] = useState("");
   const [customContextTopic, setCustomContextTopic] = useState("");
+  const [tier1NotesOpen, setTier1NotesOpen] = useState(false);
+  const [saveLabel, setSaveLabel] = useState<"idle" | "saved">("idle");
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Parent profile state ──────────────────────────────────
   const [profiles, setProfiles]             = useState<ParentProfile[]>([]);
@@ -339,6 +363,9 @@ export default function IntakeForm({ onSubmit }: Props) {
   function set<K extends keyof DealIntake>(key: K, value: DealIntake[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     setErrors((prev) => ({ ...prev, [key]: undefined }));
+    setSaveLabel("saved");
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => setSaveLabel("idle"), 2000);
   }
 
   function toggleJurisdiction(code: string) {
@@ -418,8 +445,15 @@ export default function IntakeForm({ onSubmit }: Props) {
   const tierDescriptions = [
     "4 required fields — always collected",
     "6 fields — drives workstream activation & scope",
-    "3 fields — precision tuning for AI guidance",
+    "2 fields — precision tuning for AI guidance",
   ];
+
+  const tier1CompletedCount = [
+    form.dealName.trim(),
+    form.dealStructure,
+    form.integrationModel,
+    form.closeDate,
+  ].filter(Boolean).length;
 
   // Derived helpers
   const customJurisdictions = form.jurisdictions.filter(j => !PRESET_JURISDICTION_CODES.has(j));
@@ -967,6 +1001,18 @@ export default function IntakeForm({ onSubmit }: Props) {
       {tier === 1 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
+          {/* Completion indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{
+              fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 20,
+              background: tier1CompletedCount === 4 ? COLORS.success + "22" : COLORS.accent + "15",
+              color: tier1CompletedCount === 4 ? COLORS.success : COLORS.accent,
+              border: `1px solid ${tier1CompletedCount === 4 ? COLORS.success + "55" : COLORS.accent + "44"}`,
+            }}>
+              {tier1CompletedCount} / 4 required fields complete
+            </div>
+          </div>
+
           <Field label="Deal Code Name" required error={errors.dealName}>
             <input
               type="text"
@@ -975,6 +1021,19 @@ export default function IntakeForm({ onSubmit }: Props) {
               placeholder='e.g., "Project Meridian"'
               style={inputStyle(!!errors.dealName)}
             />
+          </Field>
+
+          {/* ── Target Close Date (position 2) ── */}
+          <Field label="Target Close Date" required error={errors.closeDate}>
+            <input
+              type="date"
+              value={form.closeDate}
+              onChange={(e) => set("closeDate", e.target.value)}
+              style={inputStyle(!!errors.closeDate)}
+            />
+            <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 4 }}>
+              Used to calculate all milestone dates (Day 1, 30, 60, 90, Year 1)
+            </div>
           </Field>
 
           {/* ── Deal Structure ── */}
@@ -991,26 +1050,11 @@ export default function IntakeForm({ onSubmit }: Props) {
                 />
               ))}
             </div>
-            {/* Optional context notes — appears once a structure is chosen */}
-            {form.dealStructure && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 4 }}>
-                  📝 Optional — add structure-specific context (e.g. partial carve-out with 18-month TSA obligations, specific asset exclusions, retained liabilities):
-                </div>
-                <textarea
-                  value={form.dealStructureNotes ?? ""}
-                  onChange={(e) => set("dealStructureNotes", e.target.value)}
-                  placeholder="Describe any nuances about this deal's structure…"
-                  rows={2}
-                  style={{ ...inputStyle(), resize: "vertical", fontSize: 11 }}
-                />
-              </div>
-            )}
           </Field>
 
-          {/* ── Integration Model ── */}
+          {/* ── Integration Model — horizontal 3-button row ── */}
           <Field label="Integration Model" required>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               {INTEGRATION_MODELS.map((opt) => (
                 <SelectCard
                   key={opt.value}
@@ -1021,34 +1065,47 @@ export default function IntakeForm({ onSubmit }: Props) {
                 />
               ))}
             </div>
-            {/* Optional model notes */}
-            {form.integrationModel && (
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 4 }}>
-                  📝 Optional — describe integration boundaries (e.g. IT fully integrated, Finance standalone for 12 months, HR systems retained):
-                </div>
-                <textarea
-                  value={form.integrationModelNotes ?? ""}
-                  onChange={(e) => set("integrationModelNotes", e.target.value)}
-                  placeholder="Describe integration scope, timeline, or function-level distinctions…"
-                  rows={2}
-                  style={{ ...inputStyle(), resize: "vertical", fontSize: 11 }}
-                />
-              </div>
-            )}
           </Field>
 
-          <Field label="Target Close Date" required error={errors.closeDate}>
-            <input
-              type="date"
-              value={form.closeDate}
-              onChange={(e) => set("closeDate", e.target.value)}
-              style={inputStyle(!!errors.closeDate)}
-            />
-            <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 4 }}>
-              Used to calculate all milestone dates (Day 1, 30, 60, 90, Year 1)
-            </div>
-          </Field>
+          {/* ── Deal Notes expander (consolidates structure + model notes) ── */}
+          <div>
+            <button
+              onClick={() => setTier1NotesOpen(o => !o)}
+              style={{
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 11, color: COLORS.textMuted, display: "flex",
+                alignItems: "center", gap: 5, padding: 0,
+              }}
+            >
+              <span style={{ fontSize: 12 }}>{tier1NotesOpen ? "▾" : "▸"}</span>
+              {tier1NotesOpen ? "Hide deal notes" : "+ Add deal notes"}
+            </button>
+            {tier1NotesOpen && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12, padding: 14, borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.cardBg }}>
+                <div>
+                  <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 4, fontWeight: 600 }}>Structure notes</div>
+                  <textarea
+                    value={form.dealStructureNotes ?? ""}
+                    onChange={(e) => set("dealStructureNotes", e.target.value)}
+                    placeholder="Describe any nuances about this deal's structure (e.g. partial carve-out, asset exclusions, retained liabilities)…"
+                    rows={2}
+                    style={{ ...inputStyle(), resize: "vertical", fontSize: 11 }}
+                  />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 4, fontWeight: 600 }}>Integration model notes</div>
+                  <textarea
+                    value={form.integrationModelNotes ?? ""}
+                    onChange={(e) => set("integrationModelNotes", e.target.value)}
+                    placeholder="Describe integration scope, timeline, or function-level distinctions…"
+                    rows={2}
+                    style={{ ...inputStyle(), resize: "vertical", fontSize: 11 }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
       )}
 
@@ -1059,8 +1116,86 @@ export default function IntakeForm({ onSubmit }: Props) {
             💡 These fields help refine your integration plan. Skip any field you don&apos;t know yet — they can be updated later.
           </div>
 
-          {/* ── Cross-Border ── */}
-          <Field label="Cross-Border Deal?">
+          {/* ── Industry / Sector (position 1) ── */}
+          <Field label="Industry / Sector" optional>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+              {SECTORS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    setSectorOtherMode(false);
+                    setCustomSectorText("");
+                    set("industrySector", s);
+                  }}
+                  style={{
+                    padding: "6px 8px", borderRadius: 4, border: `1px solid`,
+                    borderColor: form.industrySector === s && !sectorOtherMode ? COLORS.accent : COLORS.border,
+                    background: form.industrySector === s && !sectorOtherMode ? COLORS.accent + "22" : COLORS.cardBg,
+                    color: form.industrySector === s && !sectorOtherMode ? COLORS.accent : COLORS.textMuted,
+                    fontSize: 10, cursor: "pointer",
+                  }}
+                >
+                  {s}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  setSectorOtherMode(true);
+                  set("industrySector", customSectorText || "");
+                }}
+                style={{
+                  padding: "6px 8px", borderRadius: 4, border: `1px solid`,
+                  borderColor: sectorOtherMode || isSectorCustom ? COLORS.accent : COLORS.border,
+                  background: sectorOtherMode || isSectorCustom ? COLORS.accent + "22" : COLORS.cardBg,
+                  color: sectorOtherMode || isSectorCustom ? COLORS.accent : COLORS.textMuted,
+                  fontSize: 10, cursor: "pointer",
+                }}
+              >
+                Other
+              </button>
+            </div>
+            {(sectorOtherMode || isSectorCustom) && (
+              <input
+                autoFocus={sectorOtherMode && !isSectorCustom}
+                type="text"
+                value={form.industrySector || customSectorText}
+                onChange={(e) => {
+                  setCustomSectorText(e.target.value);
+                  set("industrySector", e.target.value);
+                }}
+                placeholder="Specify your sector (e.g. EdTech, AgriTech, Gaming, Logistics)…"
+                style={{ ...inputStyle(), marginTop: 8, fontSize: 11 }}
+              />
+            )}
+          </Field>
+
+          {/* ── Deal Value Range + Target Legal Entities (position 2) ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+            <Field label="Deal Value Range" optional>
+              <select
+                value={form.dealValueRange}
+                onChange={(e) => set("dealValueRange", e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">Select range…</option>
+                {VALUE_RANGES.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </Field>
+
+            <Field label="Target Legal Entities" optional hint="Number of legal entities being acquired">
+              <input
+                type="number"
+                min={1}
+                max={500}
+                value={form.targetEntities}
+                onChange={(e) => set("targetEntities", parseInt(e.target.value) || 1)}
+                style={inputStyle()}
+              />
+            </Field>
+          </div>
+
+          {/* ── Cross-Border (position 3) ── */}
+          <Field label="Cross-Border Deal?" optional>
             <div style={{ display: "flex", gap: 8 }}>
               {[
                 { label: "Yes — Cross-Border", value: true },
@@ -1086,7 +1221,7 @@ export default function IntakeForm({ onSubmit }: Props) {
             </div>
           </Field>
 
-          {/* ── Jurisdictions ── */}
+          {/* ── Jurisdictions (conditional, position 4) ── */}
           {form.crossBorder && (
             <Field label="Jurisdictions" hint="Select all jurisdictions with material operations or regulatory filing requirements">
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
@@ -1107,7 +1242,6 @@ export default function IntakeForm({ onSubmit }: Props) {
                 ))}
               </div>
 
-              {/* Custom jurisdiction chips */}
               {customJurisdictions.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
                   {customJurisdictions.map((j) => (
@@ -1127,7 +1261,6 @@ export default function IntakeForm({ onSubmit }: Props) {
                 </div>
               )}
 
-              {/* Add custom jurisdiction */}
               <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
                 <input
                   type="text"
@@ -1159,8 +1292,8 @@ export default function IntakeForm({ onSubmit }: Props) {
             </Field>
           )}
 
-          {/* ── TSA Required ── */}
-          <Field label="TSA Required?">
+          {/* ── TSA Required (position 5) ── */}
+          <Field label="TSA Required?" optional>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               {(["yes", "no", "tbd"] as TsaRequired[]).map((v) => (
                 <button
@@ -1188,11 +1321,10 @@ export default function IntakeForm({ onSubmit }: Props) {
                 ✓ No TSA — TSA checklist items will be marked N/A
               </div>
             )}
-            {/* TSA context notes — shown when Yes or TBD */}
             {(form.tsaRequired === "yes" || form.tsaRequired === "tbd") && (
               <div style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 4 }}>
-                  📝 Optional — describe TSA scope, expected duration, or functions covered:
+                  Add notes — describe TSA scope, expected duration, or functions covered:
                 </div>
                 <input
                   type="text"
@@ -1205,8 +1337,8 @@ export default function IntakeForm({ onSubmit }: Props) {
             )}
           </Field>
 
-          {/* ── Functional Scope ── */}
-          <Field label="Functional Scope" hint="Select which functions are in scope. Unselected functions will have checklist items marked N/A.">
+          {/* ── Functional Scope (position 6) ── */}
+          <Field label="Functional Scope" optional hint="Select which functions are in scope. Unselected functions will have checklist items marked N/A.">
             <div style={{ marginBottom: 8 }}>
               <button
                 onClick={() => set("functionalScope", ["all"])}
@@ -1224,6 +1356,7 @@ export default function IntakeForm({ onSubmit }: Props) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
               {FUNCTION_OPTIONS.map((fn) => {
                 const isSelected = form.functionalScope.includes("all" as any) || form.functionalScope.includes(fn.code as any);
+                const wsInfo = FUNCTION_WORKSTREAM_COUNTS[fn.code];
                 return (
                   <button
                     key={fn.code}
@@ -1245,11 +1378,32 @@ export default function IntakeForm({ onSubmit }: Props) {
                       fontSize: 10, fontWeight: 600, cursor: "pointer", textAlign: "left",
                     }}
                   >
-                    {fn.label}
+                    <div>{fn.label}</div>
+                    {isSelected && wsInfo && (
+                      <div style={{ fontSize: 9, color: COLORS.accent, opacity: 0.8, marginTop: 2, fontWeight: 400 }}>
+                        {wsInfo.count} workstreams
+                      </div>
+                    )}
                   </button>
                 );
               })}
             </div>
+
+            {/* Aggregate workstream summary when functions are selected */}
+            {!form.functionalScope.includes("all") && (form.functionalScope as string[]).some(c => FUNCTION_WORKSTREAM_COUNTS[c]) && (
+              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}33`, fontSize: 10, color: COLORS.accent }}>
+                {(() => {
+                  const selectedCodes = (form.functionalScope as string[]).filter(c => FUNCTION_WORKSTREAM_COUNTS[c]);
+                  const total = selectedCodes.reduce((sum, c) => sum + (FUNCTION_WORKSTREAM_COUNTS[c]?.count ?? 0), 0);
+                  return `${selectedCodes.length} function${selectedCodes.length !== 1 ? "s" : ""} selected — ${total} workstreams activated`;
+                })()}
+              </div>
+            )}
+            {form.functionalScope.includes("all") && (
+              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}33`, fontSize: 10, color: COLORS.accent }}>
+                All {FUNCTION_OPTIONS.length} functions selected — {Object.values(FUNCTION_WORKSTREAM_COUNTS).reduce((s, v) => s + v.count, 0)} workstreams activated
+              </div>
+            )}
 
             {/* Custom function chips */}
             {customFunctions.length > 0 && (
@@ -1294,92 +1448,8 @@ export default function IntakeForm({ onSubmit }: Props) {
                 + Add
               </button>
             </div>
-
-            {(form.functionalScope.includes("all") || form.functionalScope.includes("it")) && (
-              <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 4, background: COLORS.accent + "18", border: `1px solid ${COLORS.accent}33`, fontSize: 10, color: COLORS.accent }}>
-                IT & Systems selected — 10 IT workstreams activated (Governance, Enterprise Apps, Infrastructure, ITGC, etc.)
-              </div>
-            )}
           </Field>
 
-          {/* ── Industry / Sector ── */}
-          <Field label="Industry / Sector">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-              {SECTORS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => {
-                    setSectorOtherMode(false);
-                    setCustomSectorText("");
-                    set("industrySector", s);
-                  }}
-                  style={{
-                    padding: "6px 8px", borderRadius: 4, border: `1px solid`,
-                    borderColor: form.industrySector === s && !sectorOtherMode ? COLORS.accent : COLORS.border,
-                    background: form.industrySector === s && !sectorOtherMode ? COLORS.accent + "22" : COLORS.cardBg,
-                    color: form.industrySector === s && !sectorOtherMode ? COLORS.accent : COLORS.textMuted,
-                    fontSize: 10, cursor: "pointer",
-                  }}
-                >
-                  {s}
-                </button>
-              ))}
-              {/* "Other" button */}
-              <button
-                onClick={() => {
-                  setSectorOtherMode(true);
-                  set("industrySector", customSectorText || "");
-                }}
-                style={{
-                  padding: "6px 8px", borderRadius: 4, border: `1px solid`,
-                  borderColor: sectorOtherMode || isSectorCustom ? COLORS.accent : COLORS.border,
-                  background: sectorOtherMode || isSectorCustom ? COLORS.accent + "22" : COLORS.cardBg,
-                  color: sectorOtherMode || isSectorCustom ? COLORS.accent : COLORS.textMuted,
-                  fontSize: 10, cursor: "pointer",
-                }}
-              >
-                Other
-              </button>
-            </div>
-            {/* Custom sector text input */}
-            {(sectorOtherMode || isSectorCustom) && (
-              <input
-                autoFocus={sectorOtherMode && !isSectorCustom}
-                type="text"
-                value={form.industrySector || customSectorText}
-                onChange={(e) => {
-                  setCustomSectorText(e.target.value);
-                  set("industrySector", e.target.value);
-                }}
-                placeholder="Specify your sector (e.g. EdTech, AgriTech, Gaming, Logistics)…"
-                style={{ ...inputStyle(), marginTop: 8, fontSize: 11 }}
-              />
-            )}
-          </Field>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-            <Field label="Deal Value Range">
-              <select
-                value={form.dealValueRange}
-                onChange={(e) => set("dealValueRange", e.target.value)}
-                style={selectStyle}
-              >
-                <option value="">Select range…</option>
-                {VALUE_RANGES.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </Field>
-
-            <Field label="Target Legal Entities" hint="Number of legal entities being acquired">
-              <input
-                type="number"
-                min={1}
-                max={500}
-                value={form.targetEntities}
-                onChange={(e) => set("targetEntities", parseInt(e.target.value) || 1)}
-                style={inputStyle()}
-              />
-            </Field>
-          </div>
         </div>
       )}
 
@@ -1392,7 +1462,7 @@ export default function IntakeForm({ onSubmit }: Props) {
           </div>
 
           {/* ── Target GAAP ── */}
-          <Field label="Target Accounting Standard (GAAP)">
+          <Field label="Target Accounting Standard (GAAP)" optional>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
               {GAAP_OPTIONS.map((g) => (
                 <button
@@ -1457,7 +1527,7 @@ export default function IntakeForm({ onSubmit }: Props) {
           </Field>
 
           {/* ── Target ERP ── */}
-          <Field label="Target ERP System">
+          <Field label="Target ERP System" optional>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
               {ERP_OPTIONS.map((e) => (
                 <button
@@ -1510,34 +1580,6 @@ export default function IntakeForm({ onSubmit }: Props) {
               />
             )}
           </Field>
-
-          {/* ── Buyer Maturity — inherited from Parent Profile (Tier 0) ── */}
-          <div style={{
-            padding: "12px 16px", borderRadius: 8,
-            background: "#A78BFA0A", border: "1px solid #A78BFA33",
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-          }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#A78BFA", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.8 }}>
-                Acquirer M&A Maturity
-              </div>
-              {form.buyerMaturity ? (
-                <div style={{ fontSize: 12, color: COLORS.text, fontWeight: 600 }}>
-                  {BUYER_MATURITY_OPTIONS.find(b => b.value === form.buyerMaturity)?.label ?? form.buyerMaturity}
-                  <span style={{ fontSize: 10, color: COLORS.textMuted, fontWeight: 400, marginLeft: 8 }}>
-                    — inherited from Parent Profile
-                  </span>
-                </div>
-              ) : (
-                <div style={{ fontSize: 11, color: COLORS.textMuted }}>
-                  Not set — configure in the Parent Profile (Tier 0) above
-                </div>
-              )}
-            </div>
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, color: "#A78BFA", background: "#A78BFA18", padding: "2px 7px", borderRadius: 4, whiteSpace: "nowrap" }}>
-              TIER 0
-            </span>
-          </div>
 
           {/* ══ ADDITIONAL CONTEXT BUCKET ══════════════════════════════════════ */}
           <div style={{ marginTop: 8 }}>
@@ -1692,10 +1734,17 @@ export default function IntakeForm({ onSubmit }: Props) {
       )}
 
       {/* Navigation */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 32, paddingTop: 20, borderTop: `1px solid ${COLORS.border}` }}>
-        {tier > 1 ? (
-          <button onClick={handleBack} style={secondaryBtnStyle}>← Back</button>
-        ) : <div />}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 32, paddingTop: 20, borderTop: `1px solid ${COLORS.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {tier > 1 ? (
+            <button onClick={handleBack} style={secondaryBtnStyle}>← Back</button>
+          ) : <div />}
+          {saveLabel === "saved" && (
+            <span style={{ fontSize: 10, color: COLORS.success, display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 8 }}>●</span> Autosaved
+            </span>
+          )}
+        </div>
 
         {tier < 3 ? (
           <button onClick={handleNext} style={primaryBtnStyle}>
@@ -1709,7 +1758,7 @@ export default function IntakeForm({ onSubmit }: Props) {
               ...primaryBtnStyle,
               background: (!form.dealName || !form.closeDate)
                 ? COLORS.border
-                : `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.accentLight})`,
+                : "linear-gradient(135deg, #059669, #10B981)",
               cursor: (!form.dealName || !form.closeDate) ? "not-allowed" : "pointer",
             }}
           >
@@ -1724,15 +1773,17 @@ export default function IntakeForm({ onSubmit }: Props) {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function Field({
-  label, required, hint, error, children
+  label, required, optional, hint, error, children
 }: {
-  label: string; required?: boolean; hint?: string; error?: string; children: React.ReactNode;
+  label: string; required?: boolean; optional?: boolean; hint?: string; error?: string; children: React.ReactNode;
 }) {
   return (
     <div>
       <div style={{ marginBottom: 8 }}>
         <label style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "#94A3B8" }}>
-          {label}{required && <span style={{ color: "#EF4444", marginLeft: 2 }}>*</span>}
+          {label}
+          {required && <span style={{ color: "#EF4444", marginLeft: 2 }}>*</span>}
+          {optional && <span style={{ fontSize: 9, fontWeight: 400, color: "#64748B", marginLeft: 6, textTransform: "none", letterSpacing: 0 }}>(optional)</span>}
         </label>
         {hint && <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>{hint}</div>}
       </div>

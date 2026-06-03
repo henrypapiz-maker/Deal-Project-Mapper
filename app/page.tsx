@@ -72,9 +72,9 @@ export default function Home() {
 
   async function bulkArchive() {
     setBulkWorking(true);
-    for (const id of selectedDeals) {
-      await fetch(`/api/deals?id=${id}&action=archive`, { method: "PATCH" });
-    }
+    await Promise.all(Array.from(selectedDeals).map(id =>
+      fetch(`/api/deals?id=${id}&action=archive`, { method: "PATCH" })
+    ));
     setSelectedDeals(new Set());
     setBulkWorking(false);
     fetchDeals(showArchived);
@@ -83,9 +83,9 @@ export default function Home() {
   async function bulkDelete() {
     if (!window.confirm(`Permanently delete ${selectedDeals.size} deal(s)? This cannot be undone.`)) return;
     setBulkWorking(true);
-    for (const id of selectedDeals) {
-      await fetch(`/api/deals?id=${id}`, { method: "DELETE" });
-    }
+    await Promise.all(Array.from(selectedDeals).map(id =>
+      fetch(`/api/deals?id=${id}`, { method: "DELETE" })
+    ));
     setSelectedDeals(new Set());
     setBulkWorking(false);
     fetchDeals(showArchived);

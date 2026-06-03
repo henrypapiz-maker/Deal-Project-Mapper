@@ -47,37 +47,86 @@
 | v0.5.6 | `45c82e9` | Apr 1 | Contextual help drawer with tab-specific content |
 | v0.6.0 | `7885b9b` | Apr 1 | 15 of 18 QA bugs from beta test report resolved |
 | v0.6.1 | `e4b2c6e` | Apr 1 | 12 pressure test findings (P0-P3) resolved |
+| v0.7.0 | `1ee3f0d` | Jun 3 | Intake UX overhaul: field reorder, Tier 0 org profile, 15 functions, workstream badges, context bucket |
+| v0.7.1 | `9626f14` | Jun 3 | Admin deal management (archive/unarchive/export/bulk) + prompt library 5 new structured fields |
+| v0.7.2 | `03f7d6b` | Jun 3 | Fix: Set iteration replaced with Array.from() for ES5 TypeScript compat |
 
-**Total commits in 36 hours: 31**
+**Session 1 (Mar 31 – Apr 1): 31 commits · ~36 hours**  
+**Session 2 (Jun 3, 2026): 8 commits · Intake UX + Admin + Prompt Library**  
+**Total project commits: 65+**
+
+---
+
+## Session 2 Summary (June 2026)
+
+### What Was Built
+
+**1. Intake Form UX Overhaul** (`components/intake/IntakeForm.tsx`)
+- Tier 0 persistent org profile (12 fields: org name/type, GAAP/ERP, FYE, currency, IMO structure/lead, buyer maturity, playbook)
+- Tier 1 reorder: Target Close Date to position 2; Integration Model → horizontal 3-button row
+- Tier 1 UX: scattered inline notes → single `+ Add deal notes` expander; `0/4 required` completion chip; `● Autosaved` indicator
+- Tier 2 reorder: Industry/Sector first → Deal Value + Entities → Cross-Border → TSA → Functional Scope
+- 3 new functional areas: Commercial & Contracts · Compliance & Ethics · Regulatory & Gov. Affairs (12 → 15 functions, 104 total workstreams)
+- Workstream count badges on all 15 function buttons (was IT-only); aggregate total badge
+- Tier 3: removed read-only Buyer Maturity block; `(optional)` labels on GAAP/ERP; Generate CTA turned green
+- General Context Bucket: 8 topic chips + custom input
+
+**2. Admin Deal Management** (`app/page.tsx`, `app/api/deals/route.ts`)
+- Admin mode toggle (amber visual mode) in Deal Portfolio
+- Archive / Unarchive (soft delete): `PATCH /api/deals?id=&action=archive|unarchive`
+- Export deal → JSON download
+- Two-step inline delete confirmation (no window.confirm)
+- Bulk select with "Select all on page" + Archive Selected / Delete Selected
+- `GET /api/deals` now filters archived by default; `?includeArchived=true` reveals them
+
+**3. Prompt Library Structural Enhancement** (`components/agent-admin/PromptLibraryPanel.tsx`, `app/api/agent/prompts/route.ts`)
+- 5 new fields per prompt: `role`, `contextSource`, `outputFormat`, `exampleOutput`, `reasoningSteps`
+- `assemblePromptText()`: Use → injects role prefix + text + numbered steps; exampleOutput excluded
+- Enhanced PromptCard: purple role, blue context chips, teal format badge, numbered reasoning, collapsible example
+- Advanced collapsible form section for all 5 new fields
+- 4 seed prompts fully enriched; 52 remain text-only (backward-compatible)
+- DB schema migration: `ALTER TABLE agents.prompt_library ADD COLUMN IF NOT EXISTS …` (idempotent)
 
 ---
 
 ## 2. Architecture Overview
 
-### File Structure (20 source files, 7,508 lines)
+### File Structure (Session 1: 20 source files, 7,508 lines · Session 2: ~25 files, ~14,000+ lines)
 
 ```
 app/
   api/
-    ai-guidance/route.ts    (86 lines)  — Claude AI guidance endpoint
-    bowler/route.ts          (216 lines) — Bowler table CRUD + snapshot generation
-    deals/route.ts           (391 lines) — Deal CRUD, save/load from Neon
-    periods/route.ts         (51 lines)  — Reporting period management
-    steerco/route.ts         (74 lines)  — SteerCo narrative persistence
-    views/route.ts           (46 lines)  — View preference persistence
-  layout.tsx                 (26 lines)  — App shell, metadata
-  page.tsx                   (790 lines) — App state machine, all callbacks
+    agent/
+      prompts/route.ts       (~130 lines) — Prompt library CRUD + DB migration [Session 2]
+    ai-guidance/route.ts     (86 lines)   — Claude AI guidance endpoint
+    assistant/route.ts       (~80 lines)  — Claude assistant chat integration [Session 2]
+    bowler/route.ts          (216 lines)  — Bowler table CRUD + snapshot generation
+    deals/route.ts           (~430 lines) — Deal CRUD, save/load from Neon + archive/unarchive [Session 2]
+    parent-profiles/route.ts (~90 lines)  — Org profile CRUD [Session 2]
+    periods/route.ts         (51 lines)   — Reporting period management
+    steerco/route.ts         (74 lines)   — SteerCo narrative persistence
+    views/route.ts           (46 lines)   — View preference persistence
+  layout.tsx                 (26 lines)   — App shell, metadata
+  page.tsx                   (~950 lines) — App state machine + admin deal management [Session 2]
 
 components/
+  agent-admin/
+    AgentAdminTab.tsx        (~200 lines) — Admin tab container [Session 2]
+    PromptLibraryPanel.tsx   (~1,150 lines) — Prompt library with 5 new structured fields [Session 2]
+  assistant/
+    AgentPanel.tsx           (~300 lines) — Agent chat panel [Session 2]
   dashboard/
-    BowlerTable.tsx          (327 lines) — Time-phased RAG grid component
-    Dashboard.tsx            (2,527 lines) — Main dashboard (6 tabs, inline styles)
-    HelpDrawer.tsx           (349 lines) — Contextual help overlay
+    BowlerTable.tsx          (327 lines)  — Time-phased RAG grid component
+    Dashboard.tsx            (~2,600 lines) — Main dashboard (8 tabs, inline styles)
+    HelpDrawer.tsx           (349 lines)  — Contextual help overlay
+    SlidePreview.tsx         (~2,000 lines) — PDF slide generation
   intake/
-    IntakeForm.tsx           (644 lines) — 3-tier deal intake wizard
+    IntakeForm.tsx           (~1,900 lines) — 4-tier deal intake wizard (was 3-tier) [Session 2]
 
 lib/
-  bowler.ts                  (287 lines) — Bowler table view presets, taxonomy map
+  agent-context.tsx          (~60 lines)  — Agent pending prompt context bridge [Session 2]
+  agent-permissions.ts       (~100 lines) — 5-tier permission model [Session 2]
+  bowler.ts                  (287 lines)  — Bowler table view presets, taxonomy map
   checklist-master.ts        (726 lines) — 531-item master checklist template
   db.ts                      (9 lines)   — Neon serverless SQL client
   decision-tree.ts           (328 lines) — Deal generation engine
